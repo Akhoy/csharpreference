@@ -91,7 +91,9 @@ function buildChapter(id, meta, body, ctx) {
       code(src, info) {
         const lang = (info || '').trim().split(/\s+/)[0] || 'text';
         const label = LANG_NAME[lang.toLowerCase()] || lang;
-        const runnable = ['cs', 'csharp', 'c#'].includes(lang.toLowerCase());
+        // `csharp norun`: highlighted as C#, but no Run button (async/threading/unsafe code the
+        // single-threaded browser runner can't execute, or a fragment that isn't a whole program).
+        const runnable = ['cs', 'csharp', 'c#'].includes(lang.toLowerCase()) && !/\bnorun\b/.test(info || '');
         const clean = src.replace(/\s+$/, '');
         const runBtn = runnable
           ? `<button class="run" type="button">Run <span class="run-arrow">▶</span></button>`
@@ -151,7 +153,9 @@ function buildChapter(id, meta, body, ctx) {
     if (k % 2 === 0) { html += marked.parse(segments[k]); continue; }
     const b = blocks[+segments[k]];
     const content = renderInner(b.lines.join('\n'));
-    if (b.type === 'qa') {
+    if (b.type === 'scene') {
+      html += renderScene(b);
+    } else if (b.type === 'qa') {
       qa.push({ q: b.title, a: content, chapter: id, section: currentSection });
       html += `<details class="qa"><summary><span class="qa-mark">Q</span><span>${renderInlineTitle(b.title)}</span></summary><div class="qa-body">${content}</div></details>\n`;
     } else {
@@ -179,6 +183,35 @@ function buildChapter(id, meta, body, ctx) {
   };
 
   function renderInlineTitle(t) { return new Marked().parseInline(t); }
+
+  // :::scene visuals/scenes/x.svg | Title
+  // 1. narration for step 1
+  // 2. narration for step 2
+  // :::
+  // The SVG is inlined (so it follows the book's theme and can be stepped through). Inside it,
+  // data-s="2" shows an element from step 2 on, data-s="2-3" only on steps 2–3,
+  // data-hl="3" highlights it on step 3, data-mv="3:120,0" slides it by (120,0) from step 3.
+  function renderScene(b) {
+    const [file, title = ''] = b.title.split('|').map(s => s.trim());
+    const svgPath = path.join(ROOT, file);
+    if (!fs.existsSync(svgPath)) throw new Error(`${id}: scene file not found: ${file}`);
+    const svg = fs.readFileSync(svgPath, 'utf8').replace(/<\?xml[^>]*>\s*/, '').trim();
+    const steps = [];
+    for (const line of b.lines) {
+      const m = line.match(/^\s*\d+\.\s+(.*)$/);
+      if (m) steps.push(m[1]);
+      else if (line.trim() && steps.length) steps[steps.length - 1] += ' ' + line.trim();
+    }
+    if (!steps.length) throw new Error(`${id}: scene ${file} has no numbered steps`);
+    const says = steps.map((s, i) => `<li data-step="${i + 1}"${i ? ' hidden' : ''}>${renderInlineTitle(s)}</li>`).join('');
+    const dots = steps.map((_, i) => `<button type="button" class="scene-dot${i ? '' : ' on'}" data-sc="${i + 1}" aria-label="Step ${i + 1}"></button>`).join('');
+    return `<figure class="scene" data-steps="${steps.length}" data-at="1">
+<div class="scene-head"><span class="scene-title">${renderInlineTitle(title)}</span><span class="scene-count">Step 1 of ${steps.length}</span></div>
+<div class="scene-art">${svg}</div>
+<ol class="scene-says">${says}</ol>
+<div class="scene-ctrl"><button type="button" class="scene-btn" data-sc="prev" disabled>◀ Back</button><span class="scene-dots">${dots}</span><button type="button" class="scene-btn" data-sc="play" aria-label="Play all steps">▶ Play</button><button type="button" class="scene-btn primary" data-sc="next">Next ▶</button></div>
+</figure>\n`;
+  }
 }
 
 // ---------- build ----------

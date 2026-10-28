@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="Nullable reference types: the compiler tracks, line by line, whether a reference might be null and warns before the code ships">
+<text class="t-cap" x="24" y="28">YOUR CODE</text><text class="t-cap" x="470" y="28">WHAT THE COMPILER KNOWS</text>
+<rect x="24" y="40" width="430" height="34" rx="6" class="b" data-hl="1"/><text class="t-c" x="36" y="62" style="font-size:12.5px">public Address<tspan class="t-acc" font-weight="700">?</tspan> Address { get; set; }</text>
+<rect x="24" y="86" width="430" height="34" rx="6" class="b" data-hl="2"/><text class="t-c" x="36" y="108" style="font-size:12.5px">var pc = c.Address.Postcode;</text>
+<rect x="24" y="132" width="430" height="34" rx="6" class="b" data-hl="3"/><text class="t-c" x="36" y="154" style="font-size:12.5px">if (c.Address is null) return "collect in store";</text>
+<rect x="24" y="178" width="430" height="34" rx="6" class="b" data-hl="4"/><text class="t-c" x="36" y="200" style="font-size:12.5px">return c.Address.Postcode;</text>
+<g data-s="1" class="fly-r"><rect x="470" y="40" width="226" height="34" rx="17" class="b-warn"/><text class="t-s" x="484" y="62">Address: maybe null</text></g>
+<g data-s="2" class="fly-r"><rect x="470" y="86" width="226" height="34" rx="17" class="b-bad"/><text class="t-s t-bad" x="484" y="108">⚠ CS8602: possible null</text></g>
+<g data-s="3" class="fly-r"><rect x="470" y="132" width="226" height="34" rx="17" class="b-info"/><text class="t-s" x="484" y="154">past this line: not null</text></g>
+<g data-s="4" class="fly-r"><rect x="470" y="178" width="226" height="34" rx="17" class="b-good"/><text class="t-s t-good" x="484" y="200">✓ safe, no warning</text></g>
+<text class="t-s" x="24" y="250" data-s="1-1">The ? says "this can be missing". Without it, the compiler assumes never null.</text>
+<text class="t-s t-bad" x="24" y="250" data-s="2-2">The 3 a.m. crash, caught as a warning while you type, before it ever ships.</text>
+<text class="t-s t-info" x="24" y="250" data-s="3-3">The compiler follows your code: after the null check, Address can't be null.</text>
+<text class="t-s t-good" x="24" y="250" data-s="4-4">Same expression as line 2, but now it's provably safe. This is flow analysis.</text>
+<g data-s="5"><rect x="24" y="232" width="672" height="64" rx="8" class="b-warn"/><text class="t-s" x="36" y="256">But it's compile-time only. JSON missing a field, a database NULL or old code</text><text class="t-s" x="36" y="278">can still hand you null at runtime. Check data where it enters your app.</text></g>
+</svg>

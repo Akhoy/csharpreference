@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="ArrayPool: rent a buffer from a shelf of reusable arrays, return it when done, and the next caller gets the same array without a new allocation">
+<defs><marker id="ap-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<text class="t-cap" x="24" y="28">IMPORT CHUNKS</text><text class="t-cap" x="460" y="28" data-s="2">ArrayPool&lt;byte&gt;.Shared</text>
+<g data-s="1-1"><rect x="24" y="44" width="400" height="44" rx="8" class="b"/><text class="t-c" x="36" y="71" style="font-size:12.5px">var buffer = new byte[1_000_000];   // per chunk</text>
+<g><rect x="460" y="44" width="56" height="70" rx="6" class="b-bad"/><rect x="524" y="44" width="56" height="70" rx="6" class="b-bad"/><rect x="588" y="44" width="56" height="70" rx="6" class="b-bad"/><rect x="460" y="122" width="56" height="70" rx="6" class="b-bad"/><rect x="524" y="122" width="56" height="70" rx="6" class="b-bad"/><text class="t-h t-bad" x="600" y="164">…</text></g>
+<text class="t-s t-bad" x="24" y="120">A new 1 MB array for every chunk. Big arrays go on the</text><text class="t-s t-bad" x="24" y="140">Large Object Heap, which is expensive to clean up.</text></g>
+<g data-s="2"><rect x="460" y="44" width="236" height="150" rx="12" class="b-sunk"/>
+<text class="t-m" x="472" y="186">a shelf of reusable arrays</text></g>
+<g data-s="2-2"><rect x="480" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="548" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="616" y="60" width="56" height="100" rx="6" class="b-good"/></g>
+<g data-s="3-3"><rect x="548" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="616" y="60" width="56" height="100" rx="6" class="b-good"/>
+<rect x="24" y="44" width="400" height="44" rx="8" class="b-acc"/><text class="t-c" x="36" y="71" style="font-size:12.5px">var buffer = pool.Rent(1_000_000);</text>
+<rect x="300" y="100" width="56" height="100" rx="6" class="b-good"/><path d="M480,110 C430,110 420,130 362,140" class="ln-acc" marker-end="url(#ap-ar)"/>
+<text class="t-s" x="24" y="120">Rent: borrow an array from the shelf.</text><text class="t-s" x="24" y="140">Use it for this chunk.</text></g>
+<g data-s="4-4"><rect x="548" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="616" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="480" y="60" width="56" height="100" rx="6" class="b-good"/>
+<rect x="24" y="44" width="400" height="44" rx="8" class="b-acc"/><text class="t-c" x="36" y="71" style="font-size:12.5px">finally { pool.Return(buffer); }</text>
+<rect x="300" y="100" width="56" height="100" rx="6" class="b-good" style="opacity:.5"/><path d="M362,150 C420,150 430,120 474,112" class="ln-acc" marker-end="url(#ap-ar)"/>
+<text class="t-s" x="24" y="120">Return it in a finally, so it's returned even on errors.</text><text class="t-s t-good" x="24" y="140">The next chunk rents the SAME array: no new allocation.</text></g>
+<g data-s="5"><rect x="480" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="548" y="60" width="56" height="100" rx="6" class="b-good"/><rect x="616" y="60" width="56" height="100" rx="6" class="b-good"/>
+<rect x="24" y="44" width="400" height="120" rx="8" class="b-warn"/><text class="t-h" x="36" y="70">Two rules</text><text class="t-s" x="36" y="96">1. Rent can give you a BIGGER array than you asked for.</text><text class="t-s" x="52" y="116">Only use the length you requested.</text><text class="t-s" x="36" y="142">2. After Return it belongs to someone else. Never touch it.</text></g>
+</svg>

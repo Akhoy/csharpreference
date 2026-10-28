@@ -199,7 +199,7 @@ SQL Server rejects multiple cascade paths; set `Restrict` where needed.
 
 ## Owned types, complex types and value conversions {a}
 
-Recall from [Type system](ch:type-system#value-types-live-on-the-stack-a-useful-lie) that value objects like `Address` or `Money` are meant to be compared by their contents, not by identity — they have no primary key of their own, and EF Core has dedicated mapping strategies specifically for that shape:
+Recall from [Type system](ch:type-system#where-the-data-lives-stack-and-heap) that value objects like `Address` or `Money` are meant to be compared by their contents, not by identity — they have no primary key of their own, and EF Core has dedicated mapping strategies specifically for that shape:
 
 ```csharp
 public sealed record Address(string Street, string City, string PostalCode, string Country);

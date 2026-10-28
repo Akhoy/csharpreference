@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-label="Variance: a read-write list of cats can't be treated as a list of animals, but a read-only sequence of cats can, and an action on any animal can be used for cats">
+<text class="t-cap" x="24" y="28">CAN A "…OF Cat" BE USED AS A "…OF Animal"?</text>
+<!-- row 1: List -->
+<rect x="24" y="44" width="672" height="84" rx="10" class="b" data-hl="1,2"/>
+<text class="t-c" x="40" y="72">List&lt;Cat&gt;</text><text class="t-m" x="40" y="94">a basket: put in AND take out</text>
+<g data-s="1"><rect x="250" y="58" width="56" height="48" rx="8" class="b-info"/><text x="278" y="90" text-anchor="middle" style="font-size:26px">🐱</text>
+<rect x="314" y="58" width="56" height="48" rx="8" class="b-info"/><text x="342" y="90" text-anchor="middle" style="font-size:26px">🐱</text></g>
+<g data-s="2" class="fly-r"><rect x="378" y="58" width="56" height="48" rx="8" class="b-bad"/><text x="406" y="90" text-anchor="middle" style="font-size:26px">🐶</text>
+<text class="t-s t-bad" x="450" y="76">As List&lt;Animal&gt;, anyone could Add</text><text class="t-s t-bad" x="450" y="96">a Dog. ✗ Not allowed: invariant</text></g>
+<!-- row 2: IEnumerable out -->
+<g data-s="3" class="fly"><rect x="24" y="140" width="672" height="84" rx="10" class="b" data-hl="3"/>
+<text class="t-c" x="40" y="168">IEnumerable&lt;<tspan class="t-good" font-weight="700">out</tspan> T&gt;</text><text class="t-m" x="40" y="190">a dispenser: only GIVES things out</text>
+<rect x="250" y="154" width="56" height="48" rx="8" class="b-info"/><text x="278" y="186" text-anchor="middle" style="font-size:26px">🐱</text>
+<text class="t-h" x="320" y="186">→</text>
+<text class="t-s t-good" x="350" y="172">Everything it gives out is a Cat, and every Cat</text><text class="t-s t-good" x="350" y="192">is an Animal. ✓ Safe: covariant (out)</text></g>
+<!-- row 3: Action in -->
+<g data-s="4" class="fly"><rect x="24" y="236" width="672" height="84" rx="10" class="b" data-hl="4"/>
+<text class="t-c" x="40" y="264">Action&lt;<tspan class="t-info" font-weight="700">in</tspan> T&gt;</text><text class="t-m" x="40" y="286">a vet: only TAKES things in</text>
+<text class="t-h" x="250" y="282">🐱 →</text><rect x="300" y="250" width="56" height="48" rx="8" class="b-good"/><text x="328" y="282" text-anchor="middle" style="font-size:24px">🩺</text>
+<text class="t-s t-info" x="372" y="268">A vet for any Animal can treat a Cat.</text><text class="t-s t-info" x="372" y="288">Action&lt;Animal&gt; → Action&lt;Cat&gt; ✓ contravariant (in)</text></g>
+</svg>

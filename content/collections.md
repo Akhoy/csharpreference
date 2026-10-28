@@ -1,331 +1,382 @@
 ---
 id: collections
-title: Collections and Data Structures
-summary: Choosing the right container. Arrays, List, Dictionary, HashSet, queues, stacks, sorted and linked collections, their Big-O costs and internals, the interface hierarchy, plus concurrent, immutable and frozen collections.
+title: "Collections: Pick the Container That Fits the Question"
+summary: "Episode 5. Kettle has 200,000 orders and finding one by ID is slow, because a List checks every item. A Dictionary jumps straight to it. Covers Big-O in plain words, List, Dictionary, HashSet, Queue, Stack and PriorityQueue, how List and Dictionary work inside, the collection interfaces, read-only vs immutable vs frozen, concurrent collections, and arrays and spans."
 layer: language
 where: C# language › Base Class Library › Collections
-fits: These types live in the BCL (layer 2) but you use them as part of the language every day. They are the data structures underneath LINQ ([LINQ](ch:linq)), caches ([Caching](ch:caching-ratelimit-cors)) and almost every algorithm question in interviews.
+fits: These types live in the BCL (layer 2), but you use them every day as if they were part of the language. They're the data structures under LINQ ([LINQ](ch:linq)), caches ([Caching](ch:caching-ratelimit-cors)) and most algorithm interview questions.
 levels: b,i,a
 prereqs: generics
 next: linq, threading-concurrency
 ---
 
-## TL;DR
+## The 30-second version
 
-- Each collection type trades away some capability for speed at one specific job — know what you need before picking one.
-- `List<T>` = growable array, O(1) add on average but O(n) occasionally when it resizes ("amortised O(1)"). `Dictionary<K,V>`/`HashSet<T>` = O(1) average lookup via hashing, as long as `GetHashCode` spreads values out well.
-- The biggest easy win: replace `list.Contains(x)` inside a loop with a `HashSet<T>` lookup — turns an O(n·m) scan into O(n+m).
-- `IReadOnlyList<T>` only stops *you* from mutating through that reference; `ImmutableList<T>`/`FrozenDictionary<K,V>` mean nobody, ever, can change it.
-- Plain collections aren't thread-safe for writes — use `ConcurrentDictionary<K,V>`, `Channel<T>`, etc. across threads, and prefer their atomic methods (`GetOrAdd`) over check-then-act.
+- Each collection is built to answer **one kind of question fast**. Picking the right one matters more than any other optimisation.
+- **Big-O** describes how the cost grows with the number of items, *n*. **O(1)** means the same speed at any size. **O(n)** means it checks every item.
+- `List<T>`: an ordered list with fast access by position, but **searching is O(n)**. `Dictionary<K,V>`: **lookup by key in O(1)**. `HashSet<T>`: "have I seen this?" in O(1).
+- A `Dictionary` works by turning the key into a number, its **hash code**, which picks a small **bucket** to look in. Keys need consistent `Equals`/`GetHashCode` and must never change.
+- Accept the **least** capable interface you need (`IEnumerable<T>`), and return an honest read-only one (`IReadOnlyList<T>`).
+- Ordinary collections aren't thread-safe. Use the `Concurrent*` types, or `Channel<T>`, when threads share data.
 
-:::analogy The warehouse
-Think of this chapter as stocking a warehouse. An array is a wall of fixed numbered shelves — fast to reach shelf #12, impossible to add a shelf #13 without rebuilding the wall. A dictionary is a wall of lockers with a combination (the key) instead of a number — you don't walk the aisle, you go straight to the locker. A queue is the loading dock: first crate in, first crate out. A stack is the single bin by the door you keep dropping returns onto, and always grab from the top. Keep that picture in mind — every type below is really just a different shape of storage room, built for one specific job.
-:::
+## Previously, and the problem {b}
 
-## Why there isn't just one "list" type {b}
-
-C# gives you a genuinely large number of collection types, and the reason isn't accidental sprawl — each one trades away some capability in exchange for being dramatically faster at one specific job. This chapter's real goal is to let you look at a problem ("I need to check membership a million times a second", "I need to always grab the smallest item") and immediately know which structure was built for exactly that.
-
-Before the specific types, though, there's a layer of interfaces worth understanding, because it quietly shapes how you should design your own method signatures too.
-
-## The interface hierarchy: each rung promises one more capability {b}
-
-```text
-IEnumerable<T>            foreach only (GetEnumerator)
- ├─ IReadOnlyCollection<T>   + Count
- │   ├─ IReadOnlyList<T>        + this[int] (read)
- │   ├─ IReadOnlySet<T>         + Contains, set comparisons
- │   └─ IReadOnlyDictionary<K,V>+ TryGetValue, Keys, Values
- └─ ICollection<T>           + Count, Add, Remove, Clear, Contains
-     ├─ IList<T>                + this[int] get/set, Insert, RemoveAt, IndexOf
-     ├─ ISet<T>                 + UnionWith, IntersectWith…
-     └─ IDictionary<K,V>        + this[key], Add(key, value), TryGetValue
-```
-
-Read this ladder as a series of promises, each one stacking on the last: `IEnumerable<T>` promises nothing but "you can walk through me once, in order." `IReadOnlyCollection<T>` adds "and I know how many items I have." `IReadOnlyList<T>` adds "and you can jump straight to any index." Every rung up the ladder is a *stronger* promise — which means every rung up is also a *narrower* set of types willing to make that promise.
-
-That asymmetry is exactly where the design rule comes from: **accept the least capable interface you actually need; return the most useful honest type you actually have.**
+In [Episode 4](ch:delegates-events) Kettle learned to swap discount rules and notify subscribers about every order. Business took off. There are 200,000 orders in memory, and the order-status page is slow:
 
 ```csharp
-public decimal Total(IEnumerable<OrderLine> lines) => lines.Sum(l => l.Price * l.Qty);  // only iterates
-public IReadOnlyList<Order> GetRecent() => _orders.Take(10).ToList();                    // caller can index and count but not mutate
+using System.Diagnostics;
+
+var orders = new List<Order>();
+for (int i = 0; i < 100_000; i++) orders.Add(new Order(i, 10m + i % 40));
+var lookingFor = Enumerable.Range(99_900, 100).ToArray();   // 100 customers check their order
+
+long checks = 0;
+var sw = Stopwatch.StartNew();
+foreach (var id in lookingFor)
+    _ = orders.First(o => { checks++; return o.Id == id; });   // walks the list from the start
+Console.WriteLine($"List:       {checks:N0} checks, {sw.ElapsedMilliseconds} ms");
+
+var byId = orders.ToDictionary(o => o.Id);                     // same data, different container
+sw.Restart();
+foreach (var id in lookingFor) _ = byId[id];
+Console.WriteLine($"Dictionary: ~{lookingFor.Length} lookups, {sw.ElapsedMilliseconds} ms");
+
+record Order(int Id, decimal Total);
 ```
 
-`Total` only ever walks `lines` once, so it asks for nothing more than `IEnumerable<T>` — which means it can accept a `List<OrderLine>`, an array, a LINQ query, *anything* enumerable, without forcing the caller to materialise something more specific first. `GetRecent`, on the return side, genuinely does have a concrete, indexable, countable list sitting behind it — so returning `IReadOnlyList<Order>` honestly advertises that capability to the caller, while still refusing to promise mutation the caller has no business doing.
+Run it. The `List` makes about **10 million** comparisons to find 100 orders, and the `Dictionary` takes almost no time. The data and the answers are the same. Only the container changed.
 
-:::gotcha An IEnumerable<T> parameter can quietly run twice
-If a method takes `IEnumerable<T>` and loops over it twice — or calls `Count()` and *then* `foreach`s it — remember from [LINQ](ch:linq#deferred-vs-immediate-execution-the-one-idea-that-explains-m) that a lazy source doesn't hold a snapshot of results; it re-executes from scratch every single time it's enumerated. If that source is a database query, "loop over it twice" silently means "hit the database twice." Either materialise once (`var list = items.ToList();`) before touching it more than once, or accept `IReadOnlyCollection<T>` in your signature specifically when you need the count — which forces the caller to have already materialised it.
+## The lightbulb: a container shaped like the question {b}
+
+A `List` is a row of items in order. The only way to find "order #7319" in a row is to look at each item until you hit it. A `Dictionary` is built for exactly the question "give me the item with *this key*", so it can go straight there.
+
+We describe that difference with **Big-O notation**. It says how the work grows as the number of items, *n*, grows. Scanning a list is **O(n)**: twice the orders, twice the work. A dictionary lookup is **O(1)**: the same work at 200 orders or 200 million. The trick that makes O(1) possible is called **hashing**. The key is turned into a number, its **hash code**, and that number tells the dictionary which small **bucket** to look in.
+
+:::scene visuals/scenes/col-lookup.svg | Two ways to find order #7319
+1. **List:** start at the first order. Is it #7319? No. Move on to the next.
+2. Keep going, one by one. In the worst case that's **200,000 checks for one order**. That's O(n).
+3. **Dictionary:** call `GetHashCode()` on the key 7319. The number it returns picks a **bucket**, here bucket 3 of 8.
+4. Jump straight to bucket 3 and compare its one or two entries with `Equals`. Found. The size of the dictionary didn't matter. That's O(1).
+5. The catch: if `GetHashCode` is bad (say it always returns 0), every key lands in one bucket and you're back to scanning, O(n). Good hashes spread keys out.
 :::
 
-## The core collections, and exactly what each one costs {b}
+How much does it matter? For *n* = 200,000:
 
-| Type | Structure | Index | Search | Add | Insert/Remove middle | Ordered? | Use for |
-|---|---|---|---|---|---|---|---|
-| `T[]` | Contiguous block | O(1) | O(n) | — (fixed size) | — | Insertion | Fixed-size data, max performance |
-| `List<T>` | Growable array | O(1) | O(n) | **O(1) amortised** | O(n) | Insertion | Default list |
-| `Dictionary<K,V>` | Hash table | — | **O(1)** by key | O(1) | O(1) remove | **Not guaranteed** | Lookup by key |
-| `HashSet<T>` | Hash table (keys only) | — | **O(1)** contains | O(1) | O(1) remove | No | Uniqueness, membership |
-| `SortedDictionary<K,V>` | Red-black tree | — | O(log n) | O(log n) | O(log n) | By key | Sorted iteration with frequent inserts |
-| `SortedList<K,V>` | Sorted arrays | O(1) by index | O(log n) | O(n) | O(n) | By key | Sorted, mostly read, low memory |
-| `SortedSet<T>` | Red-black tree | — | O(log n) | O(log n) | O(log n) | Sorted | Sorted unique values, ranges (`GetViewBetween`) |
-| `Queue<T>` | Circular array | — | — | O(1) enqueue/dequeue | — | FIFO | Work queues, BFS |
-| `Stack<T>` | Array | — | — | O(1) push/pop | — | LIFO | Undo, DFS, parsing |
-| `PriorityQueue<T,P>` (.NET 6) | Binary heap | — | — | O(log n) | O(log n) dequeue | By priority | Scheduling, Dijkstra, top-k |
-| `LinkedList<T>` | Doubly linked | O(n) | O(n) | O(1) at ends | **O(1) given a node** | Insertion | Rare; LRU caches with a dictionary |
+| Big-O | In plain words | Checks for n = 200,000 | Example |
+|---|---|---|---|
+| **O(1)** | same at any size | ~1 | `dict[key]`, `set.Contains(x)`, `list[5]` |
+| **O(log n)** | halves the problem each step | ~18 | `SortedDictionary` lookup, binary search |
+| **O(n)** | looks at everything | 200,000 | `list.Contains(x)`, `list.First(…)` |
+| **O(n²)** | everything × everything | 40,000,000,000 | `list.Contains` inside a loop over a list |
 
-:::tip The single highest-leverage fix in this whole table
-`list.Contains(x)` inside a loop over another list is **O(n·m)** — for every item in the outer list, you scan the *entire* inner list looking for a match. Converting just the lookup list to a `HashSet<T>` turns that `Contains` call from a full scan into an O(1) average-case lookup, dropping the whole thing to **O(n+m)**. On a list of any real size, that's the difference between milliseconds and minutes. Interviewers ask about this specifically because it's such a common, easy-to-miss win in real code:
+:::qa What is the time complexity of List.Add, Dictionary lookup and HashSet.Contains?
+`List.Add` is amortised O(1), with an occasional O(n) resize. Dictionary lookup by key is O(1) on average, and only degrades to O(n) with a pathological hash function. `HashSet.Contains` is also O(1) on average. By contrast, `List.Contains` and `IndexOf` are O(n).
+:::
+
+## The everyday collections {b}
+
+| Type | Answers fast | Slow at | Kettle uses it for |
+|---|---|---|---|
+| `List<T>` | "item at position *i*" O(1), add to the end | searching O(n), inserting at the front O(n) | lines in an order |
+| `T[]` (array) | position *i*, with the least overhead | it can't grow | fixed-size buffers, hot loops |
+| `Dictionary<K,V>` | "value for this key" O(1) | it has no order | orders by ID, stock by SKU |
+| `HashSet<T>` | "is this in the set?" O(1), uniqueness | it has no order and no position | blocked emails, seen IDs |
+| `Queue<T>` | first in, first out | the middle | orders waiting to be packed |
+| `Stack<T>` | last in, first out | the middle | undo history |
+| `PriorityQueue<T,P>` | "give me the most urgent one" O(log n) | finding a specific item | express orders first |
+| `SortedDictionary<K,V>` | lookup **and** sorted order, O(log n) | slower than `Dictionary` | a price ladder |
+| `LinkedList<T>` | insert or remove next to a node you hold, O(1) | everything else | rare (LRU caches) |
 
 ```csharp
-var blocked = new HashSet<string>(blockedEmails, StringComparer.OrdinalIgnoreCase);
-var allowed = users.Where(u => !blocked.Contains(u.Email)).ToList();
+var packing = new Queue<string>();          // FIFO: fair order
+packing.Enqueue("order 1"); packing.Enqueue("order 2");
+Console.WriteLine($"pack next: {packing.Dequeue()}");          // order 1
+
+var undo = new Stack<string>();             // LIFO: the most recent first
+undo.Push("added Sencha"); undo.Push("removed Earl Grey");
+Console.WriteLine($"undo: {undo.Pop()}");                      // removed Earl Grey
+
+var dispatch = new PriorityQueue<string, int>();   // lowest priority number comes out first
+dispatch.Enqueue("standard #3", 2);
+dispatch.Enqueue("express #9", 1);
+Console.WriteLine($"dispatch first: {dispatch.Dequeue()}");    // express #9
 ```
+
+### The single best fix: `List.Contains` → `HashSet`
+
+The most common slow code in real projects is a `Contains` on a list, inside a loop:
+
+```csharp
+var blockedList = Enumerable.Range(0, 2_000).Select(i => $"spam{i}@x.com").ToList();
+var signups = Enumerable.Range(0, 2_000).Select(i => $"user{i}@kettle.shop").ToList();
+
+long checks = 0;
+var allowedSlow = signups.Where(s => blockedList.Any(b => { checks++; return b == s; })).Count();
+Console.WriteLine($"List:    {checks:N0} comparisons");        // ~4,000,000: O(n × m)
+
+var blocked = new HashSet<string>(blockedList, StringComparer.OrdinalIgnoreCase);
+var allowedFast = signups.Count(s => !blocked.Contains(s));    // ~2,000 hash lookups: O(n + m)
+Console.WriteLine($"HashSet: {signups.Count:N0} lookups, {allowedFast} allowed");
+```
+
+Turning the lookup list into a `HashSet` changes O(n×m) into O(n+m). Interviewers ask about this one because it's such an easy, common win.
+
+:::qa How would you remove duplicates from a list efficiently?
+Use a `HashSet<T>` (or LINQ `Distinct()`, which uses one internally). That's O(n) on average, compared with O(n²) for nested loops. Pass an `IEqualityComparer<T>` (or use `DistinctBy`) to control what counts as a duplicate, and use `StringComparer.OrdinalIgnoreCase` for case-insensitive strings.
 :::
 
-## List<T> internals: what "amortised O(1)" actually means {i}
+## Inside List: why Add is "amortised O(1)" {i}
 
-The table above calls `List<T>.Add` "O(1) amortised" rather than plain O(1), and that qualifier is worth unpacking rather than skipping past, because it explains a real, controllable cost.
-
-Underneath, a `List<T>` is just an array (`_items`) plus a count (`_size`), with the array deliberately allocated a bit bigger than it currently needs to be. Most calls to `Add` are genuinely O(1): there's spare room in the array, so the new item just goes in the next free slot. But once that spare room runs out, `Add` has to **allocate a brand-new array at double the previous capacity, and copy every single existing element across** before it can add the new one — an O(n) operation, just for that one call.
-
-"Amortised O(1)" is the honest way to describe what happens if you average that occasional expensive copy across *all* the calls leading up to it: because the array doubles each time, the expensive copies become exponentially rarer as the list grows, and the total cost of all the copying, spread evenly across every `Add` call ever made, works out to a constant amount per call. It's not that every call is cheap — it's that the expensive ones are rare enough, and the doubling strategy specifically guarantees rare enough, that the *average* stays constant.
+A `List<T>` is just an **array** plus a count, and the array is deliberately bigger than needed. Most `Add` calls drop the item into the next free slot, which is O(1). But when the array is full, `Add` has to **allocate a new array twice as big and copy everything across**. That one call is O(n).
 
 ![A full List<T> allocates a new array at double the capacity, copies every element across, and only then adds the new one](visuals/list-resize.svg)
 
-Watch the four stages in that picture in order, because each one is a real, separate step the runtime actually performs, not just a conceptual simplification: the array starts **full** (step 1); a brand-new, bigger array gets **allocated**, completely empty, alongside the old one (step 2); every existing element gets **copied** across, one at a time (step 3); and only once that copying has finished does the **new item** actually get added (step 4). The old array is then simply abandoned for the garbage collector. [Microsoft's own docs for `List<T>.Add`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1.add) state this plainly: "If Count already equals Capacity... the capacity... is increased by automatically reallocating the internal array, and the existing elements are copied to the new array before the new element is added... this method becomes an O(n) operation."
+Because the size doubles each time, those expensive copies get rarer and rarer. Averaged over all the calls, the cost per `Add` is constant. That's what **amortised** O(1) means: some calls are expensive, but rarely enough that the average stays flat.
 
 ```csharp
-var list = new List<Order>(capacity: 10_000);   // pre-size when you know the count: avoids ~14 resize-copies
+var list = new List<int>();
+var lastCapacity = -1;
+for (int i = 0; i < 100; i++)
+{
+    list.Add(i);
+    if (list.Capacity != lastCapacity) { Console.Write($"{list.Capacity} "); lastCapacity = list.Capacity; }
+}
+Console.WriteLine("← each jump was a full copy");
+
+var presized = new List<int>(capacity: 10_000);   // know the size? Skip the copies entirely
+Console.WriteLine(presized.Capacity);
 ```
 
-If you already know roughly how many items you're about to add, pre-sizing the list avoids paying for those resize-copies at all — each doubling from a default starting capacity up to 10,000 would otherwise cost you roughly 14 separate full-array copies along the way.
+Related costs: `Insert(0, x)` and `RemoveAt(0)` are O(n), because every item after that position has to shift. Need fast removal from the front? That's what `Queue<T>` is for.
 
-A couple of related facts worth having at hand: `Capacity` is always `≥ Count` (the array is at least as big as what's actually stored in it), and `TrimExcess()` shrinks the backing array back down if you've over-allocated. `Insert(0, x)` and `RemoveAt(0)` are each O(n), for a reason worth seeing clearly: inserting or removing at the front means every single element after that position has to physically shift over by one slot — there's no way around it for an array-backed structure. If you genuinely need fast operations at the front, that's precisely the signal to reach for `Queue<T>` instead. And `CollectionsMarshal.AsSpan(list)` gives you a zero-copy `Span<T>` view directly over the internal array, for hot loops — just don't add or remove from the list while you're holding that span, since a resize would invalidate it out from under you.
+## Inside Dictionary: hash codes and buckets {i}
 
-## Dictionary<K,V>: what's actually happening inside a hash lookup {i}
+The lookup you stepped through above, in three steps:
 
-`Dictionary<K,V>` promises O(1) lookups — but *why* does hashing make that possible, when a list-based search is fundamentally O(n)? Walk through exactly what happens when you look up a key, step by step:
-
-1. Compute `key.GetHashCode()` — a number, derived from the key's contents.
-2. Map that hash to a **bucket** index: roughly `hash % buckets.Length`.
-3. Walk that one bucket's short chain of entries, comparing each against your key with `Equals`, until you find a match (or run out).
-
-The entire speed advantage over a list lives in step 2: instead of checking every single entry in the whole dictionary, you jump straight to one small bucket and only ever compare against the handful of entries that happen to share that bucket. **Good hash distribution** — hash codes spread evenly across the available buckets — keeps each bucket's chain short, which is what keeps step 3 fast. A genuinely terrible `GetHashCode` implementation (one that, say, always returns `1`) would funnel every single entry into the *same* bucket, and step 3 would degrade into exactly the O(n) linear scan you were trying to avoid in the first place — hashing only helps if the hash function actually spreads things out.
+1. Call `key.GetHashCode()` to get a number.
+2. Turn the number into a bucket index (roughly `hash % bucketCount`).
+3. Compare the few entries in that bucket with `Equals`.
 
 ```csharp
 var stock = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 {
-    ["KB-01"] = 12,
-    ["MS-02"] = 0
+    ["TEA-01"] = 12,
+    ["TEA-02"] = 0,
 };
 
-if (stock.TryGetValue("kb-01", out var qty)) { /* one lookup instead of ContainsKey + indexer */ }
-stock["NEW"] = 5;                         // add or overwrite
-stock.Add("KB-01", 1);                    // throws ArgumentException: duplicate key
-ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(stock, "KB-01", out _);
-slot++;                                   // update in place with a single hash lookup (perf trick)
+if (stock.TryGetValue("tea-01", out var qty))      // ONE lookup gives "found?" and the value
+    Console.WriteLine($"TEA-01: {qty} in stock");
+
+stock["TEA-03"] = 5;                                // add or overwrite
+try { stock.Add("TEA-01", 1); }                     // Add throws on a duplicate key
+catch (ArgumentException) { Console.WriteLine("duplicate key"); }
 ```
 
-Notice the comment on `TryGetValue`: calling `ContainsKey` followed by the indexer does the *entire* three-step lookup above **twice** — once to check existence, once to actually fetch the value. `TryGetValue` does the whole walk exactly once and hands you both pieces of information (found or not, and the value if so) from that single pass.
+- Use **`TryGetValue`**, not `ContainsKey` followed by the indexer, which does the whole lookup twice.
+- **Keys must be immutable.** The bucket is chosen from the hash code *at insertion*. If the key changes later, the dictionary looks in the wrong bucket forever ([Episode 1](ch:type-system#equality-the-same-means-three-things)).
+- Pass a **comparer** (`StringComparer.OrdinalIgnoreCase`) to define what "same key" means.
 
-Given how central `Equals`/`GetHashCode` are to steps 2 and 3, the requirements for a usable key follow directly: **`Equals` and `GetHashCode` must agree with each other**, and — critically — **must not change** while the object is sitting inside the dictionary, because the bucket it was placed in was chosen based on its hash code *at insertion time*; if that hash code changes afterward, the dictionary will keep looking for it in the wrong bucket forever. This is exactly the mutable-hash-key trap from [Type system](ch:type-system#equality-three-different-questions-similar-syntax), showing up again here with real consequences. Stick to immutable keys — strings, numbers, records, IDs — and the problem can't arise.
-
-:::gotcha Dictionary iteration order is an implementation detail, not a contract
-A `Dictionary` usually *happens* to iterate in insertion order — right up until you remove an item, at which point the freed slot gets reused by a later insertion, and the order you observe can shift in ways that have nothing to do with when anything was actually added. Never write code that depends on this ordering; it isn't part of the type's actual contract, only an accident of the current implementation. If you genuinely need order, reach for `SortedDictionary`, the newer generic `OrderedDictionary<K,V>` (.NET 9), or sort explicitly at the point you need it.
+:::gotcha Never depend on Dictionary order
+A `Dictionary` often *happens* to iterate in insertion order, until you remove something and a later insert reuses the gap. Order isn't part of its contract. If you need order, sort explicitly, or use `SortedDictionary` or `OrderedDictionary<K,V>` (.NET 9).
 :::
 
-## Choosing a collection: a decision guide {b}
+:::qa How does a Dictionary work internally?
+It's a hash table. `GetHashCode` picks a bucket, and the entries that share the bucket are compared with `Equals`. Lookups, inserts and removals are O(1) on average. It resizes (rehashes) when it fills up. Keys must have consistent `Equals`/`GetHashCode` and must not change while stored.
+:::
+
+## Interfaces: ask for little, return honestly {b}
+
+Collections implement a ladder of interfaces. Each rung promises one more ability:
 
 ```text
-Need lookup by key?                 → Dictionary<K,V>   (sorted keys → SortedDictionary)
-Need "have I seen this?"            → HashSet<T>
-Need ordered list, index access?    → List<T>           (fixed size & hot path → T[])
-Need first-in-first-out?            → Queue<T>          (multi-threaded → Channel<T> / ConcurrentQueue<T>)
-Need last-in-first-out?             → Stack<T>
-Need "always take the smallest"?    → PriorityQueue<T,P>
-Shared across threads?              → Concurrent* (or lock around a normal one)
-Built once, read millions of times? → FrozenDictionary / FrozenSet
-Must never change after creation?   → Immutable* (or IReadOnly* views)
+IEnumerable<T>              you can foreach over it (that's all)
+ └ IReadOnlyCollection<T>     + Count
+    └ IReadOnlyList<T>          + read by index [i]
+ └ ICollection<T>             + Add, Remove, Clear, Contains
+    └ IList<T>                  + write by index, Insert, RemoveAt
+```
+
+The design rule is **accept the least you need, and return what you honestly have**:
+
+```csharp
+var orders = new List<Order> { new(1, 12m), new(2, 30m) };
+Console.WriteLine(Sum(orders));                     // a List works
+Console.WriteLine(Sum(orders.Where(o => o.Total > 20)));   // so does a LINQ query, or an array
+
+static decimal Sum(IEnumerable<Order> items) => items.Sum(o => o.Total);   // only needs foreach
+static IReadOnlyList<Order> Recent(List<Order> all) => all.TakeLast(10).ToList();  // caller can't Add
+
+record Order(int Id, decimal Total);
+```
+
+:::gotcha An `IEnumerable<T>` might run twice
+An `IEnumerable<T>` may be a *lazy query*, not stored data. Loop over it twice and the query runs twice. If it's a database query, that's two database trips ([LINQ](ch:linq#deferred-execution-a-recipe-not-a-meal)). If you need to look more than once, call `.ToList()` first.
+:::
+
+:::qa IEnumerable vs ICollection vs IList?
+`IEnumerable<T>` only allows iteration. `ICollection<T>` adds Count, Add, Remove, Contains and Clear. `IList<T>` adds index access and Insert/RemoveAt. Accept the least capable interface you need. Return `IReadOnlyList<T>` or `IReadOnlyCollection<T>` to expose data without allowing changes.
+:::
+
+## Choosing, in one glance {b}
+
+```text
+Lookup by key?                      → Dictionary<K,V>     (keys sorted → SortedDictionary)
+"Have I seen this?" / no duplicates → HashSet<T>
+Ordered list, access by position?   → List<T>             (fixed size, hot path → T[])
+First in, first out?                → Queue<T>            (across threads → Channel<T>)
+Last in, first out?                 → Stack<T>
+"Always take the most urgent"?      → PriorityQueue<T,P>
+Shared between threads?             → Concurrent* types, or a lock around a normal one
+Built once, read on every request?  → FrozenDictionary / FrozenSet
+Must never change at all?           → Immutable* types
 Exposing from a class?              → IReadOnlyList<T> / IReadOnlyDictionary<K,V>
 ```
 
-## Read-only, immutable and frozen: three guarantees people conflate {i}
+## Read-only, immutable and frozen are different promises {i}
 
-These three sound like synonyms and genuinely aren't — each one makes a different, specific promise, and mixing them up leads to code that's less safe than it looks:
-
-| | Can the holder modify it? | Can *anyone* modify it? | Cost |
+| | Can *you* change it? | Can *anyone* change it? | Notes |
 |---|---|---|---|
-| `IReadOnlyList<T>` (interface) | No (via that reference) | **Yes**: the underlying `List` can still change | Free (it's a view) |
-| `ReadOnlyCollection<T>` (`list.AsReadOnly()`) | No | Yes, the wrapped list can still change | A thin wrapper |
-| `ImmutableList<T>`, `ImmutableDictionary<K,V>` | No; "mutations" return a new collection, sharing structure | **No**, never | Tree-based: slower reads, efficient copies |
-| `ImmutableArray<T>` | No | No | Array-backed: fast reads, full copy on change |
-| `FrozenDictionary<K,V>` / `FrozenSet<T>` (.NET 8) | No | No | Expensive to create, **fastest possible reads** |
+| `IReadOnlyList<T>` | No, not through this reference | **Yes**: the underlying `List` can still change | Free. It's just a view |
+| `ReadOnlyCollection<T>` (`list.AsReadOnly()`) | No | Yes, through the wrapped list | A thin wrapper |
+| `ImmutableList<T>`, `ImmutableArray<T>` | No. "Changes" return a new collection | **Never** | Safe to share anywhere |
+| `FrozenDictionary<K,V>`, `FrozenSet<T>` (.NET 8) | No | **Never** | Slow to build, **fastest possible reads** |
 
-The distinction worth really sitting with is between the first two rows and the last three. `IReadOnlyList<T>` and `ReadOnlyCollection<T>` only ever restrict what *you* can do *through that particular reference* — somebody else, holding the original mutable `List<T>` the view was built from, can still change it out from under you, and you'd see that change the next time you read through your supposedly "read-only" view. `ImmutableList<T>`, `ImmutableArray<T>` and `FrozenDictionary<K,V>` make a fundamentally stronger promise: the data genuinely cannot change, by anyone, ever, after creation — full stop. That's why `FrozenDictionary` specifically exists: it accepts an expensive, slower *build* step in exchange for the fastest possible *reads* afterward, which is exactly the right trade for something built once at startup and then read on every single request for the rest of the process's life:
+The first two only stop *you*. Whoever holds the original `List` can still change it under your feet. The last two guarantee the data can never change. `Frozen*` makes the ideal startup lookup table:
 
-```csharp
-// Built once at startup, read on every request
-private static readonly FrozenDictionary<string, decimal> TaxRates =
-    new Dictionary<string, decimal> { ["DE"] = 0.19m, ["FR"] = 0.20m, ["NL"] = 0.21m }
+```csharp norun
+private static readonly FrozenDictionary<string, decimal> VatRates =
+    new Dictionary<string, decimal> { ["GB"] = 0.20m, ["DE"] = 0.19m, ["FR"] = 0.20m }
         .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 ```
 
-## Concurrent collections: for when more than one thread touches the same collection {i}
+:::qa What's the difference between IReadOnlyList, ReadOnlyCollection and ImmutableList?
+`IReadOnlyList<T>` is an interface view: you can't modify through it, but the underlying list may still change. `ReadOnlyCollection<T>` is a wrapper with the same caveat. `ImmutableList<T>` can never change: operations return new instances that share structure, which makes it safe to share across threads.
+:::
 
-Here's a fact worth stating plainly, because it surprises people who assume "it's a BCL type, it must be safe": ordinary collections are **not thread-safe for writes**. Two threads calling `Add` on the same plain `Dictionary` at the same moment can genuinely corrupt its internal structure — historically, this specific race has even caused infinite loops inside the dictionary's own bucket-chasing logic. For state shared across threads — singletons, background workers — reach for the collections built specifically to handle this:
+:::qa When would you use FrozenDictionary?
+For lookup data that's built once (usually at startup) and then read very often, such as config maps, routing tables or tax rates. Creating it costs more, but its reads are faster than `Dictionary`'s because it optimises its layout for the exact keys it holds.
+:::
+
+## When several threads share a collection {i}
+
+Ordinary collections are **not thread-safe for writes**. Two threads adding to one `Dictionary` at the same moment can corrupt it. For shared state, such as in singletons and background workers, use the types built for it:
 
 | Type | Use |
 |---|---|
-| `ConcurrentDictionary<K,V>` | Thread-safe map; `GetOrAdd`, `AddOrUpdate`, `TryRemove` |
-| `ConcurrentQueue<T>` / `ConcurrentStack<T>` | Lock-free FIFO/LIFO |
-| `ConcurrentBag<T>` | Unordered; optimised for the same thread adding and taking |
-| `BlockingCollection<T>` | Bounded producer/consumer with blocking (older; prefer `Channel<T>`) |
-| `Channel<T>` (System.Threading.Channels) | **Async** producer/consumer queue; the modern choice |
+| `ConcurrentDictionary<K,V>` | A thread-safe map with `GetOrAdd`, `AddOrUpdate` and `TryRemove` |
+| `ConcurrentQueue<T>` / `ConcurrentStack<T>` | Lock-free FIFO and LIFO |
+| `Channel<T>` | An **async** producer/consumer queue, and the modern choice ([Background work](ch:background-work)) |
 
-```csharp
+```csharp norun
 private readonly ConcurrentDictionary<string, Lazy<Task<Config>>> _cache = new();
 
 public Task<Config> GetAsync(string tenant) =>
     _cache.GetOrAdd(tenant, t => new Lazy<Task<Config>>(() => LoadConfigAsync(t))).Value;
-    // Lazy ensures the loader runs once even if two threads race into GetOrAdd
 ```
 
-:::gotcha Thread-safe methods don't make compound operations thread-safe
-`if (!dict.ContainsKey(k)) dict[k] = v;` is exactly the check-then-act race condition from [Threading & concurrency](ch:threading-concurrency#race-conditions-when-it-depends-on-timing-becomes-a-bug) — two separate operations, with a window between them for another thread to slip in, even though `ContainsKey` and the indexer are each individually safe to call. Use the genuinely atomic combined operations instead — `GetOrAdd`/`TryAdd`/`AddOrUpdate` — which perform the whole check-and-act as one indivisible step. One more sharp edge specific to `GetOrAdd`: under contention, its value factory **may run more than once**, even though only one of those results ever actually gets stored — which is exactly why the example above wraps the expensive load in `Lazy<T>` rather than calling `LoadConfigAsync` directly inside the factory.
+:::gotcha Thread-safe methods don't make your *combination* safe
+`if (!dict.ContainsKey(k)) dict[k] = v;` is two operations, and another thread can slip in between them ([Threading](ch:threading-concurrency#race-conditions-when-it-depends-on-timing-becomes-a-bug)). Use the single atomic methods `GetOrAdd`, `TryAdd` and `AddOrUpdate`. Also note that `GetOrAdd`'s factory **can run more than once** under contention, which is why the example above wraps the expensive work in `Lazy<T>`.
+:::
+
+:::qa How do you make a Dictionary thread-safe?
+Use `ConcurrentDictionary<K,V>` with its atomic operations (`GetOrAdd`, `AddOrUpdate`, `TryRemove`), or protect a normal `Dictionary` with a lock. For read-only data built once, use `FrozenDictionary` or an immutable dictionary, which need no locking.
+:::
+
+:::qa Is ConcurrentDictionary.GetOrAdd's factory guaranteed to run once?
+No. Under contention, several threads can run the factory, but only one result is stored. If the factory is expensive or has side effects, store `Lazy<T>` values so that only the winning `Lazy` is evaluated.
 :::
 
 ## Arrays, spans and collection expressions {i}
 
 ```csharp
-int[] a = [1, 2, 3];                       // C# 12 collection expression
-List<string> names = ["ana", "bo"];
-int[] combined = [..a, 4, 5];              // spread operator
-Span<int> slice = a.AsSpan(1, 2);          // view of {2, 3}, no copy
-int last = a[^1];                          // index from end: 3
-int[] middle = a[1..^1];                   // range: creates a NEW array {2}
-int[,] grid = new int[3, 3];               // multi-dimensional (rectangular)
-int[][] jagged = [[1], [2, 3]];            // array of arrays
+int[] a = [1, 2, 3, 4];                 // collection expression (C# 12)
+List<string> teas = ["Sencha", "Assam"];
+int[] more = [..a, 5, 6];               // spread
+Console.WriteLine(string.Join(",", more));
+
+Console.WriteLine(a[^1]);               // index from the end: 4
+int[] middle = a[1..3];                 // range: a NEW array {2, 3} (a copy)
+Span<int> view = a.AsSpan(1, 2);        // a VIEW of {2, 3}, with no copy
+view[0] = 99;
+Console.WriteLine($"{middle[0]} vs {a[1]}");   // 2 vs 99: the span wrote into a itself
 ```
 
-Two of those lines look similar but behave completely differently, and it's worth being precise about which: `a.AsSpan(1, 2)` is a genuine zero-copy **view** into the original array — mutate through the span and you mutate `a` itself. `a[1..^1]`, the range syntax, instead **allocates and returns a brand-new array** containing copies of the selected elements — it looks like slicing syntax, but it isn't a view at all.
+The two lines that look alike behave differently. A **range** (`a[1..3]`) on an array makes a *copy*. A **span** is a *window* onto the original memory. Spans get their own episode in [Advanced C#](ch:advanced-csharp).
 
-A few more facts worth having on hand: arrays are **reference types** with a genuinely **fixed length** — you can't resize one, only replace it with a different, differently-sized array. Array covariance (an `object[]` variable pointing at a real `string[]`) is permitted but unsafe for exactly the reason covered in [Generics](ch:generics#variance-when-is-listcat-actually-a-listanimal): `object[] o = new string[1]; o[0] = 1;` compiles, but throws `ArrayTypeMismatchException` at runtime, because arrays trade compile-time safety for a runtime check here. And `Array.Empty<T>()` (or the `[]` collection expression) gives you a cached, shared empty array at zero allocation cost — a genuinely good reason to never return `null` where an empty collection would do: callers can safely `foreach` over an empty collection with no special-case null check, but a `null` forces one everywhere it might appear.
+Arrays are reference types with a **fixed length**. Return `[]` or `Array.Empty<T>()` rather than `null`, so callers can always `foreach` without a null check.
 
-## Equality comparers and custom ordering {a}
+## Custom equality and ordering {a}
 
-Hash-based and sorted collections both let you plug in your own comparison logic, rather than relying on a type's default `Equals`/`GetHashCode` or `CompareTo`:
+Hash-based and sorted collections accept your own rules for "same" and "order", without changing the type itself:
 
 ```csharp
+var customers = new[] { new Customer("Ada", "ADA@x.com"), new Customer("Ada L.", "ada@x.com") };
+
 var byEmail = new HashSet<Customer>(EqualityComparer<Customer>.Create(
     (a, b) => string.Equals(a?.Email, b?.Email, StringComparison.OrdinalIgnoreCase),
-    c => StringComparer.OrdinalIgnoreCase.GetHashCode(c.Email)));       // .NET 8 helper
+    c => StringComparer.OrdinalIgnoreCase.GetHashCode(c.Email)));
+foreach (var c in customers) byEmail.Add(c);
+Console.WriteLine(byEmail.Count);        // 1: same email means the same customer here
 
-var byPriceThenName = Comparer<Product>.Create((x, y) =>
-    x.Price != y.Price ? x.Price.CompareTo(y.Price) : string.CompareOrdinal(x.Name, y.Name));
-var sorted = new SortedSet<Product>(products, byPriceThenName);
+var byName = new SortedSet<Customer>(customers, Comparer<Customer>.Create((x, y) => string.CompareOrdinal(x.Name, y.Name)));
+Console.WriteLine(byName.Min!.Name);
+
+record Customer(string Name, string Email);
 ```
 
-This matters specifically when a type's *default* notion of equality or ordering doesn't match what a particular collection actually needs — `Customer` might not override `Equals` at all, but you can still build a `HashSet<Customer>` that treats two customers as the same whenever their emails match, without touching the `Customer` class itself.
+## Next episode {b}
 
-:::qa What is the time complexity of List.Add, Dictionary lookup and HashSet.Contains?
-List.Add is O(1) amortised: occasionally O(n) when the backing array doubles and is copied. Dictionary lookup and HashSet.Contains are O(1) on average, assuming a good hash function; worst case O(n) when many keys collide.
-:::
-
-:::qa How does a Dictionary work internally?
-It hashes the key with GetHashCode, maps the hash to a bucket index, and walks that bucket's chain of entries, comparing with Equals. It resizes (to a larger prime-sized capacity) as it grows. That's why keys need consistent Equals/GetHashCode and must not mutate.
-:::
-
-:::qa IEnumerable vs ICollection vs IList?
-IEnumerable only supports iteration. ICollection adds Count, Add, Remove, Contains. IList adds index-based access, Insert and RemoveAt. Accept the least capable interface a method needs.
-:::
-
-:::qa What's the difference between IReadOnlyList, ReadOnlyCollection and ImmutableList?
-IReadOnlyList is an interface: a read-only view, but the underlying list may still change. ReadOnlyCollection is a wrapper that prevents changes through it, while the wrapped list can still change. ImmutableList can never change; modifications return a new list that shares structure with the old one.
-:::
-
-:::qa When would you use FrozenDictionary?
-For lookup tables built once (often at startup) and read very frequently, such as config maps, routing tables or tax rates. Creation is slower because it analyses the keys to pick the optimal layout, but reads are faster than Dictionary.
-:::
-
-:::qa How do you make a Dictionary thread-safe?
-Use ConcurrentDictionary with its atomic methods (GetOrAdd, AddOrUpdate, TryRemove), or protect a normal Dictionary with a lock. For read-mostly data, swap an immutable/frozen dictionary reference atomically.
-:::
-
-:::qa Is ConcurrentDictionary.GetOrAdd's factory guaranteed to run once?
-No. Under contention it can run more than once (only one result is stored). Wrap the value in Lazy&lt;T&gt; if the factory is expensive or has side effects.
-:::
-
-:::qa How would you remove duplicates from a list efficiently?
-`list.Distinct()` or `new HashSet<T>(list)` (O(n)), with a custom IEqualityComparer if needed, or `DistinctBy(x => x.Key)` (.NET 6) to dedupe by a property.
-:::
+Kettle's lookups are now instant. Then the owner asks for reports: top 10 customers this month, revenue per tea, every unpaid order over £100. You start writing `foreach` loops with counters, temporary lists, sorting and grouping, and each report is 30 lines of fiddly code. You don't want to write *how* to loop. You want to say *what* you want: [Episode 6 · LINQ →](ch:linq)
 
 ## Further reading
 
 - [Collections and data structures](https://learn.microsoft.com/en-us/dotnet/standard/collections/)
+- [Selecting a collection class](https://learn.microsoft.com/en-us/dotnet/standard/collections/selecting-a-collection-class)
 - [Thread-safe collections](https://learn.microsoft.com/en-us/dotnet/standard/collections/thread-safe/)
-- [System.Collections.Frozen](https://learn.microsoft.com/en-us/dotnet/api/system.collections.frozen)
-- [List&lt;T&gt;.Add(T) Method](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1.add) — the O(1)-unless-resizing remark quoted above
-- [`HashHelpers.cs`](https://source.dot.net/System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/Collections/HashHelpers.cs.html) (source.dot.net) — the actual prime-sized bucket table `Dictionary`/`HashSet` resize into
+- [`List<T>.Add` remarks](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1.add), the source for the resize-and-copy behaviour.
 
 ## Verify this chapter
 
-Run with `dotnet run` (plain console app, .NET 8/9, no packages). It checks the concrete, checkable claims: `Dictionary`/`HashSet` are O(1)-average vs. list `Contains` being O(n), `TryGetValue` finding what `ContainsKey` found, `ConcurrentDictionary.GetOrAdd`'s factory possibly running more than once under contention, and `AsSpan` being a view while range slicing `[..]` copies.
-
 ```csharp
-using System.Diagnostics;
-using System.Collections.Concurrent;
+// List grows by doubling (amortised O(1) Add)
+var l = new List<int>(); var caps = new List<int>();
+for (int i = 0; i < 20; i++) { l.Add(i); if (caps.Count == 0 || caps[^1] != l.Capacity) caps.Add(l.Capacity); }
+Check(caps.SequenceEqual(new[] { 4, 8, 16, 32 }), "List capacity doubles: 4, 8, 16, 32");
 
-// --- HashSet/Dictionary lookup is dramatically faster than List.Contains at scale ---
-var n = 200_000;
-var list = Enumerable.Range(0, n).ToList();
-var set = new HashSet<int>(list);
-var target = n - 1; // worst case for a linear scan: the last element
+// Dictionary: TryGetValue, duplicate Add throws, comparer controls "same key"
+var d = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["TEA"] = 1 };
+Check(d.TryGetValue("tea", out var v) && v == 1, "a comparer makes keys case-insensitive");
+Check(Throws(() => d.Add("Tea", 2)), "Add with an existing key throws");
 
-var swList = Stopwatch.StartNew();
-for (int i = 0; i < 50; i++) list.Contains(target);
-swList.Stop();
+// a mutable key gets lost
+var key = new MutableKey { Id = 1 }; var set = new HashSet<MutableKey> { key };
+key.Id = 2;
+Check(!set.Contains(key), "changing a key after insertion makes it unfindable");
 
-var swSet = Stopwatch.StartNew();
-for (int i = 0; i < 50; i++) set.Contains(target);
-swSet.Stop();
+// HashSet removes duplicates
+Check(new HashSet<int> { 1, 1, 2 }.Count == 2, "HashSet keeps only unique items");
 
-if (swSet.Elapsed >= swList.Elapsed) throw new Exception("FAIL: HashSet.Contains should be far faster than List.Contains here");
-Console.WriteLine($"OK: HashSet.Contains ({swSet.ElapsedMilliseconds} ms) was faster than List.Contains ({swList.ElapsedMilliseconds} ms) for {50} lookups over {n} items");
+// Queue is FIFO, Stack is LIFO, PriorityQueue takes the lowest priority first
+var q = new Queue<int>([1, 2]); var s = new Stack<int>([1, 2]); var pq = new PriorityQueue<string, int>();
+pq.Enqueue("b", 2); pq.Enqueue("a", 1);
+Check(q.Dequeue() == 1 && s.Pop() == 2 && pq.Dequeue() == "a", "FIFO, LIFO and priority order");
 
-// --- TryGetValue finds exactly what ContainsKey says is there, in one pass ---
-var stock = new Dictionary<string, int> { ["KB-01"] = 12 };
-if (!stock.ContainsKey("KB-01") || !stock.TryGetValue("KB-01", out var qty) || qty != 12)
-    throw new Exception("FAIL: TryGetValue should agree with ContainsKey");
-Console.WriteLine("OK: TryGetValue retrieves the same value ContainsKey confirms exists, in a single lookup");
+// IReadOnlyList is only a view
+var src = new List<int> { 1 }; IReadOnlyList<int> view = src; src.Add(2);
+Check(view.Count == 2, "IReadOnlyList reflects changes made to the underlying list");
 
-// --- Dictionary.Add throws on a duplicate key; the indexer overwrites instead ---
-try { stock.Add("KB-01", 1); throw new Exception("FAIL: Add should throw on a duplicate key"); }
-catch (ArgumentException) { Console.WriteLine("OK: Dictionary.Add throws ArgumentException on a duplicate key"); }
-stock["KB-01"] = 1; // the indexer is fine with overwriting
-if (stock["KB-01"] != 1) throw new Exception("FAIL: indexer assignment should overwrite");
-Console.WriteLine("OK: the indexer overwrites an existing key instead of throwing");
+// a range copies, a span views
+int[] a = [1, 2, 3]; var copy = a[0..2]; var span = a.AsSpan(0, 2); span[0] = 9;
+Check(copy[0] == 1 && a[0] == 9, "a range copies; a span writes through to the array");
 
-// --- ConcurrentDictionary.GetOrAdd's factory can run more than once under contention ---
-var factoryCalls = 0;
-var cd = new ConcurrentDictionary<int, int>();
-Parallel.For(0, 50, _ => cd.GetOrAdd(1, _ => { Interlocked.Increment(ref factoryCalls); return 42; }));
-Console.WriteLine(factoryCalls > 1
-    ? $"OK: GetOrAdd's factory ran {factoryCalls} times under contention, as the chapter warns (only one result is stored: {cd[1]})"
-    : "OK: GetOrAdd's factory ran once this time (the race is possible, not guaranteed, on every run)");
+static bool Throws(Action act) { try { act(); return false; } catch (ArgumentException) { return true; } }
+static void Check(bool ok, string claim) =>
+    Console.WriteLine(ok ? $"OK: {claim}" : throw new Exception($"FAIL: {claim}"));
 
-// --- AsSpan is a view (mutating it mutates the array); range slicing [..] copies ---
-int[] arr = [1, 2, 3, 4];
-var span = arr.AsSpan(1, 2);
-span[0] = 99;
-if (arr[1] != 99) throw new Exception("FAIL: AsSpan should be a view over the original array");
-Console.WriteLine("OK: Span<T> from AsSpan is a zero-copy view — writing through it changed the original array");
-
-int[] middle = arr[1..^1];
-middle[0] = -1;
-if (arr[1] == -1) throw new Exception("FAIL: range slicing should allocate a new array, not share storage");
-Console.WriteLine("OK: range slicing (arr[1..^1]) copies into a new array — changing it left the original untouched");
-
-// Not runtime-verifiable here — see Further reading: Microsoft "Collections and data structures" docs
-// (Big-O costs for SortedDictionary/PriorityQueue/LinkedList etc. are documented guarantees, not something
-// worth timing in a short-running demo, since constant factors and JIT warm-up dominate at small n)
+class MutableKey
+{
+    public int Id;
+    public override bool Equals(object? o) => o is MutableKey k && k.Id == Id;
+    public override int GetHashCode() => Id;
+}
 ```

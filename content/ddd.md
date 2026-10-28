@@ -4,7 +4,7 @@ title: Domain-Driven Design
 summary: Modelling complex business domains. Strategic DDD (domains, subdomains, bounded contexts, ubiquitous language, context maps) and tactical DDD (entities, value objects, aggregates and their rules, domain events, domain services, repositories, factories), rich vs anemic models, implementing aggregates with EF Core, and when DDD is overkill.
 layer: arch
 where: Application architecture › Domain modelling
-fits: DDD fills the **centre** of the [Clean/Hexagonal architecture](ch:app-architectures). Value objects are records or readonly structs ([Modern C#](ch:modern-csharp#records)), aggregates are persisted with EF Core ([EF Core fundamentals](ch:efcore-fundamentals)), and domain events feed the outbox ([EF Core advanced](ch:efcore-advanced#domain-events-and-the-outbox-on-savechanges)). Strategically, bounded contexts are the natural boundaries for modules and microservices ([Microservices](ch:microservices)).
+fits: DDD fills the **centre** of the [Clean/Hexagonal architecture](ch:app-architectures). Value objects are records or readonly structs ([Modern C#](ch:modern-csharp#records-data-classes-in-one-line)), aggregates are persisted with EF Core ([EF Core fundamentals](ch:efcore-fundamentals)), and domain events feed the outbox ([EF Core advanced](ch:efcore-advanced#domain-events-and-the-outbox-on-savechanges)). Strategically, bounded contexts are the natural boundaries for modules and microservices ([Microservices](ch:microservices)).
 levels: i,a
 prereqs: oop, design-principles, app-architectures
 next: microservices, messaging-events

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="Boxing copies a value into a new heap object; unboxing copies it back out">
+<defs><marker id="ts3-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="26">YOUR CODE</text><text class="t-cap" x="270" y="26">STACK (locals)</text><text class="t-cap" x="500" y="26">HEAP</text>
+<text class="t-c" x="24" y="66" data-s="1" data-hl="1">int n = 42;</text>
+<text class="t-c" x="24" y="96" data-s="2" data-hl="2">object o = n;</text>
+<text class="t-c" x="24" y="126" data-s="3" data-hl="3">n = 7;</text>
+<text class="t-c" x="24" y="156" data-s="4" data-hl="4">int m = (int)o;</text>
+<g data-s="1" class="fly"><rect x="270" y="44" width="130" height="40" rx="6" class="b-good"/><text class="t-cap" x="282" y="68">n</text>
+<text class="t-c" x="330" y="69" data-s="1-2">42</text><text class="t-c t-acc" x="330" y="69" data-s="3">7</text></g>
+<g data-s="2" class="fly"><rect x="270" y="100" width="130" height="40" rx="6" class="b-info"/><text class="t-cap" x="282" y="124">o</text><circle cx="380" cy="120" r="4" class="f-ink"/>
+<path d="M384,120 L494,120" class="ln" marker-end="url(#ts3-ar)"/></g>
+<g data-s="2" class="fly-r"><rect x="500" y="86" width="190" height="70" rx="8" class="b-warn"/><text class="t-cap" x="512" y="104">BOX · a new heap object</text><text class="t-c" x="512" y="138">int 42</text></g>
+<text class="t-m" x="500" y="176" data-s="2-2">allocated just to hold a copy of n</text>
+<text class="t-s t-warn" x="500" y="176" data-s="3">still 42: the box is a copy, frozen</text>
+<g data-s="4" class="fly"><rect x="270" y="156" width="130" height="40" rx="6" class="b-good"/><text class="t-cap" x="282" y="180">m</text><text class="t-c" x="330" y="181">42</text>
+<path d="M560,160 C560,200 470,176 406,176" class="ln-acc" marker-end="url(#ts3-ar)"/></g>
+<text class="t-s" x="24" y="236" data-s="4">Unboxing checks the type, then copies the value back out.</text>
+<text class="t-s t-bad" x="24" y="258" data-s="4">Every box is a heap allocation the GC must clean up later.</text>
+</svg>

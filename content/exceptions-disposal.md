@@ -1,271 +1,418 @@
 ---
 id: exceptions-disposal
-title: Exceptions, Error Handling and Resource Disposal
-summary: How exceptions work, the hierarchy, try/catch/finally and filters, rethrowing correctly, custom exceptions, when not to throw, and deterministic cleanup with IDisposable, using, IAsyncDisposable and finalizers.
+title: "Exceptions and Cleanup: Failing Safely (try/catch, using, IDisposable)"
+summary: "Episode 7. The payment provider fails mid-checkout, stock stays reserved and database connections leak until the site goes down. Exceptions stop the work and climb the call stack to whoever can handle them; finally and using make sure cleanup always happens. Covers unwinding, the exception hierarchy, throw vs throw ex, filters, custom exceptions, when not to throw, async exceptions, IDisposable, using, the Dispose pattern and IAsyncDisposable."
 layer: language
 where: C# language › Errors & resources
-fits: Layer 1 mechanics that layer 3 builds on. ASP.NET Core turns unhandled exceptions into HTTP responses ([Errors & logging](ch:errors-logging)), the Result pattern ([CQRS & Result](ch:cqrs-mediator-result)) is the architectural alternative for expected failures, and disposal is how DbContext and HttpClient release connections.
+fits: Layer 1 mechanics that layer 3 builds on. ASP.NET Core turns unhandled exceptions into HTTP responses ([Errors & logging](ch:errors-logging)), the Result pattern ([CQRS & Result](ch:cqrs-mediator-result)) is the architectural alternative for expected failures, and disposal is how DbContext and HttpClient release their connections.
 levels: b,i,a
 prereqs: oop
 next: errors-logging, async-await, cqrs-mediator-result
 ---
 
-## TL;DR
+## The 30-second version
 
-- Throwing an exception stops normal execution and **unwinds the call stack** looking for a matching `catch`, running every `finally` along the way.
-- Pick the exception type from the standard hierarchy (`ArgumentException`, `InvalidOperationException`, ...) so callers can tell failures apart without parsing message strings.
-- `throw;` keeps the original stack trace; `throw ex;` resets it — always prefer `throw;` or wrap in a new exception.
-- Exceptions are for the unexpected. For routine "might not work" outcomes (parsing, lookups, validation), prefer `TryParse`-style patterns or a `Result<T>` instead.
-- `IDisposable`/`using` give you **deterministic** cleanup (close this connection *now*) that the garbage collector, which runs on its own schedule, can't give you.
-- In async code, an exception lives inside the `Task` until something `await`s it — if nothing ever does, it's silently lost.
+- When code **throws**, normal execution stops. The runtime **unwinds** the call stack, walking back through the callers until it finds a `catch` whose type matches. Every `finally` on the way still runs.
+- Rethrow with **`throw;`**, never `throw ex;`, which wipes out the stack trace. Wrap with `new XException("context", ex)` to add meaning.
+- `catch (X ex) when (condition)` (a **filter**) decides *before* unwinding. Catch the narrowest type you can, and never write an empty `catch {}`.
+- Exceptions are for the *unexpected*. For normal "no" answers (bad input, out of stock), use `TryParse`-style methods or a `Result`.
+- The GC frees **memory**, but not connections, files or locks. **`IDisposable`** + **`using`** releases them **now**, even when an exception is thrown, because `using` is a hidden `try/finally`.
 
-## What actually happens when code throws {b}
+## Previously, and the bug {b}
 
-:::analogy The relay race baton
-Picture `PlaceOrder` calling `Validate`, which calls `ChargeCard` — a relay race where each method hands off to the next. When `ChargeCard` drops the baton (throws), it doesn't just stop: the runtime hands the problem back up the same chain it came down, one leg at a time, asking each runner in turn "is this your problem to catch?" `Validate` says no but still has to do its own cleanup on the way out (its `finally`); `PlaceOrder` finally says yes and catches it. That handback, leg by leg, is exactly what "unwinding the stack" means.
+In [Episode 6](ch:linq) Kettle got readable reports. Then the payment provider had a bad afternoon, and checkout looked like this:
+
+```csharp norun
+public void Checkout(Order order)
+{
+    var conn = pool.Open();          // borrow a database connection
+    ReserveStock(conn, order);       // stock is now held for this order
+    ChargeCard(order);               // ← the provider times out and THROWS
+    MarkPaid(conn, order);           // never runs
+    conn.Close();                    // never runs: the connection is never returned
+}
+```
+
+Each failed checkout leaves stock reserved for an order that will never complete, and **one database connection that's never given back**. The pool only has a fixed number of connections. After enough failures it's empty, and *every* request on the site starts timing out, including ones that have nothing to do with payments.
+
+Two problems need two tools: handling the failure *somewhere sensible*, and making sure cleanup *always* happens.
+
+## The lightbulb: an exception climbs the call stack {b}
+
+When `ChargeCard` throws, it doesn't just stop. It creates an **exception**, an object describing what went wrong. Then the runtime hands it back through the callers, one frame at a time, asking each one: *"is this yours to handle?"*
+
+That walk back through the callers has a name: **unwinding the stack**. A caller says "yes" with a **`catch`** block whose type matches the exception. On the way past, every **`finally`** block runs, whether or not it catches. So `finally` is where cleanup goes.
+
+:::scene visuals/scenes/ex-unwind.svg | A failed payment, unwinding
+1. `Checkout` called `PlaceOrder`, which called `ChargeCard`. Each call is a **frame** on the stack, with the newest on top.
+2. `ChargeCard` **throws** `PaymentFailedException`. Normal execution stops right there. The runtime starts walking back through its callers, looking for a matching `catch`.
+3. `PlaceOrder` has no matching `catch`, but it has a `finally`, so **the finally runs** (releasing the stock) and its frame is torn down. Cleanup happened even though nobody has handled the error yet.
+4. `Checkout` has `catch (PaymentFailedException)`, which matches. Unwinding stops, and the code continues in that `catch`: "Payment failed, please try another card."
+5. If no frame catches it, the exception reaches the top. In ASP.NET Core the exception-handling middleware catches it there and returns a 500 response ([Errors & logging](ch:errors-logging)).
 :::
 
-An **exception** is an object — always deriving from `System.Exception` — that represents an error. The moment code **throws** one, normal execution stops dead, right there, and the runtime starts **unwinding the call stack**: walking back up through method after method, looking for a `catch` block whose type matches the exception, running any `finally` block it passes along the way regardless of whether it finds a match yet. If it unwinds all the way to the top of the call stack without finding anything, the thread terminates — though in ASP.NET Core specifically, you almost never see that happen, because the framework's own exception-handling middleware sits near the top of the pipeline and catches it first, turning it into a 500 response instead of a crash.
-
-![ChargeCard throws, Validate's finally still runs even with no matching catch, and PlaceOrder's catch finally stops the unwind](visuals/stack-unwinding.svg)
-
 ```csharp
-try
+Checkout();
+
+static void Checkout()
 {
-    var order = await repo.GetAsync(id) ?? throw new NotFoundException($"Order {id}");
-    order.Cancel();                    // may throw InvalidOperationException
-    await uow.SaveChangesAsync();
+    try { PlaceOrder(); }
+    catch (PaymentFailedException ex)                  // matches: unwinding stops here
+    {
+        Console.WriteLine($"4. Checkout caught it: {ex.Message}. Ask for another card.");
+    }
 }
-catch (NotFoundException)              // most specific first
+
+static void PlaceOrder()
 {
-    return Results.NotFound();
+    try
+    {
+        Console.WriteLine("1. stock reserved");
+        ChargeCard();
+        Console.WriteLine("never printed");
+    }
+    finally
+    {
+        Console.WriteLine("3. finally: stock released (runs even though nobody caught it yet)");
+    }
 }
-catch (DbUpdateConcurrencyException ex)
+
+static void ChargeCard()
 {
-    logger.LogWarning(ex, "Concurrency conflict on order {Id}", id);
-    return Results.Conflict();
+    Console.WriteLine("2. charging card... provider timed out");
+    throw new PaymentFailedException("card provider timeout");
 }
-finally
-{
-    metrics.RecordAttempt();           // ALWAYS runs: success, exception, or early return
-}
+
+class PaymentFailedException(string message) : Exception(message);
 ```
 
-That `finally` block is worth noting precisely: it runs on **every** path out of the `try` — a clean success, a caught exception, an uncaught one still unwinding past it, even an early `return` from inside the `try`. There's no way to leave this method, through any route, without `metrics.RecordAttempt()` running.
+An exception object carries `Message`, `StackTrace` (where it happened), `InnerException` (the underlying cause, if it wraps another), and `ToString()`, which prints all of them. **Always log the exception object, not just `.Message`**, or you throw away the stack trace.
 
-An exception object carries a handful of properties worth knowing by name: `Message`, `StackTrace`, `InnerException` (the underlying cause, when one exception is deliberately wrapped around another), `Data` (a bag for extra key/value context), `HResult`, and `ToString()`, which — unlike `Message` alone — prints the *entire* picture, inner exceptions included. That last point matters enough to call out as a rule: always log the **exception object itself**, never just its `.Message` string — you lose the stack trace, the inner exception chain, and everything else that actually helps you find the bug, for the sake of a shorter log line.
+:::qa What happens when an exception is thrown?
+Normal execution stops and the runtime unwinds the call stack, looking for a `catch` whose type matches. Each `finally` block it passes runs. The first matching `catch` handles the exception and execution continues after it. If nothing catches it, the thread terminates; in ASP.NET Core, the exception middleware turns it into a 500 response first.
+:::
 
-## The exception hierarchy: a map for picking the right one {b}
+## Which exception to throw {b}
+
+The exception's **type** is how callers tell problems apart without reading your message text. Here's the part of the family tree you'll actually use:
 
 ```text
-System.Exception
-├── SystemException
-│   ├── ArgumentException
-│   │   ├── ArgumentNullException
-│   │   └── ArgumentOutOfRangeException
-│   ├── InvalidOperationException
-│   │   └── ObjectDisposedException
-│   ├── NullReferenceException          ← a bug; never throw or catch it deliberately
-│   ├── IndexOutOfRangeException
-│   ├── InvalidCastException
-│   ├── FormatException
-│   ├── NotSupportedException / NotImplementedException
-│   ├── IOException → FileNotFoundException …
-│   ├── OperationCanceledException → TaskCanceledException
-│   ├── TimeoutException
-│   ├── OutOfMemoryException, StackOverflowException   ← can't be meaningfully handled
-│   └── …
-├── HttpRequestException, JsonException, DbException → SqlException …
-└── AggregateException                  ← wraps several (Task.Wait, Parallel)
+Exception
+├── ArgumentException            → ArgumentNullException, ArgumentOutOfRangeException
+├── InvalidOperationException    → ObjectDisposedException
+├── NotSupportedException
+├── FormatException, InvalidCastException, KeyNotFoundException
+├── OperationCanceledException   → TaskCanceledException
+├── TimeoutException, IOException, HttpRequestException, DbException …
+├── NullReferenceException       ← always a bug: never throw or catch it on purpose
+└── AggregateException           ← wraps several (Task.Wait, Parallel)
 ```
-
-Picking the right exception type to throw isn't just etiquette — it's how callers further up the stack can actually distinguish "bad input" from "wrong state" from "not found" without parsing your message string. Microsoft's own framework design guidelines boil down to a short, memorable table:
 
 | Situation | Throw |
 |---|---|
-| A bad argument | `ArgumentException` / `ArgumentNullException` / `ArgumentOutOfRangeException` |
-| Object is in the wrong state for this call | `InvalidOperationException` |
-| Called after Dispose | `ObjectDisposedException` |
-| Operation intentionally unsupported | `NotSupportedException` |
-| A domain rule violated | A custom exception (`DomainException`), or a Result instead |
+| The caller passed a bad argument | `ArgumentException` / `ArgumentNullException` / `ArgumentOutOfRangeException` |
+| The object is in the wrong state ("ship an unpaid order") | `InvalidOperationException` |
+| Used after `Dispose` | `ObjectDisposedException` |
+| Deliberately unsupported | `NotSupportedException` |
+| A domain rule was broken | your own exception type, or a `Result` (see below) |
 
-Modern .NET ships static guard helpers specifically so you don't have to hand-write the same `if (x is null) throw new ArgumentNullException(...)` boilerplate a thousand times: `ArgumentNullException.ThrowIfNull(x)`, `ArgumentException.ThrowIfNullOrWhiteSpace(s)`, `ArgumentOutOfRangeException.ThrowIfNegative(n)`, `ObjectDisposedException.ThrowIf(_disposed, this)` — each one throws the exact right type from that table, with a correctly populated message, in a single line.
-
-## throw; vs throw ex; — one character of difference, one real consequence {i}
+Modern .NET has one-line **guard helpers** that throw the right type with a good message:
 
 ```csharp
-catch (Exception ex)
-{
-    logger.LogError(ex, "Payment failed");
-    throw;                     // ✔ rethrows the SAME exception, stack trace preserved
-}
+try { PlaceOrder(null!, 2); } catch (ArgumentNullException ex) { Console.WriteLine(ex.Message); }
+try { PlaceOrder("TEA-01", -1); } catch (ArgumentOutOfRangeException ex) { Console.WriteLine(ex.Message); }
 
-catch (Exception ex)
+static void PlaceOrder(string sku, int qty)
 {
-    throw ex;                  // ✘ resets the stack trace to this line: you lose where it really failed
-}
-
-catch (SqlException ex)
-{
-    throw new RepositoryException("Saving order failed", ex);  // ✔ wrap with context, keep the cause as InnerException
+    ArgumentException.ThrowIfNullOrWhiteSpace(sku);
+    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(qty);
+    Console.WriteLine("placed");
 }
 ```
 
-These two lines look almost interchangeable, but the difference has cost real debugging time. A bare `throw;` rethrows the **exact same exception object** with its stack trace untouched — it still points at the original line where it actually failed. `throw ex;` throws the same *object*, but the runtime treats it as a **new** throw happening right here, so the trace gets overwritten to point at this `catch` block, and the real origin is lost. If a stack trace starts somewhere suspiciously unhelpful, `throw ex;` upstream is a common culprit.
+## `throw;` vs `throw ex;` {i}
 
-The third block shows a deliberate third option: **wrapping**. `throw new RepositoryException("Saving order failed", ex)` throws a brand-new exception with its own fresh stack trace, while keeping the original as `InnerException`. Do this when the original exception wouldn't mean much to whoever reads it later — a raw `SqlException` is less useful three layers up than a `RepositoryException` that says what you were trying to do, with the `SqlException` still attached underneath for anyone who needs it.
-
-### Exception filters: deciding whether to catch, without unwinding first
+Inside a `catch` you often log and then pass the exception on. *How* you rethrow decides whether you can still find the bug afterwards:
 
 ```csharp
-catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+try { Checkout(properRethrow: true); }
+catch (Exception ex) { Console.WriteLine($"throw;     trace still shows ChargeCard? {ex.StackTrace!.Contains("ChargeCard")}"); }
+
+try { Checkout(properRethrow: false); }
+catch (Exception ex) { Console.WriteLine($"throw ex;  trace still shows ChargeCard? {ex.StackTrace!.Contains("ChargeCard")}"); }
+
+try { Save(); }
+catch (Exception ex) { Console.WriteLine($"wrapped:   {ex.Message} ← caused by: {ex.InnerException!.Message}"); }
+
+static void Checkout(bool properRethrow)
 {
-    // only transient errors handled here; others propagate untouched
+    try { ChargeCard(); }
+    catch (Exception ex)
+    {
+        // (log it here)
+        if (properRethrow) throw;     // ✓ the SAME exception, with its original stack trace
+        throw ex;                     // ✗ the stack trace now starts HERE: the real origin is lost
+    }
 }
 
-catch (Exception ex) when (LogAndReturnFalse(ex)) { }   // log without catching (filter returns false)
+static void Save()
+{
+    try { throw new IOException("disk full"); }
+    catch (IOException ex) { throw new InvalidOperationException("Saving order 42 failed", ex); }   // ✓ add context, keep the cause
+}
+
+static void ChargeCard() => throw new InvalidOperationException("card declined");
 ```
 
-A `when (condition)` clause changes *when* the stack unwinds. Without a filter, the runtime has to unwind the stack — tearing down frames, running `finally` blocks — just to get inside the `catch` body and check whether you actually wanted this exception. With a filter, the condition runs **before** any of that, while the exception is still sitting where it was thrown, full original state intact. That helps diagnostics, but the more useful trick is the second example: a filter that returns `false` after logging lets you **observe** an exception without catching it — it keeps propagating to whatever would have handled it anyway.
+- **`throw;`** passes on the same exception with its stack trace untouched.
+- **`throw ex;`** treats it as a *new* throw from inside the `catch`, which overwrites the trace. If a stack trace starts somewhere unhelpful, look for a `throw ex;`.
+- **Wrapping** (`new X("what we were doing", ex)`) gives a clearer message and keeps the original as `InnerException`.
 
-One narrower tool: `ExceptionDispatchInfo.Capture(ex).Throw()` rethrows an exception caught somewhere else entirely (another thread, say) while preserving *its* original stack trace — the same guarantee `throw;` gives locally. You'll rarely write this by hand; `await` already does it for you, as the async section below explains.
-
-## Writing your own exception types {i}
+### Exception filters: decide before unwinding
 
 ```csharp
-public class DomainException : Exception
+foreach (var status in new[] { 503, 404 })
 {
-    public string Code { get; }
-    public DomainException(string code, string message, Exception? inner = null) : base(message, inner) => Code = code;
+    try { CallSupplier(status); }
+    catch (SupplierException ex) when (ex.Status is 429 or 503)       // only transient errors
+    {
+        Console.WriteLine($"{ex.Status}: transient, so retry later");
+    }
+    catch (SupplierException ex)
+    {
+        Console.WriteLine($"{ex.Status}: permanent, so give up");
+    }
 }
 
-public sealed class InsufficientStockException(string sku, int requested, int available)
-    : DomainException("stock.insufficient", $"Requested {requested} of {sku}, only {available} available")
+static void CallSupplier(int status) => throw new SupplierException(status);
+class SupplierException(int status) : Exception($"HTTP {status}") { public int Status { get; } = status; }
+```
+
+A `when` clause runs **before** the stack unwinds, so a non-matching filter leaves the exception untouched for someone else. A filter that logs and returns `false` lets you *observe* an exception without catching it.
+
+:::qa What is the difference between throw and throw ex?
+`throw;` rethrows the current exception and preserves its original stack trace. `throw ex;` rethrows the same object but resets the stack trace to the current line, so you lose where it actually failed. To add context, throw a new exception and pass the original as `InnerException`.
+:::
+
+:::qa What are exception filters and why are they useful?
+`catch (X ex) when (condition)` only catches when the condition is true. The filter runs before the stack unwinds, which preserves the original state for diagnostics, lets non-matching exceptions propagate untouched, and allows logging-only filters that return false.
+:::
+
+## Your own exception types {i}
+
+```csharp
+try { Reserve("TEA-01", requested: 5, available: 2); }
+catch (InsufficientStockException ex) { Console.WriteLine($"[{ex.Code}] {ex.Message} (sku {ex.Sku})"); }
+
+static void Reserve(string sku, int requested, int available)
+{
+    if (requested > available) throw new InsufficientStockException(sku, requested, available);
+}
+
+class DomainException(string code, string message, Exception? inner = null) : Exception(message, inner)
+{
+    public string Code { get; } = code;
+}
+
+sealed class InsufficientStockException(string sku, int requested, int available)
+    : DomainException("stock.insufficient", $"Requested {requested} of {sku}, only {available} left")
 {
     public string Sku { get; } = sku;
 }
 ```
 
-A short checklist: name it ending in `Exception`; derive from `Exception` directly, never the legacy `ApplicationException`; include the standard constructors so callers can wrap or rethrow it; add real, typed properties for anything a caller might need to act on (`Sku` above, not buried in the message string); and keep the message genuinely useful to whoever reads the log. Map your custom exceptions to HTTP status codes in exactly **one** central place ([Errors & logging](ch:errors-logging) shows how), rather than scattering `catch` blocks that each decide independently.
+A short checklist: end the name with `Exception`, derive from `Exception` (not the old `ApplicationException`), and put anything a caller might act on in **typed properties** (`Sku`), not hidden in the message. Map exceptions to HTTP status codes in **one central place** ([Errors & logging](ch:errors-logging)).
 
-## When *not* to reach for an exception at all {i}
+## When *not* to throw {i}
 
-Exceptions exist for **exceptional** situations — things the caller couldn't reasonably have prevented, or wouldn't expect as part of normal flow. They're also mechanically **expensive**: capturing a full stack trace and unwinding through it costs real time compared to an ordinary return. And they're **invisible in a method's signature** — nothing about `Task<Order> PlaceAsync(...)` tells a caller it might throw five different exception types under entirely normal conditions.
+Exceptions are for situations the caller couldn't reasonably expect. They're also **slow** (the stack trace has to be captured) and **invisible** in a method's signature. For outcomes that are *normal*, return them instead:
 
-| Expected outcome | Better than throwing |
+| Normal outcome | Better than throwing |
 |---|---|
-| Parsing user input | `int.TryParse`, `DateTime.TryParseExact` |
-| Lookup might miss | `TryGetValue`, return `null` / `T?` |
-| Validation failure | Validation result (FluentValidation, `ValidationProblem`) |
-| Business rule rejection ("card declined", "out of stock") | `Result<T>` / `OneOf` / discriminated union style return |
+| The user typed "abc" into a quantity box | `int.TryParse` |
+| A lookup might find nothing | `TryGetValue`, or return `null` |
+| Validation failed | a validation result |
+| "Card declined", "out of stock" | a `Result<T>` (see [CQRS & Result](ch:cqrs-mediator-result#the-result-pattern-making-expected-failure-part-of-the-metho)) |
 
 ```csharp
-// Try-pattern: the BCL convention for "might fail, that's normal"
-public bool TryReserve(string sku, int qty, [NotNullWhen(true)] out Reservation? reservation) { /* ... */ }
+Console.WriteLine(int.TryParse("abc", out var qty) ? $"qty {qty}" : "not a number: ask again");   // no exception
+
+var result = TryReserve("TEA-01", 5);
+Console.WriteLine(result.Ok ? "reserved" : $"refused: {result.Error}");
+
+static (bool Ok, string? Error) TryReserve(string sku, int qty) =>
+    qty <= 2 ? (true, null) : (false, $"only 2 {sku} left");
 ```
 
-The **Try-pattern** above is the BCL's long-standing answer: a `bool` return that costs nothing when the "failure" is routine, with the actual result handed back through an `out` parameter only on success. "Exceptions vs the Result pattern" is a genuinely live architectural debate — [CQRS, Mediator & Result](ch:cqrs-mediator-result#the-result-pattern-making-expected-failure-part-of-the-metho) walks through where each one earns its place.
-
-:::gotcha An empty catch block is one of the most dangerous things you can write
-`catch { }` or `catch (Exception) { }` with nothing inside doesn't make a problem go away — it just makes it **invisible**, while whatever bad state caused the exception quietly persists and keeps causing damage somewhere downstream, with no record anywhere that anything went wrong. If you genuinely, deliberately need to ignore a specific exception, catch the *narrowest* type that actually applies, leave a comment explaining exactly why ignoring it is correct here, and log it anyway — "ignored, and silent" is almost never the behaviour you actually want, even when "ignored" genuinely is.
+:::gotcha An empty catch hides the fire
+`catch { }` doesn't make a problem go away. It makes it **invisible**, while the bad state keeps doing damage. If you really must ignore an exception, catch the **narrowest** type, add a comment explaining why, and log it anyway.
 :::
 
-## Exceptions in async code behave differently from what you'd expect {i}
+:::qa When should you not use exceptions?
+For expected, frequent outcomes: invalid user input, lookups that miss, validation failures, business rejections. Use Try-methods, nullable returns, validation results or a Result type instead. Exceptions are expensive, invisible in signatures and meant for exceptional or programming errors.
+:::
 
-A quick preview before [Async/await](ch:async-await) covers `Task` and `await` properly: a `Task` is an object representing work that finishes later, and `await` is how you wait for it without blocking a thread. Even without the full chapter, the exception mechanics below are worth knowing, because they genuinely diverge from synchronous exception handling:
+## Exceptions in async code {i}
 
-- An exception thrown inside an `async Task` method isn't thrown immediately — it's **captured and stored inside the returned `Task`**. It only surfaces, rethrown with its original stack trace preserved, the moment someone `await`s that `Task`. (This is the same mechanism as the `ExceptionDispatchInfo` trick above: `await` does that rethrow-with-preserved-trace for you automatically.)
-- Follow that through: if nobody ever `await`s the `Task`, its exception is simply **never observed**. This is how "fire-and-forget" bugs happen — code that looks like it's handling errors but is actually losing them quietly.
-- `async void` methods break this pattern entirely: there's no `Task` to store an exception in. The exception is raised directly on the synchronization context or thread pool, and with nothing there to catch it, it **crashes the entire process**. This is the real reason `async void` is reserved for event handlers (the one place the signature is forced on you) and avoided everywhere else.
-- `Task.WhenAll` over several tasks rethrows only the **first** exception it hits when you `await` the combined result — but every exception from every failed task is still there, in `task.Exception.InnerExceptions`, if you need the full picture.
-- Cancellation has its own exception type, `OperationCanceledException` (or its cousin `TaskCanceledException`), worth treating as a different *category* from a real error: a client disconnecting mid-request is normal, not a bug, so logging it at `Error` level every time just buries real errors in noise.
+[Episode 8](ch:async-await) covers `async`, but four exception rules are worth knowing now:
 
-```csharp
+- An exception inside an `async Task` method is **stored inside the returned `Task`**. It's rethrown, with its original stack trace, only when someone **`await`s** that task.
+- So if nobody awaits the task, the exception is **never seen**. That's the "fire-and-forget" bug.
+- **`async void`** has no `Task` to store the exception in, so an unhandled exception **crashes the process**. Use `async void` only for UI event handlers.
+- `await Task.WhenAll(...)` rethrows only the **first** failure. The rest are in `task.Exception.InnerExceptions`.
+
+```csharp norun
 var tasks = ids.Select(id => client.GetAsync(id)).ToArray();
 try { await Task.WhenAll(tasks); }
 catch
 {
-    var all = tasks.Where(t => t.IsFaulted).SelectMany(t => t.Exception!.InnerExceptions);
-    foreach (var e in all) logger.LogError(e, "One call failed");
+    foreach (var e in tasks.Where(t => t.IsFaulted).SelectMany(t => t.Exception!.InnerExceptions))
+        logger.LogError(e, "One call failed");
     throw;
 }
 ```
 
-The `catch` block here isn't really handling the exception `Task.WhenAll` rethrew — it's using that as a signal to dig through *every* task's own exception, log each failure individually (since `WhenAll` alone would only surface the first), then `throw;` to propagate the original failure once everything is recorded.
+Also treat **`OperationCanceledException`** as its own category. A user who closes the browser mid-request isn't an error worth paging anyone about.
 
-## Resources and IDisposable: the problem the GC doesn't solve {b}
+:::qa What happens to an exception thrown in an async method?
+It's captured in the returned `Task`, which becomes faulted, and it's rethrown with its original stack trace when the task is awaited. If nobody awaits it, the exception goes unobserved. In `async void` methods there's no Task, so the exception is raised directly and can crash the process.
+:::
 
-The GC, as [Memory & GC](ch:memory-gc) covered in detail, frees **memory** — but it does so whenever it decides to, on its own schedule, which could be anywhere from microseconds to minutes after an object becomes unreachable. Some resources genuinely can't wait that long and need releasing **now**, deterministically, the moment you're done with them:
+## The cleanup problem: the GC doesn't close things {b}
 
-- database connections (which need to return to a pool promptly, or the pool runs dry)
-- file handles, sockets, network streams
-- locks, semaphores, timers
-- native memory and OS handles
+Back to the leaked database connections. Doesn't .NET have a garbage collector? It does, but the GC frees **memory**, **whenever it decides to**, which could be minutes later. Some resources must be released **right now**:
 
-The contract that makes "release this now, deterministically" possible is **`IDisposable`**:
+- database connections (the pool runs dry)
+- files, sockets and network streams
+- locks, timers and native handles
+
+The contract for "release this now" is **`IDisposable`**, which has one method, `Dispose()`. The keyword that guarantees it gets called is **`using`**. Underneath, `using` is just a `try/finally`: the same "always runs" guarantee you saw in the unwinding diagram.
+
+:::scene visuals/scenes/ex-using.svg | Why the site went down, and the one-word fix
+1. The database **connection pool** has 4 open connections that it lends to requests.
+2. A checkout borrows one, and then `Charge` throws. `conn.Close()` never runs, so that connection is **never returned**.
+3. Another failed checkout leaks another one.
+4. After a few more, the pool is **empty**. Every request on the site now waits for a connection, then fails with "Timeout expired obtaining a connection". The site is down because of a payment glitch.
+5. With **`using`**, the compiler wraps the code in `try { … } finally { conn.Dispose(); }`. The connection goes back on **every** path out: success, early return or exception.
+:::
 
 ```csharp
-public interface IDisposable { void Dispose(); }
+var pool = new Pool(size: 3);
+
+for (int i = 1; i <= 4; i++)
+{
+    try { CheckoutLeaky(pool); } catch (Exception ex) { Console.WriteLine($"  leaky #{i} failed: {ex.Message}"); }
+    Console.WriteLine($"  pool: {pool.Free} free");
+}
+
+pool = new Pool(size: 3);
+for (int i = 1; i <= 4; i++)
+{
+    try { CheckoutSafe(pool); } catch (Exception ex) { Console.WriteLine($"  safe #{i} failed: {ex.Message}"); }
+    Console.WriteLine($"  pool: {pool.Free} free");
+}
+
+static void CheckoutLeaky(Pool pool)
+{
+    var conn = pool.Open();
+    ChargeCard();                // throws
+    conn.Dispose();              // never reached
+}
+
+static void CheckoutSafe(Pool pool)
+{
+    using var conn = pool.Open();   // disposed at the end of the method, whatever happens
+    ChargeCard();
+}
+
+static void ChargeCard() => throw new InvalidOperationException("card provider timeout");
+
+class Pool(int size)
+{
+    public int Free { get; private set; } = size;
+    public Connection Open()
+    {
+        if (Free == 0) throw new TimeoutException("Timeout expired obtaining a connection");
+        Free--;
+        return new Connection(() => Free++);
+    }
+}
+
+sealed class Connection(Action giveBack) : IDisposable
+{
+    private bool _disposed;
+    public void Dispose() { if (_disposed) return; _disposed = true; giveBack(); }
+}
 ```
 
-And the **`using`** statement is what guarantees `Dispose()` actually gets called, even when an exception is thrown partway through — because, as the final block below shows, it compiles directly into a `try`/`finally`, the exact same construct that guaranteed the `finally` block ran in the very first example of this chapter:
+The three forms you'll see:
 
-```csharp
-using (var conn = new SqlConnection(cs))      // classic form
-{
-    conn.Open();
-    // ...
-}                                              // conn.Dispose() here
+```csharp norun
+using (var conn = new SqlConnection(cs)) { /* … */ }     // classic block: disposed at the closing brace
+using var file = File.OpenRead(path);                     // declaration (C# 8): disposed at the end of the scope
+await using var db = await factory.CreateDbContextAsync(); // async disposal (IAsyncDisposable)
 
-using var file = File.OpenRead(path);          // C# 8 using declaration: disposed at end of enclosing scope
-await using var db = await factory.CreateDbContextAsync();   // IAsyncDisposable
-
-// What the compiler generates for `using var x = ...;`
+// what `using var x = …;` compiles into:
 var x = new Resource();
-try { /* rest of scope */ }
+try { /* rest of the scope */ }
 finally { x?.Dispose(); }
 ```
 
-:::fits Who's actually responsible for disposing what, in ASP.NET Core
-A rule worth having precisely, because getting it wrong in either direction causes real bugs: you usually **don't** call `Dispose` on anything the DI container handed you. [Dependency injection](ch:dependency-injection#who-disposes-what) covers this in full, but the short version is that the container disposes scoped services — `DbContext` among them — the moment the request's scope ends, and disposes singletons at app shutdown. You only ever dispose what **you** personally created with `new` or a factory call — resources the container never knew existed in the first place.
+:::fits Who disposes what in ASP.NET Core
+**Don't dispose things the DI container gave you.** The container disposes scoped services (like `DbContext`) when the request ends, and singletons at shutdown ([DI](ch:dependency-injection#who-disposes-what)). You dispose only what **you** created with `new` or a factory.
+:::
+
+:::qa What is IDisposable and why does .NET need it if it has a garbage collector?
+The GC reclaims memory non-deterministically. It doesn't promptly release connections, file handles, sockets, locks or native resources. `IDisposable.Dispose()` releases them deterministically, and `using` guarantees the call even when an exception is thrown.
+:::
+
+:::qa How does `using` work under the hood?
+The compiler turns it into a try/finally that calls `Dispose()` (null-checked) in the finally block. A `using` declaration disposes at the end of the enclosing scope. `await using` calls `DisposeAsync()` and awaits it.
+:::
+
+:::qa Who disposes services created by the DI container?
+The container does. Scoped and transient disposables are disposed when their scope ends (the request), and singletons when the root provider is disposed at shutdown. You shouldn't dispose injected services yourself. Dispose only what you create.
 :::
 
 ## Implementing IDisposable yourself {i}
 
-For a class that only wraps **other already-managed disposables** — no raw native handles of its own — this simple version is enough; you don't need the full ceremony in the next section:
+If your class *holds* other disposables (a file, a timer), it should be disposable too, and pass the `Dispose` on:
 
 ```csharp
-public sealed class ReportExporter : IDisposable
+using (var export = new ReportExporter())
 {
-    private readonly FileStream _file;
-    private readonly Timer _timer;
-    private bool _disposed;
+    export.Write("order 42");
+}                                                    // Dispose runs here
+var again = new ReportExporter(); again.Dispose(); again.Dispose();   // twice is safe
+try { again.Write("late"); } catch (ObjectDisposedException) { Console.WriteLine("used after dispose: refused"); }
 
-    public ReportExporter(string path) { _file = File.Create(path); _timer = new Timer(Flush, null, 1000, 1000); }
+sealed class ReportExporter : IDisposable
+{
+    private readonly MemoryStream _file = new();     // stands in for a FileStream
+    private bool _disposed;
 
     public void Write(string line)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        // ...
+        _file.Write(System.Text.Encoding.UTF8.GetBytes(line));
+        Console.WriteLine($"wrote: {line}");
     }
 
     public void Dispose()
     {
-        if (_disposed) return;      // Dispose must be safe to call multiple times
-        _timer.Dispose();
+        if (_disposed) return;      // must be safe to call more than once
         _file.Dispose();
         _disposed = true;
+        Console.WriteLine("disposed");
     }
 }
 ```
 
-The `if (_disposed) return;` guard at the top of `Dispose()` exists because `Dispose` must be **safe to call more than once**. Code elsewhere might legitimately call it twice (an explicit call, then a `using` block's automatic call on the same object), and without the guard, calling `_file.Dispose()` a second time could itself throw.
+### The full pattern, with a finalizer (rarely needed) {a}
 
-### The full Dispose pattern, with a finalizer — only when you genuinely need one {a}
+Only needed when your class **directly owns an unmanaged resource**, such as a raw `IntPtr` handle. Even then, prefer wrapping it in a `SafeHandle`, which does this for you.
 
-You only need this heavier version when your class **directly owns an unmanaged resource** — a raw native handle or `IntPtr`, not another managed `IDisposable` wrapping one. Even then, prefer wrapping that handle in a `SafeHandle`, which already implements the finalizer correctly for you, so you never have to write one by hand:
-
-```csharp
+```csharp norun
 public class NativeBuffer : IDisposable
 {
     private IntPtr _ptr = Marshal.AllocHGlobal(1024);
@@ -274,202 +421,95 @@ public class NativeBuffer : IDisposable
     public void Dispose()
     {
         Dispose(disposing: true);
-        GC.SuppressFinalize(this);       // finalizer no longer needed: saves the GC work
+        GC.SuppressFinalize(this);      // cleaned up already, so the finalizer can be skipped
     }
 
     protected virtual void Dispose(bool disposing)
     {
         if (_disposed) return;
-        if (disposing) { /* dispose MANAGED disposables here */ }
-        Marshal.FreeHGlobal(_ptr);       // free UNMANAGED resources in both paths
-        _ptr = IntPtr.Zero;
+        if (disposing) { /* dispose other MANAGED objects: only safe on this path */ }
+        Marshal.FreeHGlobal(_ptr);      // free the UNMANAGED resource on both paths
         _disposed = true;
     }
 
-    ~NativeBuffer() => Dispose(disposing: false);   // safety net if someone forgot to Dispose
+    ~NativeBuffer() => Dispose(disposing: false);   // the finalizer: a safety net if someone forgot
 }
 ```
 
-The `disposing` boolean does real work. `Dispose(bool)` can be called from two different situations: a normal `Dispose()` call (`disposing: true`, where it's safe to also touch other *managed* objects), or the finalizer running as a last-resort safety net (`disposing: false`, where other managed objects might already be collected, so only the unmanaged pointer is guaranteed to still be valid). `GC.SuppressFinalize(this)` matters too: once `Dispose()` has already cleaned up, the finalizer doesn't need to run — and skipping it is worth doing, because an object with a *pending* finalizer gets promoted a generation early and survives an extra GC cycle (see [Memory & GC](ch:memory-gc#finalizers-the-gcs-last-resort-and-why-its-slow)).
+The `disposing` flag says *who called*. `true` means your code called `Dispose()`, so it's safe to touch other objects. `false` means the GC's finalizer called it, and other managed objects may already be gone. `SuppressFinalize` matters because objects with pending finalizers survive an extra GC cycle ([Memory & GC](ch:memory-gc#finalizers-the-gcs-last-resort-and-why-its-slow)).
 
-### IAsyncDisposable: for cleanup that itself needs to be awaited
+:::qa Explain the Dispose pattern. When do you need a finalizer?
+A public `Dispose()` calls `Dispose(true)` and `GC.SuppressFinalize(this)`. A protected virtual `Dispose(bool disposing)` frees managed resources only when `disposing` is true, and unmanaged ones on both paths. You only need a finalizer if the class directly owns an unmanaged resource, and usually a `SafeHandle` is better. Classes that only wrap managed disposables need just a simple `Dispose()`.
+:::
 
-```csharp
+### IAsyncDisposable: cleanup that needs to await
+
+Some cleanup does I/O itself, like flushing a buffer to the network. `Dispose()` can't `await`, so there's `IAsyncDisposable` with `DisposeAsync()`, and `await using` to call it. `DbContext`, `Stream` and `SqlConnection` all support it. Prefer `await using` where a type offers it.
+
+```csharp norun
 public sealed class BlobBatchWriter : IAsyncDisposable
 {
     public async ValueTask DisposeAsync() { await FlushAsync(); await _stream.DisposeAsync(); }
 }
-await using var writer = new BlobBatchWriter(...);
+await using var writer = new BlobBatchWriter();
 ```
-
-Some cleanup involves I/O of its own — flushing a stream to the network, closing a database connection gracefully — and a plain synchronous `Dispose()` has no way to `await` anything inside it. `IAsyncDisposable` exists for exactly this, and `await using` is its counterpart to `using`: same `try`/`finally` shape, but calling `DisposeAsync()` instead. `DbContext`, `Stream`, `SqlConnection`, DI scopes and `Utf8JsonWriter` all implement it — prefer `await using` over plain `using` wherever a type offers it.
 
 ## Common disposal mistakes {i}
 
-| Mistake | Consequence | Fix |
+| Mistake | What happens | Fix |
 |---|---|---|
-| `new HttpClient()` per request inside `using` | Socket exhaustion (sockets in TIME_WAIT) | `IHttpClientFactory`; see [HttpClient](ch:http-client) |
-| Forgetting to dispose a `SqlConnection` you created | Connection pool exhaustion: "Timeout expired obtaining a connection" | `await using` |
-| Returning a lazy `IEnumerable` from inside a `using` block | `ObjectDisposedException` when the caller enumerates | Materialise before the scope ends |
-| Disposing something injected by DI | Other consumers get a disposed object | Let the container own it |
-| Storing a scoped `IDisposable` in a singleton | Used after the request scope disposed it | `IServiceScopeFactory`; see [DI](ch:dependency-injection) |
-| Not disposing `CancellationTokenSource`, `Timer`, `SemaphoreSlim` | Leaked timers / handles | `using` |
+| `new HttpClient()` per request | Socket exhaustion | `IHttpClientFactory` ([HttpClient](ch:http-client)) |
+| Not disposing a connection you opened | The pool runs dry, and the site times out (this episode!) | `await using` |
+| Returning a lazy `IEnumerable` from inside `using` | `ObjectDisposedException` when the caller loops | `.ToList()` before the scope ends |
+| Disposing something DI gave you | Others receive a disposed object | Let the container own it |
+| Keeping a scoped disposable in a singleton | Used after the request disposed it | `IServiceScopeFactory` ([DI](ch:dependency-injection#the-captive-dependency-the-single-most-common-di-bug)) |
+| Not disposing `CancellationTokenSource`, `Timer`, `SemaphoreSlim` | Leaked timers and handles | `using` |
 
-"Disposing something injected by DI" and "storing a scoped `IDisposable` in a singleton" are the same underlying bug in different clothes: both are the **captive dependency** problem from [Dependency injection](ch:dependency-injection#the-captive-dependency-the-single-most-common-di-bug) — an object outliving, or being disposed independently of, the scope meant to own its lifetime.
+## Next episode {b}
 
-:::qa What is the difference between throw and throw ex?
-`throw;` rethrows the current exception and preserves its original stack trace. `throw ex;` throws the same object but resets the stack trace to the current line, so you lose where the error originated. Wrap with `throw new X("context", ex)` when adding information.
-:::
-
-:::qa What are exception filters and why are they useful?
-A `when (condition)` clause on a catch. The condition is evaluated before the stack unwinds, so if it's false the exception continues untouched with its full original state (good for diagnostics), and you can catch selectively (only certain status codes, for example) without catch-and-rethrow.
-:::
-
-:::qa When should you not use exceptions?
-For expected outcomes: parsing input, lookups that may miss, validation failures and business rule rejections. Use Try-patterns, nullable returns, validation results or a Result type instead. Exceptions are costly and invisible in signatures; keep them for unexpected failures.
-:::
-
-:::qa What happens to an exception thrown in an async method?
-It's captured in the returned Task and rethrown when the Task is awaited, with its original stack trace preserved. If the Task is never awaited, the exception goes unobserved. In async void methods, there's no Task, so the exception crashes the process.
-:::
-
-:::qa What is IDisposable and why does .NET need it if it has a garbage collector?
-The GC only manages memory and runs non-deterministically. IDisposable gives deterministic release of other resources (connections, handles, sockets, locks) at a known point, typically via using / await using, which compile to try/finally.
-:::
-
-:::qa Explain the Dispose pattern. When do you need a finalizer?
-Implement Dispose() to release resources, make it idempotent, and throw ObjectDisposedException afterwards. The full pattern with Dispose(bool) and a finalizer is only needed when the class directly owns unmanaged resources; Dispose() then calls Dispose(true) and GC.SuppressFinalize(this). Prefer SafeHandle so you never need your own finalizer.
-:::
-
-:::qa Who disposes services created by the DI container?
-The container. Scoped services are disposed when their scope (the HTTP request) ends; singletons when the root provider is disposed at shutdown; transients when their owning scope ends. Don't dispose injected dependencies yourself.
-:::
-
-:::qa How does `using` work under the hood?
-It compiles to a try/finally block that calls Dispose (or DisposeAsync for await using) in the finally, with a null check, so the resource is released even if an exception is thrown or the method returns early.
-:::
+Checkout now fails cleanly and never leaks a connection. Then comes **Black Friday**. Traffic is 20 times normal and the site freezes, yet the server's CPU sits at 5%. A memory dump shows hundreds of threads, every one of them *waiting* for the payment API to reply. The server isn't busy. It's **stuck waiting**: [Episode 8 · Async/await →](ch:async-await)
 
 ## Further reading
 
 - [Exceptions and exception handling](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/exceptions/)
 - [Best practices for exceptions](https://learn.microsoft.com/en-us/dotnet/standard/exceptions/best-practices-for-exceptions)
 - [Implement a Dispose method](https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-dispose)
+- [Implement a DisposeAsync method](https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/implementing-disposeasync)
 
 ## Verify this chapter
 
-Save as `Program.cs` in a new console project (`dotnet new console`) and run with `dotnet run`. It checks `finally` semantics, `throw;` vs `throw ex;` stack traces, exception filters, wrapped exceptions, `using`/`await using` disposal (including idempotent `Dispose`), and how exceptions behave inside async `Task`s. The compiler will warn about `throw ex;` (CA2200) — that warning is itself the chapter's point, so it's expected here.
-
 ```csharp
-int failures = 0;
-void Check(string claim, bool ok)
+var log = new List<string>();
+
+// finally runs during unwinding; the first matching catch stops it
+try { Outer(log); } catch (InvalidOperationException) { log.Add("caught"); }
+Check(string.Join(",", log) == "inner-finally,outer-finally,caught", "finally blocks run while unwinding, before the catch");
+
+// throw; keeps the original stack trace, throw ex; resets it
+Check(Trace(true).Contains("Boom"), "throw; preserves the original stack trace");
+Check(!Trace(false).Contains("Boom"), "throw ex; resets the stack trace");
+
+// filters
+bool handled = false;
+try { throw new ArgumentException("x"); } catch (Exception ex) when (ex is ArgumentException) { handled = true; }
+Check(handled, "a when filter selects which exceptions to catch");
+
+// using disposes even when an exception is thrown
+var r = new Res();
+try { using (r) { throw new Exception(); } } catch { }
+Check(r.Disposed, "using disposes even when the body throws");
+
+static void Outer(List<string> log) { try { Inner(log); } finally { log.Add("outer-finally"); } }
+static void Inner(List<string> log) { try { throw new InvalidOperationException(); } finally { log.Add("inner-finally"); } }
+static void Boom() => throw new InvalidOperationException();
+static string Trace(bool proper)
 {
-    if (ok) Console.WriteLine($"OK: {claim}");
-    else { Console.WriteLine($"FAIL: {claim}"); failures++; }
+    try { try { Boom(); } catch (Exception ex) { if (proper) throw; throw ex; } }
+    catch (Exception ex) { return ex.StackTrace ?? ""; }
+    return "";
 }
+static void Check(bool ok, string claim) =>
+    Console.WriteLine(ok ? $"OK: {claim}" : throw new Exception($"FAIL: {claim}"));
 
-// 1. finally runs on both the success path and the exception path
-bool finallyRanOnSuccess = false, finallyRanOnException = false;
-try { } finally { finallyRanOnSuccess = true; }
-try { try { throw new InvalidOperationException(); } finally { finallyRanOnException = true; } }
-catch (InvalidOperationException) { }
-Check("finally runs on the success path", finallyRanOnSuccess);
-Check("finally runs when an exception is thrown", finallyRanOnException);
-
-// 2. throw; preserves the original stack trace; throw ex; resets it
-string ReThrowProperly()
-{
-    try { ThrowsDeep(); return ""; }
-    catch (Exception ex) { try { throw; } catch (Exception e2) { return e2.StackTrace ?? ""; } }
-}
-string ReThrowBadly()
-{
-    try { ThrowsDeep(); return ""; }
-    catch (Exception ex) { try { throw ex; } catch (Exception e2) { return e2.StackTrace ?? ""; } }
-}
-static void ThrowsDeep() => throw new InvalidOperationException("boom");
-
-var properTrace = ReThrowProperly();
-var badTrace = ReThrowBadly();
-Check("throw; keeps ThrowsDeep in the stack trace (original origin preserved)", properTrace.Contains("ThrowsDeep"));
-Check("throw ex; loses ThrowsDeep from the stack trace (origin overwritten)", !badTrace.Contains("ThrowsDeep"));
-
-// 3. Exception filters (when) catch selectively without catching everything
-bool caughtSpecific = false, propagatedOthers = false;
-try
-{
-    try { throw new InvalidOperationException("transient"); }
-    catch (InvalidOperationException ex) when (ex.Message == "transient") { caughtSpecific = true; }
-}
-catch { }
-try
-{
-    try { throw new InvalidOperationException("permanent"); }
-    catch (InvalidOperationException ex) when (ex.Message == "transient") { }
-}
-catch (InvalidOperationException) { propagatedOthers = true; }
-Check("a catch filter (when) catches only matching exceptions", caughtSpecific);
-Check("a catch filter lets non-matching exceptions keep propagating", propagatedOthers);
-
-// 4. Custom exception carries InnerException
-var inner = new InvalidOperationException("low level");
-var wrapped = new RepositoryException("Saving order failed", inner);
-Check("a wrapped custom exception keeps the original as InnerException", wrapped.InnerException == inner);
-
-// 5. using calls Dispose even when the body throws
-var resource = new TrackedResource();
-try { using (resource) { throw new InvalidOperationException(); } }
-catch (InvalidOperationException) { }
-Check("using calls Dispose even when the body throws", resource.Disposed);
-
-// 6. Dispose is safe to call more than once
-var resource2 = new TrackedResource();
-resource2.Dispose();
-Exception? thrown = null;
-try { resource2.Dispose(); } catch (Exception ex) { thrown = ex; }
-Check("Dispose is idempotent: calling it twice doesn't throw", thrown is null);
-
-// 7. await using calls DisposeAsync
-var asyncResource = new TrackedAsyncResource();
-await using (asyncResource) { }
-Check("await using calls DisposeAsync when the scope ends", asyncResource.Disposed);
-
-// 8. An exception in an async Task method is stored, not thrown, until awaited
-var faultedTask = FailAsync();
-await Task.Delay(10); // give it time to complete
-Check("an exception inside an async Task is captured in the Task, not thrown immediately", faultedTask.IsFaulted);
-bool observedOnAwait = false;
-try { await faultedTask; } catch (InvalidOperationException) { observedOnAwait = true; }
-Check("awaiting a faulted Task rethrows the captured exception", observedOnAwait);
-
-// 9. Task.WhenAll rethrows only the first exception, but all are in task.Exception
-var t1 = FailAsync();
-var t2 = FailAsync();
-try { await Task.WhenAll(t1, t2); } catch { }
-Check("Task.WhenAll's await only surfaces one exception, but both tasks' exceptions are available via .Exception",
-    t1.Exception!.InnerExceptions.Count == 1 && t2.Exception!.InnerExceptions.Count == 1);
-
-Console.WriteLine(failures == 0 ? "\nAll checks passed." : $"\n{failures} check(s) failed.");
-if (failures > 0) Environment.Exit(1);
-
-static async Task FailAsync()
-{
-    await Task.Yield();
-    throw new InvalidOperationException("async failure");
-}
-
-class RepositoryException(string message, Exception inner) : Exception(message, inner) { }
-
-class TrackedResource : IDisposable
-{
-    public bool Disposed { get; private set; }
-    public void Dispose() { Disposed = true; } // idempotent by construction: nothing to double-free
-}
-
-class TrackedAsyncResource : IAsyncDisposable
-{
-    public bool Disposed { get; private set; }
-    public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
-}
+class Res : IDisposable { public bool Disposed; public void Dispose() => Disposed = true; }
 ```
-
-Not runtime-verifiable here: `async void` crashing the process can't be safely demonstrated inside a program that also needs to keep running and report its other results — crashing it is the entire point. Take that one on trust from [Further reading](#further-reading) or trigger it deliberately in a throwaway project.

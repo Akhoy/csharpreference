@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="A method's stack frame holds its locals; new objects go on the shared heap and outlive the frame">
+<defs><marker id="ts2-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="26">THE STACK · per thread, automatic</text>
+<text class="t-cap" x="390" y="26">THE HEAP · shared by the app, cleaned by the GC</text>
+<rect x="24" y="40" width="320" height="262" rx="10" class="b-sunk"/>
+<rect x="390" y="40" width="306" height="262" rx="10" class="b-sunk"/>
+<!-- Main frame -->
+<rect x="40" y="248" width="288" height="40" rx="6" class="b"/><text class="t-c" x="52" y="273">Main()</text><text class="t-m" x="200" y="273">frame 1</text>
+<!-- PlaceOrder frame -->
+<g data-s="1-4" class="fly"><rect x="40" y="128" width="288" height="110" rx="6" class="b-acc"/>
+<text class="t-c" x="52" y="150">PlaceOrder()</text><text class="t-m" x="200" y="150">frame 2</text>
+<rect x="52" y="162" width="120" height="30" rx="4" class="b"/><text class="t-c" x="62" y="182">qty = 3</text>
+<g data-s="2"><rect x="52" y="200" width="120" height="30" rx="4" class="b"/><text class="t-c" x="62" y="220">order ●</text></g></g>
+<g data-s="2-4"><path d="M160,215 C260,215 300,110 420,110" class="ln" marker-end="url(#ts2-ar)"/></g>
+<!-- heap object -->
+<g data-s="2" class="fly-r"><rect x="426" y="70" width="200" height="86" rx="8" class="b" data-hl="3"/>
+<text class="t-cap" x="438" y="90">Order OBJECT</text>
+<g data-hl="3"><rect x="438" y="102" width="130" height="28" rx="4" class="b-good"/><text class="t-c hlt" x="448" y="121">Quantity = 3</text></g>
+<text class="t-m" x="438" y="148">an int, living on the heap</text></g>
+<g data-s="5"><rect x="426" y="70" width="200" height="86" rx="8" class="b-dash"/>
+<text class="t-s t-warn" x="426" y="182">Nothing points here any more.</text><text class="t-s t-warn" x="426" y="200">The garbage collector frees it later.</text></g>
+<text class="t-s t-acc" x="40" y="116" data-s="5">frame 2 popped: qty and the arrow are gone</text>
+<text class="t-m" x="40" y="68" data-s="1">calling a method pushes a frame ↓</text>
+</svg>

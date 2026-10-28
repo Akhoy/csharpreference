@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Blocking on async code: in a UI app the blocked thread is the one the continuation needs, so both wait forever; in ASP.NET Core each block holds a pool thread hostage">
+<defs><marker id="ad-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker></defs>
+<text class="t-cap" x="24" y="28">.Result / .Wait() ON AN UNFINISHED TASK</text>
+<g data-s="1-3"><rect x="24" y="50" width="250" height="90" rx="12" class="b-info" data-hl="1"/><text class="t-h" x="40" y="76">UI thread</text><text class="t-c" x="40" y="100" style="font-size:12px">GetDataAsync().Result</text><text class="t-m" x="40" y="122">blocked: waiting for the Task</text></g>
+<g data-s="2-3" class="fly-r"><rect x="440" y="50" width="256" height="90" rx="12" class="b-warn" data-hl="2"/><text class="t-h" x="456" y="76">The continuation</text><text class="t-c" x="456" y="100" style="font-size:12px">return s;  (after await)</text><text class="t-m" x="456" y="122">must run on… the UI thread</text></g>
+<g data-s="3-3"><path d="M274,80 C340,60 380,60 434,80" class="ln-bad" marker-end="url(#ad-ar)"/><path d="M440,115 C380,140 340,140 280,115" class="ln-bad" marker-end="url(#ad-ar)"/>
+<text class="t-s t-bad" x="300" y="56">waits for</text><text class="t-s t-bad" x="300" y="158">waits for</text>
+<text class="t-h t-bad" x="24" y="200">Deadlock. Each waits for the other, forever.</text><text class="t-s" x="24" y="222">(WPF, WinForms, MAUI and old ASP.NET have a "context" that sends continuations back to one thread.)</text></g>
+<g data-s="4"><text class="t-h" x="24" y="76">ASP.NET Core has no such context, so there's no deadlock. But:</text>
+<rect x="24" y="96" width="672" height="40" rx="8" class="b-sunk"/>
+<g><rect x="30" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="96" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="162" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="228" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="294" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="360" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="426" y="102" width="60" height="28" rx="5" class="b-bad"/><rect x="492" y="102" width="60" height="28" rx="5" class="b-bad"/></g>
+<text class="t-m" x="566" y="121">+1 thread / sec…</text>
+<text class="t-s t-bad" x="24" y="166">Every .Result holds a pool thread hostage while it waits.</text><text class="t-s" x="24" y="188">The pool adds new threads slowly, so under load: latency soars, CPU stays low.</text>
+<text class="t-s t-good" x="24" y="222">The fix is the same everywhere: await all the way up. Never block on a Task.</text></g>
+</svg>

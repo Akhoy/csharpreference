@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="The ten episodes of Part II as stops on one road, from types to advanced C#">
+<text class="t-cap" x="24" y="30">KETTLE · THE ROAD THROUGH PART II</text>
+<circle cx="80" cy="95" r="22" class="b-dash"/><circle cx="220" cy="95" r="22" class="b-dash"/><circle cx="360" cy="95" r="22" class="b-dash"/><circle cx="500" cy="95" r="22" class="b-dash"/><circle cx="640" cy="95" r="22" class="b-dash"/><circle cx="640" cy="225" r="22" class="b-dash"/><circle cx="500" cy="225" r="22" class="b-dash"/><circle cx="360" cy="225" r="22" class="b-dash"/><circle cx="220" cy="225" r="22" class="b-dash"/><circle cx="80" cy="225" r="22" class="b-dash"/>
+<path class="ln-m" d="M102,95 L198,95"/>
+<path class="ln-acc" d="M102,95 L198,95" data-s="2"/>
+<path class="ln-m" d="M242,95 L338,95"/>
+<path class="ln-acc" d="M242,95 L338,95" data-s="3"/>
+<path class="ln-m" d="M382,95 L478,95"/>
+<path class="ln-acc" d="M382,95 L478,95" data-s="4"/>
+<path class="ln-m" d="M522,95 L618,95"/>
+<path class="ln-acc" d="M522,95 L618,95" data-s="5"/>
+<path class="ln-m" d="M662,95 C720,95 720,225 662,225"/>
+<path class="ln-acc" d="M662,95 C720,95 720,225 662,225" data-s="6"/>
+<path class="ln-m" d="M618,225 L522,225"/>
+<path class="ln-acc" d="M618,225 L522,225" data-s="7"/>
+<path class="ln-m" d="M478,225 L382,225"/>
+<path class="ln-acc" d="M478,225 L382,225" data-s="8"/>
+<path class="ln-m" d="M338,225 L242,225"/>
+<path class="ln-acc" d="M338,225 L242,225" data-s="9"/>
+<path class="ln-m" d="M198,225 L102,225"/>
+<path class="ln-acc" d="M198,225 L102,225" data-s="10"/>
+<g data-s="1" data-hl="1" class="fly">
+<circle cx="80" cy="95" r="22" class="b-acc"/>
+<text x="80" y="100" text-anchor="middle" class="t-h t-acc">1</text>
+<text x="80" y="139" text-anchor="middle" class="t-h hlt">Types</text>
+<text x="80" y="157" text-anchor="middle" class="t-m">copy or share?</text>
+</g>
+<g data-s="2" data-hl="2" class="fly">
+<circle cx="220" cy="95" r="22" class="b-acc"/>
+<text x="220" y="100" text-anchor="middle" class="t-h t-acc">2</text>
+<text x="220" y="139" text-anchor="middle" class="t-h hlt">Classes</text>
+<text x="220" y="157" text-anchor="middle" class="t-m">guard the rules</text>
+</g>
+<g data-s="3" data-hl="3" class="fly">
+<circle cx="360" cy="95" r="22" class="b-acc"/>
+<text x="360" y="100" text-anchor="middle" class="t-h t-acc">3</text>
+<text x="360" y="139" text-anchor="middle" class="t-h hlt">Generics</text>
+<text x="360" y="157" text-anchor="middle" class="t-m">write it once</text>
+</g>
+<g data-s="4" data-hl="4" class="fly">
+<circle cx="500" cy="95" r="22" class="b-acc"/>
+<text x="500" y="100" text-anchor="middle" class="t-h t-acc">4</text>
+<text x="500" y="139" text-anchor="middle" class="t-h hlt">Delegates</text>
+<text x="500" y="157" text-anchor="middle" class="t-m">pass behaviour</text>
+</g>
+<g data-s="5" data-hl="5" class="fly">
+<circle cx="640" cy="95" r="22" class="b-acc"/>
+<text x="640" y="100" text-anchor="middle" class="t-h t-acc">5</text>
+<text x="640" y="139" text-anchor="middle" class="t-h hlt">Collections</text>
+<text x="640" y="157" text-anchor="middle" class="t-m">find it fast</text>
+</g>
+<g data-s="6" data-hl="6" class="fly">
+<circle cx="640" cy="225" r="22" class="b-acc"/>
+<text x="640" y="230" text-anchor="middle" class="t-h t-acc">6</text>
+<text x="640" y="269" text-anchor="middle" class="t-h hlt">LINQ</text>
+<text x="640" y="287" text-anchor="middle" class="t-m">ask, don't loop</text>
+</g>
+<g data-s="7" data-hl="7" class="fly">
+<circle cx="500" cy="225" r="22" class="b-acc"/>
+<text x="500" y="230" text-anchor="middle" class="t-h t-acc">7</text>
+<text x="500" y="269" text-anchor="middle" class="t-h hlt">Exceptions</text>
+<text x="500" y="287" text-anchor="middle" class="t-m">fail safely</text>
+</g>
+<g data-s="8" data-hl="8" class="fly">
+<circle cx="360" cy="225" r="22" class="b-acc"/>
+<text x="360" y="230" text-anchor="middle" class="t-h t-acc">8</text>
+<text x="360" y="269" text-anchor="middle" class="t-h hlt">Async</text>
+<text x="360" y="287" text-anchor="middle" class="t-m">don't wait idle</text>
+</g>
+<g data-s="9" data-hl="9" class="fly">
+<circle cx="220" cy="225" r="22" class="b-acc"/>
+<text x="220" y="230" text-anchor="middle" class="t-h t-acc">9</text>
+<text x="220" y="269" text-anchor="middle" class="t-h hlt">Modern C#</text>
+<text x="220" y="287" text-anchor="middle" class="t-m">less ceremony</text>
+</g>
+<g data-s="10" data-hl="10" class="fly">
+<circle cx="80" cy="225" r="22" class="b-acc"/>
+<text x="80" y="230" text-anchor="middle" class="t-h t-acc">10</text>
+<text x="80" y="269" text-anchor="middle" class="t-h hlt">Advanced</text>
+<text x="80" y="287" text-anchor="middle" class="t-m">zero waste</text>
+</g>
+</svg>

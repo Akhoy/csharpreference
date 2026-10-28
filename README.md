@@ -31,3 +31,5 @@ Chapter conventions (see `tools/build.mjs` for details):
 - `:::why`, `:::tip`, `:::gotcha`, `:::deep`, `:::analogy`, `:::interview`, `:::note` … `:::` create callout boxes.
 - `:::qa Question text` … `:::` adds an interview question (collected into the question bank).
 - `[text](ch:chapter-id#section-slug)` links to another chapter or section; the build validates them.
+- Every ` ```csharp ` block gets a **Run ▶** button (compiled and run in the browser, .NET 8 / C# 12, single-threaded, no top-level `await`). Write ` ```csharp norun ` for fragments, async/threading code, or anything else the browser runner can't execute.
+- `:::scene visuals/scenes/name.svg | Title` followed by a numbered list (one item per step) and `:::` makes a step-through diagram with Back / Next / Play. The SVG is inlined so it follows the book's theme: style it with the `t-*`, `b-*` and `ln-*` classes in `assets/book.css`, and mark parts with `data-s="2"` (visible from step 2), `data-s="2-3"` (steps 2–3 only), `data-hl="3"` (highlighted on step 3) or `data-mv="3:120,0"` (slides by 120,0 on step 3).

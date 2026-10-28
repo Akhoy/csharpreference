@@ -7,7 +7,7 @@ where: Runtime & platform › Build system & tooling
 fits: This is the build-time half of layer 2. The runtime runs assemblies; this chapter is about how those assemblies get produced from your source and packages. Architecture decisions ([App architectures](ch:app-architectures)) are physically enforced here, through project references.
 levels: b,i
 prereqs: what-is-dotnet
-next: type-system, app-architectures, cicd-iac
+next: csharp-story, type-system, app-architectures
 ---
 
 ## TL;DR

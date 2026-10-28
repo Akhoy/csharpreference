@@ -147,7 +147,7 @@ Two variants exist for when you want fewer of these defaults: `WebApplication.Cr
 - handles **TLS**,
 - parses **HTTP/1.1, HTTP/2 and HTTP/3**,
 - builds an `HttpContext` for each request and passes it to your middleware pipeline,
-- is built on `System.IO.Pipelines` — the same pooled-buffer I/O abstraction mentioned in [Advanced C#](ch:advanced-csharp#pooling-buffers-paying-the-allocation-cost-once-instead-of-e) — for high throughput with minimal per-request allocation.
+- is built on `System.IO.Pipelines` — the same pooled-buffer I/O abstraction mentioned in [Advanced C#](ch:advanced-csharp#pooling-buffers-borrow-dont-buy) — for high throughput with minimal per-request allocation.
 
 ```csharp
 builder.WebHost.ConfigureKestrel(k =>

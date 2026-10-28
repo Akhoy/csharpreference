@@ -388,7 +388,7 @@ For simpler lifecycles, an **enum plus a transition table** or a library like **
 ## Iterator, Visitor and the rest {a}
 
 - **Iterator:** sequential access without exposing the structure. **Built into C#**: `IEnumerable<T>`/`IEnumerator<T>`, `foreach`, `yield return`, `IAsyncEnumerable<T>`.
-- **Visitor:** add operations to a class hierarchy without changing it, via double dispatch. **In .NET:** `ExpressionVisitor` (EF Core's query translation is visitors all the way down, exactly the expression-tree walk [LINQ](ch:linq#expression-trees-what-ef-core-is-actually-reading) traced), Roslyn's `CSharpSyntaxVisitor`. Modern C# pattern matching (`switch` on types) often replaces simple visitors.
+- **Visitor:** add operations to a class hierarchy without changing it, via double dispatch. **In .NET:** `ExpressionVisitor` (EF Core's query translation is visitors all the way down, exactly the expression-tree walk [LINQ](ch:linq#expression-trees-how-c-becomes-sql) traced), Roslyn's `CSharpSyntaxVisitor`. Modern C# pattern matching (`switch` on types) often replaces simple visitors.
 - **Memento:** capture and restore an object's state (undo, snapshots). Event sourcing snapshots are a relative.
 - **Interpreter:** evaluate sentences in a small language (rule engines, query parsers). Expression trees and Roslyn scripting are related.
 

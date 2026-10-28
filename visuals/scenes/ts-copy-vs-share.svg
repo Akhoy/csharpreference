@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="Assigning a struct copies the data; assigning a class copies only the reference, so both variables see one object">
+<defs><marker id="ts1-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="26">YOUR CODE</text><text class="t-cap" x="340" y="26">WHAT'S IN MEMORY</text>
+<line x1="318" y1="16" x2="318" y2="330" class="ln-m"/>
+<line x1="24" y1="172" x2="696" y2="172" class="ln-m"/>
+<!-- lane 1: struct -->
+<text class="t-h t-good" x="24" y="52">struct BasketS (value type)</text>
+<text class="t-c" x="24" y="80" data-s="1" data-hl="1">var a = new BasketS { Items = 2 };</text>
+<text class="t-c" x="24" y="102" data-s="2" data-hl="2">var b = a;</text>
+<text class="t-c" x="24" y="124" data-s="3" data-hl="3">b.Items = 5;</text>
+<text class="t-c" x="24" y="146" data-s="4" data-hl="4">Console.WriteLine(a.Items);</text>
+<g data-s="1" class="fly"><rect x="340" y="62" width="150" height="62" rx="8" class="b-good"/><text class="t-cap" x="352" y="80">VARIABLE a</text><text class="t-c" x="352" y="108">Items = 2</text></g>
+<g data-s="2" class="fly-l"><rect x="530" y="62" width="150" height="62" rx="8" class="b-good"/><text class="t-cap" x="542" y="80">VARIABLE b</text>
+<text class="t-c" x="542" y="108" data-s="2-2">Items = 2</text><text class="t-c t-acc" x="542" y="108" data-s="3">Items = 5</text></g>
+<text class="t-m" x="510" y="98" text-anchor="middle" data-s="2-2">copy →</text>
+<text class="t-s t-good" x="340" y="150" data-s="4">✓ prints 2. a and b are two separate baskets.</text>
+<!-- lane 2: class -->
+<text class="t-h t-info" x="24" y="200">class BasketC (reference type)</text>
+<text class="t-c" x="24" y="228" data-s="1" data-hl="1">var a = new BasketC { Items = 2 };</text>
+<text class="t-c" x="24" y="250" data-s="2" data-hl="2">var b = a;</text>
+<text class="t-c" x="24" y="272" data-s="3" data-hl="3">b.Items = 5;</text>
+<text class="t-c" x="24" y="294" data-s="4" data-hl="4">Console.WriteLine(a.Items);</text>
+<g data-s="1" class="fly"><rect x="340" y="200" width="74" height="40" rx="6" class="b-info"/><text class="t-cap" x="352" y="224">a</text><circle cx="396" cy="220" r="4" class="f-ink"/>
+<path d="M400,220 C450,220 470,236 520,236" class="ln" marker-end="url(#ts1-ar)"/>
+<rect x="526" y="200" width="160" height="72" rx="8" class="b"/><text class="t-cap" x="538" y="218">OBJECT ON THE HEAP</text>
+<text class="t-c" x="538" y="252" data-s="1-2">Items = 2</text><text class="t-c t-acc" x="538" y="252" data-s="3">Items = 5</text></g>
+<g data-s="2" class="fly"><rect x="340" y="256" width="74" height="40" rx="6" class="b-info"/><text class="t-cap" x="352" y="280">b</text><circle cx="396" cy="276" r="4" class="f-ink"/>
+<path d="M400,276 C450,276 470,252 520,250" class="ln" marker-end="url(#ts1-ar)"/></g>
+<text class="t-m" x="440" y="312" data-s="2-2">only the arrow was copied</text>
+<text class="t-s t-bad" x="340" y="318" data-s="4">✗ prints 5. a and b are one basket with two names.</text>
+</svg>

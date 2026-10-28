@@ -1,469 +1,500 @@
 ---
 id: type-system
-title: The Type System: Value Types, Reference Types and Everything Between
-summary: The most important idea in C#. How data is stored and copied, stack vs heap, structs vs classes vs records, boxing, nullable value types, enums, equality, and parameter passing with ref/out/in.
+title: "Types: Copied or Shared? (Value vs Reference)"
+summary: "Episode 1. A saved basket changes by itself, and the cause is the most important idea in C#: some types are copied when you assign them, others are shared. Covers stack vs heap, structs, boxing, strings, decimal, nullable values, enums, equality and ref/out/in."
 layer: language
 where: C# language › Types › Value vs reference
-fits: This is the foundation of layer 1, and it touches layer 2 directly: how the runtime lays out memory, and how much work the GC ([Memory & GC](ch:memory-gc)) does, depends on the choices made here. Every later chapter assumes you know what "copy semantics" means.
+fits: This is the foundation of layer 1. Every later chapter assumes you know whether assignment copies or shares. It also reaches down into layer 2, because the choice decides how much work the garbage collector ([Memory & GC](ch:memory-gc)) has to do.
 levels: b,i,a
-prereqs: how-code-runs
+prereqs: csharp-story
 next: oop, generics, memory-gc
 ---
 
-## TL;DR
+## The 30-second version
 
-- Every type in C# answers one question: does assignment copy the **data** (value types: `struct`, `int`, `enum`, …) or copy a **reference** to shared data (reference types: `class`, `string`, arrays, …)?
-- "Value types live on the stack" is a popular simplification, not the real rule: value types live wherever their *container* lives — which can be the heap (a struct field inside a class, or inside an array). Physically: the **stack** is a small, fixed, per-thread block (≈1 MiB by default on Windows); the **heap** is one shared, growable region per process that the GC manages.
-- **Boxing** wraps a value type in a heap object so it can pretend to be an `object`/interface; it's an easy-to-miss allocation (`ArrayList.Add`, `string.Format` with value args) and generics (`List<int>`) exist partly to avoid it.
-- Three different things all look like "equality" in C# — `==`, `Equals`, `ReferenceEquals` — and classes/structs/records each default to different answers; overriding `Equals` obligates you to override `GetHashCode` too.
-- Everything is passed **by value**, including references — so a method can mutate an object through a reference parameter but can't make the caller's variable point somewhere else unless you add `ref`.
+- C# has two families of types. A **value type** (`int`, `decimal`, `DateTime`, any `struct` or `enum`) is **copied** when you assign it. A **reference type** (any `class`, `string`, arrays) is **shared**. Assignment copies only an arrow to one object.
+- Reference-type objects live on the **heap**, a big shared area the garbage collector cleans. Value types live **wherever their container lives**: inside a method's stack frame, or inside an object on the heap.
+- **Boxing** happens when a value type is treated as `object`. It gets copied into a new heap object. It's an allocation you never asked for.
+- "Equal" means three things in C#. Records give you value equality for free. If you override `Equals`, you must override `GetHashCode` too.
+- Every argument is passed **by value**, which means as a copy. For a class, the copy is a copy of the arrow. Use `ref` to pass the variable itself.
 
-## One question that predicts a huge amount of C# behaviour {b}
+## Previously, and the bug {b}
 
-Here's a question worth asking about *any* type in C#: when you assign one variable to another, do you get an independent copy, or two names for the same thing? The answer splits every single type in the language into exactly two camps, and once you know which camp a type is in, you can predict how it behaves in dozens of situations you haven't even seen yet.
-
-| | Value types | Reference types |
-|---|---|---|
-| **Examples** | `int`, `long`, `double`, `decimal`, `bool`, `char`, `DateTime`, `Guid`, `TimeSpan`, any `struct`, any `enum`, tuples `(int, string)`, `Span<T>` | `class`, `string`, `object`, arrays (`int[]`), delegates, `record` (class), interfaces, `dynamic` |
-| **Variable holds** | The data itself | A reference (an address) to an object on the heap |
-| **Assignment copies** | The whole value | Only the reference; both variables now point at the same object |
-| **Default value** | All bits zero (`0`, `false`, `default(DateTime)`) | `null` |
-| **Can be null?** | No, unless wrapped as `Nullable<T>` (`int?`) | Yes (but see [nullable reference types](ch:modern-csharp)) |
-| **Inheritance** | Can't inherit or be inherited (can implement interfaces) | Single inheritance of classes |
-| **Allocated** | Inline: in the containing object, array, or stack frame | Always on the managed heap; freed by the GC |
-
-Let's actually watch the difference happen instead of just reading about it:
+Kettle's first feature is simple: a shopper can **save their basket for later** and keep shopping. You write it the obvious way.
 
 ```csharp
-// Run as-is: a complete program, not a fragment.
-struct PointS { public int X; }     // value type
-class  PointC { public int X; }     // reference type
+var basket = new Basket();
+basket.Add("Earl Grey");
 
-var s1 = new PointS { X = 1 };
-var s2 = s1;          // copies the 4 bytes that make up X — s2 is now independent of s1
-s2.X = 99;
-Console.WriteLine(s1.X); // 1   ← independent copy
+var savedForLater = basket;        // keep a copy... or so you think
+savedForLater.Add("Sencha");       // only the saved one should change
 
-var c1 = new PointC { X = 1 };
-var c2 = c1;          // copies only the 8-byte reference — c1 and c2 now point at the SAME object
-c2.X = 99;
-Console.WriteLine(c1.X); // 99  ← same object, seen through a second variable
+Console.WriteLine($"Basket: {basket.Count} items");        // 2  ← ?!
+Console.WriteLine($"Saved:  {savedForLater.Count} items"); // 2
+
+class Basket
+{
+    private readonly List<string> _items = new();
+    public void Add(string item) => _items.Add(item);
+    public int Count => _items.Count;
+}
 ```
 
-Both lines do `var x2 = x1; x2.X = 99;`. Both *look* identical. And yet `s1.X` stays `1` while `c1.X` becomes `99` — the exact same two lines of code, producing opposite outcomes, purely because `struct` and `class` disagree about what `=` actually copies. For `PointS`, `s2 = s1` copies the 4 bytes that make up `X`, so `s2` is a completely independent value from that point on. For `PointC`, `c2 = c1` copies only the *reference* — a pointer-sized address — so `c1` and `c2` end up pointing at the exact same object in memory, and changing one changes what you see through the other.
+Run it. The live basket has **two** items, though you only ever added Sencha to the saved one. Nothing is wrong with `Add`. The problem is the line `savedForLater = basket`. It didn't copy the basket at all.
 
-This exact mix-up is a real, common bug: someone treats a *class* like it's a cheap, independent value — hands what they think is a "copy" of an `OrderTotals` object to a background job — without realising the dashboard and the job are now both quietly editing the exact same object. Had `OrderTotals` been an immutable `struct` or `record`, that bug couldn't have happened: there'd have been no shared object left to edit by accident.
+## The lightbulb: copied or shared {b}
 
-:::analogy Value vs reference
-A value type is like **handing someone a photocopy** of a document: they can scribble all over it and your original stays untouched. A reference type is like **handing someone the address of a shared Google Doc**: you each hold your own copy of the *address*, but you're both looking at, and editing, the exact same document.
+Every type in C# falls into one of two families. The difference is **what `=` copies**.
+
+A **value type** variable holds the data itself. Assigning it copies the data, like a photocopy. A **reference type** variable doesn't hold the object. It holds the object's address, and assigning it copies only the address. That address has a name: a **reference**. The objects it points to live in a shared area of memory called the **heap**.
+
+`Basket` is a `class`, and every class is a reference type. So `savedForLater = basket` made a second arrow to the **same** basket. There was only ever one basket, with two names.
+
+Step through it. The top half uses a `struct`, the bottom half a `class`, and the code is identical:
+
+:::scene visuals/scenes/ts-copy-vs-share.svg | Same four lines, opposite results
+1. Both create a basket with `Items = 2`. The struct's data sits **inside** variable `a`. The class's data sits in an object on the heap, and `a` holds an **arrow** to it.
+2. `var b = a;` The struct is photocopied, so `b` is a whole new basket. For the class only the **arrow** is copied, and both arrows point at one object.
+3. `b.Items = 5;` The struct changes only `b`'s copy. The class follows `b`'s arrow and changes the one shared object.
+4. Read `a.Items`. The struct prints **2**, because `a` was never touched. The class prints **5**, because `a` and `b` were always the same basket. That's the Kettle bug.
 :::
 
-## "Value types live on the stack" — a useful lie {i}
+```csharp
+var s1 = new BasketS { Items = 2 };
+var s2 = s1;        // copies the data
+s2.Items = 5;
+Console.WriteLine(s1.Items);   // 2
 
-You will hear this sentence constantly: "value types live on the stack, reference types live on the heap." It's a reasonable first approximation, and it's **not actually true** — knowing the precise version, and *why* the simple version is wrong, is a genuinely good way to stand out in an interview.
+var c1 = new BasketC { Items = 2 };
+var c2 = c1;        // copies the reference
+c2.Items = 5;
+Console.WriteLine(c1.Items);   // 5
 
-First, what the stack and heap actually are *physically*, since the sentence above leans on both without saying where either one actually lives:
+struct BasketS { public int Items; }
+class  BasketC { public int Items; }
+```
 
-- **The stack** is a small, fixed-size block of memory the operating system reserves **per thread**, the moment that thread is created — on Windows the default is 1 MiB for the main thread (configurable per-thread, and other platforms pick their own default); it isn't shared with any other thread. Local variables and parameters live in **stack frames** inside it, one frame per currently-running method call, stacked on top of each other exactly like the name suggests. Calling a method pushes a new frame on top; returning pops it straight back off. Allocating on the stack is just moving one pointer up or down — there's no GC involved at all, which is why it's essentially free.
-- **The managed heap**, by contrast, is **one shared region per process**, not per thread — every thread in your program allocates objects into the same heap. It isn't fixed-size: the CLR asks the operating system for address space in large chunks as it needs more, and organises what it gets into GC **generations** ([Memory & GC](ch:memory-gc) covers exactly how). An object placed there outlives the method call that created it — it survives for as long as *anything, anywhere* still has a reference to it, which the GC tracks and eventually reclaims once nothing does.
+:::analogy Photocopy vs shared link
+A value type is a **photocopy**: scribble on yours and mine is untouched. A reference type is a **link to a shared Google Doc**: we each have our own copy of the *link*, but we're both editing the same document.
+:::
 
-![A stack frame for one method call sitting next to the shared heap: a local value lives inline in the frame, while two reference variables in that same frame point into heap objects that will outlive the frame once it's popped](visuals/stack-and-heap-residents.svg)
+Which family is each type in?
 
-That picture is the one fact worth memorising from this section: a stack frame and the references inside it vanish together, the instant the method returns — but whatever those references *pointed at* doesn't necessarily vanish with them. It only disappears once nothing, anywhere in the whole process, still points to it.
+| Value types (copied) | Reference types (shared) |
+|---|---|
+| `int`, `long`, `double`, `decimal`, `bool`, `char` | any `class` |
+| `DateTime`, `Guid`, `TimeSpan` | `string` |
+| any `struct`, any `enum`, tuples `(int, string)` | arrays (`int[]`), even arrays of ints |
+| `record struct` | `record` (a record class), delegates, interfaces |
+| Default value: all zeros (`0`, `false`) | Default value: `null` |
 
-Here's the precise rule, and it's genuinely simpler than the popular version once you see it stated correctly: **reference-type objects always live on the heap. Value types live wherever their container lives** — which might be a stack frame, but might just as easily be a slot inside a heap object.
+**The fix for Kettle** is to make a real copy on purpose:
 
 ```csharp
+var basket = new Basket();
+basket.Add("Earl Grey");
+
+var savedForLater = basket.Copy();   // a second, independent basket
+savedForLater.Add("Sencha");
+
+Console.WriteLine($"Basket: {basket.Count} items");        // 1 ✓
+Console.WriteLine($"Saved:  {savedForLater.Count} items"); // 2
+
+class Basket
+{
+    private readonly List<string> _items = new();
+    public void Add(string item) => _items.Add(item);
+    public int Count => _items.Count;
+    public Basket Copy()
+    {
+        var copy = new Basket();
+        copy._items.AddRange(_items);   // copy the contents, not the arrow
+        return copy;
+    }
+}
+```
+
+:::qa What is the difference between a value type and a reference type?
+A value-type variable contains its data, so assignment copies the data. A reference-type variable contains a reference to a heap object, so assignment copies the reference and both variables see the same object. Value types can't be null (without `Nullable<T>`) and can't be inherited from. Reference types are garbage-collected and support inheritance.
+:::
+
+## Where the data lives: stack and heap {i}
+
+You'll often hear "value types live on the stack, reference types live on the heap". It's half right, and interviewers like to check whether you know which half.
+
+First, the two places. The **stack** is a small block of memory each thread gets (about 1 MB by default on Windows). Every method call pushes a **frame** onto it for that call's local variables, and returning pops the frame off. That makes it fast and automatic, with no cleanup needed. The **heap** is one big shared area for the whole app. Objects there stay until nothing points to them, and then the **garbage collector** (GC) frees them.
+
+:::scene visuals/scenes/ts-stack-heap.svg | One method call, start to finish
+1. `PlaceOrder()` is called, so a new **frame** is pushed on the stack. Its local `int qty = 3` sits right inside the frame.
+2. `var order = new Order()` creates the object on the **heap**. The frame only holds the arrow.
+3. Look inside the object. `Quantity` is an `int`, a value type, and it lives **on the heap**, inside the `Order`. A value type lives wherever its container lives.
+4. The method is still running, so the frame and the arrow both exist.
+5. `PlaceOrder()` returns and the frame is popped. `qty` and the arrow vanish instantly. The object stays until the GC notices nothing points to it.
+:::
+
+So here's the precise rule:
+
+- **Reference-type objects always live on the heap.**
+- **Value types live wherever their container lives.** A local `int` lives in the stack frame. An `int` field of a class lives inside that object on the heap. The `int`s in an `int[]` live inside the array, on the heap.
+
+```csharp norun
 class Order
 {
-    public int Quantity;        // value type field: lives INSIDE the Order object, on the heap
-    public DateTime CreatedAt;  // same
+    public int Quantity;      // inside the Order object → on the heap
 }
 
 void M()
 {
-    int local = 5;              // local value type: in M's stack frame (or a CPU register)
-    var order = new Order();    // the reference 'order' is on the stack; the Order object is on the heap
-    int[] nums = { 1, 2, 3 };   // the array object (with its 3 ints inline) is on the heap
+    int local = 5;            // in M's stack frame
+    var order = new Order();  // arrow in the frame, object on the heap
+    int[] nums = { 1, 2, 3 }; // array object on the heap, ints inside it
 }
 ```
 
-Look at `Order.Quantity` closely: it's an `int`, a value type — and yet it's sitting on the heap, because an `Order` *object* is a reference type, and `Quantity` lives wherever its containing `Order` lives. The value type didn't move to the heap on its own; it's just physically embedded inside something that did. That's the whole rule, applied consistently: a value type's location is never decided by the value type itself, only by whatever's holding it.
+Two exceptions are worth knowing now. A local variable **captured by a lambda**, or used inside an **`async` method**, gets moved into a hidden heap object so it can outlive the frame. You'll see why in [Delegates](ch:delegates-events#closures-a-lambda-packs-a-backpack) and [async](ch:async-await).
 
-There are a couple of exceptions worth flagging now, even though they're explained properly in later chapters: locals **captured by a lambda** (a closure) and locals inside **`async` methods or iterators** stop being ordinary stack locals and become fields of a compiler-generated object on the heap instead. You'll see exactly why, and exactly what that generated object looks like, in [Delegates](ch:delegates-events) and [async/await](ch:async-await).
-
-:::why Why this distinction actually matters in backend code
-Every heap allocation adds work for the garbage collector — you saw the mechanics of that in [Memory & GC](ch:memory-gc). If a hot API endpoint allocates thousands of small temporary objects per request, you get frequent GCs and the latency spikes that come with them. Modelling small, short-lived data as structs (or processing it with `Span<T>`) sidesteps that, because a struct embedded in a stack frame never touches the GC at all. But the trade-off genuinely runs the other way too: copying a *big* struct around is slower than copying an 8-byte reference, because you're copying the whole thing every single time instead of just an address. There's no universally right answer here — pick whichever shape actually fits the size and lifetime of your data.
+:::why Why a backend developer cares
+Every heap object is work for the GC later. A busy endpoint that creates thousands of tiny objects per request makes the GC run more often, and every run adds latency. Small, short-lived data stored as structs never touches the GC. But a *big* struct is slow to copy around. Pick by size and lifetime.
 :::
 
-## When a struct actually earns its keep {i}
+:::qa Do value types always live on the stack?
+No. Reference-type objects always live on the heap, but value types live wherever their container lives. A local is in the stack frame, unless it's captured by a lambda or used in an async method or iterator. A field lives inside its class object on the heap. An array element lives inline inside the array on the heap. The real defining difference is copy semantics, not location.
+:::
 
-Given that trade-off, when should you actually reach for `struct` instead of the default, `class`? The [Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/choosing-between-class-and-struct) spell out four conditions, word for word, and the honest reading of their own wording is: **avoid** a struct *unless* all four hold.
+## When should Kettle use a struct? {i}
 
-1. It logically represents a single value (a point, money, a coordinate, an ID).
-2. Its instance size is **under 16 bytes**.
-3. It is **immutable**.
-4. It won't be boxed frequently (you'll meet boxing properly in the next section).
+Kettle needs a `Money` type, an amount plus a currency. Should it be a struct? Microsoft's design guidelines say to **avoid structs unless all four** of these are true:
 
-Fail even one of those, and a class is almost always the better choice.
+1. It represents **a single value** (money, a coordinate, an ID).
+2. It's **small**, under about 16 bytes.
+3. It's **immutable**: it never changes after creation.
+4. It won't be **boxed** often (see the next section).
+
+`Money` passes, so make it a `readonly record struct`:
 
 ```csharp
+var price = new Money(12.50m, "GBP");
+var total = price + new Money(3.00m, "GBP");
+Console.WriteLine(total);                        // Money { Amount = 15.50, Currency = GBP }
+Console.WriteLine(total == new Money(15.50m, "GBP"));  // True: compared by value
+
 public readonly record struct Money(decimal Amount, string Currency)
 {
     public static Money operator +(Money a, Money b) =>
         a.Currency == b.Currency ? new(a.Amount + b.Amount, a.Currency)
                                  : throw new InvalidOperationException("Currency mismatch");
 }
-
-public readonly struct OrderId(Guid value)   // strongly typed ID: can't mix up with CustomerId
-{
-    public Guid Value { get; } = value;
-    public override string ToString() => Value.ToString();
-}
 ```
 
-Two keywords in those examples are doing real work, so let's take each on its own.
+Two keywords are doing work there:
 
-`readonly struct` is a compiler-enforced promise: nothing about this type can ever change after it's constructed, not even internally. That promise lets the compiler skip something called a **defensive copy**. Here's what that means: normally, when you pass an ordinary (non-readonly) struct into a method using `in` — a modifier that means "you only get to read this, not change it" — the compiler still quietly makes a safety copy first, just in case that method secretly tries to mutate it anyway. A `readonly struct` removes the need for that safety net: there's nothing to protect against, since the type itself can't be mutated, so the compiler skips the copy and you get the performance benefit of `in` for free.
+- **`readonly`** promises nothing in it can ever change. The compiler enforces this, and it can skip making safety copies when you pass the struct around.
+- **`record`** generates value equality (two `Money`s with the same fields are `==`), a readable `ToString()`, and `with` for making a changed copy: `price with { Amount = 10m }`.
 
-`record struct` (C# 10) is a struct that also gets the same three conveniences a `record` class gets: **value-based equality** (two instances count as equal if their fields match — the ["Equality" section](#equality-three-different-questions-similar-syntax) later in this chapter covers exactly what that means and why it's not the default for plain structs), a readable default `ToString()`, and **`with`-expressions** — shorthand for "copy this value, but change just one field," e.g. `money with { Amount = 50 }` produces a new `Money` with the same `Currency` and a different `Amount`.
+A related trick is the **strongly typed ID**. Wrap a `Guid` in a tiny struct like `OrderId`, and passing an `OrderId` where a `CustomerId` is expected becomes a compile error instead of a production bug.
 
-`OrderId` above demonstrates a different, popular pattern worth naming on its own: a **strongly typed ID**. Instead of passing a bare `Guid` around for every kind of ID in your system, you wrap it in a tiny dedicated struct. The payoff: `GetOrder(customerId)` — accidentally passing the wrong kind of ID into the wrong method — becomes a **compile error** instead of a runtime bug, because `OrderId` and `CustomerId` are genuinely different types to the compiler, even though they're both "just a `Guid`" underneath.
-
-:::gotcha Mutable structs bite, and in a genuinely surprising way
-```csharp
-var points = new List<PointS> { new() { X = 1 } };
-points[0].X = 5;   // compile error CS1612: the indexer returns a COPY, modifying it is pointless
-```
-Here's why that's a compile error rather than silently doing nothing: `List<T>`'s indexer is a *method* (`get_Item`), and calling it returns a **copy** of the struct stored inside the list — so `points[0].X = 5` would modify a temporary copy that's immediately thrown away, achieving nothing. The compiler refuses to compile code that can't possibly do what it looks like it does. With a plain array, though, `array[0].X = 5` *does* work and modifies in place, because an array element is a real, addressable variable, not something returned from a method call. Same-looking syntax, two different outcomes, depending on whether you're indexing an array or a `List<T>` — which is exactly the kind of inconsistency that makes "keep structs immutable" such a firmly held rule rather than just a style preference.
-:::
-
-## Boxing: what happens when a value type has to pretend to be an object {i}
-
-Here's a scenario that comes up constantly: you have an `int`, but something — an older API, a non-generic collection, an interface — needs an `object`. An `int` is a value type; `object` is a reference type. How does a value with no heap presence at all get treated as something that's supposed to live on the heap?
-
-**Boxing** is the answer: the runtime allocates a small object on the heap, copies the value type's bits into it, and hands you a reference to that box — now indistinguishable, from the outside, from any other heap object. **Unboxing** is the reverse: given a boxed reference, copy the value back out into an ordinary value-type variable.
-
-```csharp
-int n = 42;
-object o = n;           // BOX: allocate an object on the heap, copy 42 into it
-int m = (int)o;         // UNBOX: type check + copy back out
-IComparable c = n;      // also boxes: interface reference to a value type
-```
-
-Notice that last line — assigning `n` to an `IComparable` variable boxes it too, for exactly the same reason: an interface reference is a reference-type concept, so a value type being treated as "any type implementing this interface" needs the same heap wrapper as being treated as a bare `object` does.
-
-The dangerous part is that boxing often happens **without you writing anything that looks like a box**:
-
-```csharp
-// Hidden boxing
-var list = new ArrayList();   // non-generic, stores object
-list.Add(1);                  // boxes
-string s = string.Format("{0}", 42);  // boxes the int (interpolated strings avoid this)
-```
-
-`ArrayList.Add` takes an `object` parameter — a holdover from before generics existed — so every `int` you add gets silently boxed on the way in. `string.Format("{0}", 42)` has the same issue: its `object[]` parameter list boxes `42` before the method body even runs. Neither line *looks* expensive, and that's exactly the trap: each one is a heap allocation, a copy, and — on the way back out — a type check, all paid for something that looks like a free, instant operation. Do this in a hot loop processing millions of items, and you've built a real, measurable performance bug out of code that compiles without a single warning — a classic real-world version of this is a hot path that logs thousands of order IDs a second through an old `ArrayList`-based audit buffer, each one boxed on the way in.
-
-The actual fix, worth remembering as a rule rather than a one-off trick: **generics avoid boxing structurally**. `List<int>` stores `int`s directly, inline, with no boxing at all — because the JIT generates a genuinely separate, specialised version of `List<T>` for `int` specifically, rather than forcing everything through a shared `object`-based implementation. You'll see exactly how and why that works in [Generics](ch:generics).
-
-:::gotcha A boxed value is frozen at the moment it was boxed
-```csharp
-PointS p = new() { X = 1 };
-object boxed = p;
-p.X = 2;
-Console.WriteLine(((PointS)boxed).X);  // 1: the box holds a copy taken at boxing time
-```
-This surprises people who expect `boxed` to somehow track `p`. It doesn't, because boxing is a **copy**, not a reference back to `p` — the exact same copy-semantics rule from the very start of this chapter, just applied one level deeper. Once `p` is boxed, the two are completely independent; changing one never touches the other.
-:::
-
-## Strings: a reference type dressed up to feel like a value {b}
-
-`string` is, by the table at the top of this chapter, a reference type — but it behaves so differently from a typical reference type (`PointC`, say) that it's worth its own section. Three deliberate design choices explain why:
-
-- It is **immutable**: every "modification" — `+`, `Replace`, `ToUpper`, anything — actually creates a brand-new string and leaves the original completely untouched.
-- `==` compares **contents**, not references, because the `==` operator is specifically overloaded for `string` to do that. (Most reference types don't do this — `PointC == PointC` above would compare references, not field values, unless you overload it yourself.)
-- Identical string **literals** are **interned**: the runtime recognises `"hello"` appearing twice in your source and has both refer to the exact same single object in memory, rather than allocating two copies of an identical string.
-
-```csharp
-string a = "hello";
-string b = a;
-b += " world";          // creates a NEW string; a is still "hello"
-
-// Concatenation in a loop creates n intermediate strings: O(n²) copying
-var s = "";
-foreach (var w in words) s += w;            // bad for large n
-
-var sb = new StringBuilder();
-foreach (var w in words) sb.Append(w);      // one growing buffer
-var result = sb.ToString();
-
-var joined = string.Join(", ", words);      // best when you have a collection
-```
-
-That second block is worth understanding precisely, not just avoiding by rote: every single `s += w` inside the loop throws away the previous string entirely and allocates a brand-new, slightly longer one — because strings are immutable, there's no other way to "append" to one. Over `n` iterations, you're not doing `n` units of work, you're doing roughly `1 + 2 + 3 + ... + n` units of copying, which is `O(n²)`. `StringBuilder` exists specifically to avoid this: it maintains one resizable internal buffer and only produces a final immutable `string` once, when you call `ToString()`.
-
-**Comparison** deserves its own rule, because getting it wrong is a genuine, recurring bug category: always be deliberate about which comparison rules you're invoking. For identifiers, keys, file paths and protocol values, use **ordinal** comparison — `string.Equals(a, b, StringComparison.OrdinalIgnoreCase)` — which compares raw character codes with no linguistic interpretation at all. Reserve culture-sensitive comparison (`CurrentCulture`) for text you're actually displaying to a user in their own language. The classic cautionary tale here is the "Turkish I problem": call `.ToUpper()` on `"i"` under Turkish culture settings and you get `"İ"`, not `"I"` — which has broken more than one case-insensitive lookup that assumed `ToUpper`/`ToLower` meant the same thing everywhere in the world.
-
-## Nullable value types: giving a value type a "no value" state {b}
-
-Value types, as the very first table in this chapter said, can't be `null` — an `int` always has *some* integer value, even if that value is just `0` by default. But plenty of real-world data genuinely has a "no value" state that isn't the same thing as zero: a discount that might not apply, a `ShippedAt` date for an order that hasn't shipped yet. `Nullable<T>`, almost always written as the shorthand `T?`, is how C# adds that missing state to a value type without turning it into a reference type.
-
-```csharp
-int? discount = null;
-if (discount.HasValue) Console.WriteLine(discount.Value);
-int effective = discount ?? 0;                 // null-coalescing
-int alsoEffective = discount.GetValueOrDefault();
-
-DateTime? shippedAt = order.ShippedAt;         // database NULL ↔ C# null
-```
-
-Here's the detail that makes `Nullable<T>` click: it isn't magic, it's just an ordinary struct, roughly `{ bool hasValue; T value; }` — a flag plus the underlying value, packaged together. That's why `int?` is still, underneath, a value type with all the copy semantics you'd expect, not some special case the runtime handles differently. One genuinely subtle consequence: boxing a *null* `int?` produces an actual `null` reference, not a box containing "no value" — while boxing a *non-null* `int?` boxes just the underlying `int`, discarding the wrapper entirely. The box, once created, has no memory that it ever came from a `Nullable<T>` at all.
-
-Don't confuse this with **nullable reference types** (`string?`), which look almost identical in syntax but are a completely different mechanism — compile-time-only annotations that add nothing whatsoever at runtime. [Modern C#](ch:modern-csharp) covers the distinction in full.
-
-## Enums: named integers with a sharp edge {b}
-
-An `enum` is a named set of integer constants — a value type, backed by `int` unless you say otherwise.
-
-```csharp
-public enum OrderStatus { Draft = 0, Placed = 1, Paid = 2, Shipped = 3, Cancelled = 9 }
-
-[Flags]
-public enum Permissions { None = 0, Read = 1, Write = 2, Delete = 4, Admin = Read | Write | Delete }
-
-var p = Permissions.Read | Permissions.Write;
-bool canWrite = p.HasFlag(Permissions.Write);       // or (p & Permissions.Write) != 0
-```
-
-Notice `Permissions` assigns `1, 2, 4` — powers of two, not `1, 2, 3`. That's deliberate: each value occupies a distinct bit, so they can be combined with `|` (bitwise OR) without any of them colliding, and checked individually with `HasFlag` or a raw bitwise `&`. The `[Flags]` attribute signals this intent to tooling (and to `ToString()`, which then prints `"Read, Write"` instead of a meaningless number) — but doesn't change the underlying mechanics at all; it's purely a hint.
-
-:::gotcha Enums are not validated — a value outside the named set compiles and runs just fine
-`(OrderStatus)42` compiles, runs, and produces a perfectly valid-looking `OrderStatus` value that happens to correspond to no named member at all. This isn't a hypothetical edge case: values coming from JSON, from a database column, from a different version of your own code, can easily land outside the set you defined. Check with `Enum.IsDefined`, or a `switch` with a `default` arm that handles the unexpected case explicitly, anywhere an enum value arrives from outside your own code. One more easily-missed trap: if you ever persist enum values as their underlying numbers, give every member you store an **explicit** number. Without one, the compiler assigns them in declaration order starting from 0 — and simply reordering your `enum` declaration, with no other change at all, silently changes what every previously stored number now means.
-:::
-
-Given that fragility, prefer serialising enums as **strings** in public APIs (`JsonStringEnumConverter`), not as their numeric values — a new member added later doesn't break clients reading the string name, the way it could break clients hard-coded against specific numbers.
-
-## Equality: three different questions, similar syntax {i}
-
-"Are these two equal?" sounds like one question. In C#, depending on exactly how you ask it, it's actually at least three, and they don't always agree with each other:
-
-| | Default for classes | Default for structs | Records |
-|---|---|---|---|
-| `==` | Reference equality (unless overloaded, e.g. `string`) | Not defined unless you overload it | Value equality |
-| `Equals(object)` | Reference equality | Field-by-field value equality (via reflection, slow) | Value equality (generated, fast) |
-| `ReferenceEquals` | Same object? | Always false (boxed copies) | Same object? |
-
-The struct row for `Equals` is worth a second look: it works, but it's genuinely slow, because the default implementation uses **reflection** to compare every field one by one — exactly the kind of runtime cost [How code runs](ch:how-code-runs#what-build-time-actually-hands-you) warned reflection carries. If you're going to compare structs for equality often, overriding `Equals` yourself (or using `record struct`, which generates a fast version for you) is a real, measurable win, not just tidiness.
-
-If you override `Equals` yourself, there's a rule you **must** follow or you'll get genuinely confusing bugs much later: you must override `GetHashCode` too, consistently — equal objects have to produce equal hash codes, or `Dictionary`/`HashSet` will silently fail to find items you know are in them. Implementing `IEquatable<T>` alongside both gives you a fast, non-boxing `Equals(T)` overload on top.
-
-```csharp
-public sealed class Sku : IEquatable<Sku>
-{
-    public string Code { get; }
-    public Sku(string code) => Code = code.ToUpperInvariant();
-
-    public bool Equals(Sku? other) => other is not null && Code == other.Code;
-    public override bool Equals(object? obj) => Equals(obj as Sku);
-    public override int GetHashCode() => Code.GetHashCode();
-    public static bool operator ==(Sku? a, Sku? b) => Equals(a, b);
-    public static bool operator !=(Sku? a, Sku? b) => !Equals(a, b);
-}
-// Or just: public sealed record Sku(string Code);  ← the compiler writes all of the above
-```
-
-That final comment is worth taking seriously as practical advice, not just trivia: every single member in that `Sku` class — `Equals`, `GetHashCode`, both operators — is exactly what the compiler generates automatically for a `record`. Unless you have a real reason to write a class by hand here, a one-line `record` gets you the same correctness with none of the five-method ceremony above it.
-
-:::gotcha A mutable hash key is a silent, permanent bug
-If an object's hash code depends on a field that changes *after* you've already added it to a `HashSet` or used it as a `Dictionary` key, you will never find it again through that collection — not an exception, not a warning, just a lookup that quietly fails forever, because the collection stored it under the hash code it had *then*, and is now searching under the hash code it has *now*. Keys must be immutable, full stop.
-:::
-
-## Passing parameters: what "by value" actually means for a reference {i}
-
-**Everything in C# is passed by value, with no exceptions** — including reference types, which is the part that confuses people, because it genuinely sounds like it should mean the opposite. Here's the precise mechanics: for a reference type, the thing being passed "by value" is the *reference itself* — so the method you're calling gets its own copy of that reference, pointing at the same object, which means it **can** mutate the object through that reference, but it **cannot** make the caller's own variable point somewhere else.
-
-```csharp
-void Rename(Customer c)      { c.Name = "New"; }        // caller sees this (same object)
-void Replace(Customer c)     { c = new Customer(); }     // caller does NOT see this
-void ReplaceRef(ref Customer c) { c = new Customer(); }  // caller DOES see this
-```
-
-Those three methods look almost identical, and produce three genuinely different outcomes. `Rename` mutates the object the reference points at — both the caller and the method are looking at the same `Customer`, so the caller sees the change. `Replace` reassigns the *local copy* of the reference to point at a brand-new object entirely — but that local copy is the method's own, private variable; the caller's original reference never moves, and still points at the original `Customer`. `ReplaceRef` adds the one modifier that changes this: `ref` passes the caller's actual variable, not a copy of it, so reassigning `c` inside the method genuinely does reassign the caller's variable too.
-
-| Modifier | Meaning | Caller must | Typical use |
-|---|---|---|---|
-| *(none)* | Copy of value / copy of reference | — | Default |
-| `ref` | Pass the variable itself; method can read and write | Initialise first, write `ref` at call site | Swapping, large structs you mutate |
-| `out` | Method **must** assign it; caller needn't initialise | Write `out` | `TryParse`, `TryGetValue` patterns |
-| `in` | Read-only reference; avoids copying large structs | (optional `in`) | Performance with big readonly structs |
-| `ref readonly` (C# 12) | Like `in`, but the call site must pass a reference | | API clarity |
-
-`out` is the one you've almost certainly already used without necessarily naming it:
-
-```csharp
-if (int.TryParse(input, out var qty) && dict.TryGetValue(key, out var value)) { /* ... */ }
-```
-
-The contract `out` makes is the mirror image of a normal parameter: instead of the caller promising to provide a value, the *method* promises to assign one before it returns — which is exactly why `TryParse` and `TryGetValue` can return a clean `bool` for success/failure while still handing back the actual result through the same call, with no uninitialised-variable risk on the caller's side.
-
-## Type conversions and checks {b}
-
-```csharp
-object o = GetSomething();
-
-// Pattern matching (preferred)
-if (o is Order order && order.Total > 100) { /* order is typed */ }
-
-// as: returns null on failure (reference/nullable types only)
-var maybe = o as Order;
-
-// Cast: throws InvalidCastException on failure
-var sure = (Order)o;
-
-// Numeric conversions
-int i = 300;
-byte b = (byte)i;                // 44: silently wraps (unchecked)
-byte c = checked((byte)i);       // throws OverflowException
-long big = i;                    // implicit widening: always safe
-decimal price = decimal.Parse("19.99", CultureInfo.InvariantCulture);
-```
-
-The first three options above aren't interchangeable — they're three different answers to "what should happen if this doesn't work?" Pattern matching (`is`) checks and gives you a safely typed variable in one step, failing gracefully into the `else` branch. `as` returns `null` on failure, which only makes sense for reference and nullable types (there's no "null" a plain cast could fall back to for a non-nullable value type). A plain cast `(Order)o` is the least forgiving: it throws `InvalidCastException` immediately if the object genuinely isn't an `Order`.
-
-The numeric half of that block hides a real footgun: **implicit conversions** (`int` → `long`) are always safe, because the destination type can represent every possible value of the source — nothing is ever lost. **Explicit casts** carry no such guarantee, and `(byte)300` is the proof: 300 doesn't fit in a `byte`'s 0–255 range, so it silently wraps around to 44, with no warning, no exception, just a wrong number that looks like a right one. That silent wraparound is also the *default* behaviour for everyday integer arithmetic in C#, not just explicit casts — `int.MaxValue + 1` overflows back to a huge negative number without a peep, unless you opt into `<CheckForOverflowUnderflow>` project-wide or wrap specific risky arithmetic in a `checked` block.
-
-One more rule worth having memorised, not just known: use **`decimal`** for money, never `double`. `decimal` is base-10 internally, so it represents a value like `0.1` *exactly*. `double` is binary floating point, and — this is the famous, often-demonstrated gotcha — `0.1 + 0.2 != 0.3` under binary floating point, because neither `0.1` nor `0.2` can be represented exactly in base 2 in the first place. For currency, that's not a rounding curiosity, it's a correctness bug waiting to happen.
-
-## var, dynamic and object: three ways to avoid naming a type, for three different reasons {b}
-
-| | What it is | Type checked |
-|---|---|---|
-| `var` | Compiler infers the static type from the right-hand side. **Still strongly typed.** | Compile time |
-| `object` | The base of all types; you need casts to use it | Compile time (as `object`) |
-| `dynamic` | Bypasses compile-time checks; resolved at runtime by the DLR | Runtime (errors become exceptions) |
-
-It's worth being precise about `var`, because its name invites a misconception: `var` is **purely syntax**, resolved entirely at compile time, with zero runtime effect. `var x = 5;` doesn't produce some loosely typed variable — it compiles to exactly, literally, `int x = 5;`. The compiler already knows the right-hand side's type perfectly well; `var` just saves you typing it out a second time on the left.
-
-`dynamic` is the genuine outlier in that table: it defers all member resolution — does this object even *have* a `.Foo()` method? — all the way to runtime, via the DLR (Dynamic Language Runtime). That trades away IntelliSense, compile-time error checking, and performance, all at once, in exchange for flexibility you'll rarely actually need in backend code. Reach for it almost never: COM interop and a handful of dynamic-JSON scenarios are about the only legitimate uses you'll run into.
-
-## Memory layout and size {a}
-
-- Every heap object carries a **header** before its own fields even begin — an 8-byte sync block index plus an 8-byte method table pointer on a 64-bit process — so even a completely empty object costs roughly **24 bytes** before a single field of your own is counted. This specific number is a CLR implementation detail rather than something the C# language spec promises you, documented in community/internals references like *Pro .NET Memory Management* (Konrad Kokosa) and *CLR via C#* rather than on Microsoft Learn itself — but it's stable and well-known enough to rely on when budgeting memory. That overhead is invisible in isolation, but allocate thousands of tiny objects per request and it adds up into real, measurable memory pressure.
-- The runtime is free to reorder a class's fields in memory for better packing; structs, by contrast, default to **sequential layout** — the order you declared them in — which matters specifically for native interop, and can be controlled explicitly with `[StructLayout]`.
-- `sizeof(int)` is 4 bytes, `long`/`double` are 8, `decimal` is 16, `Guid` is 16, `DateTime` is 8, and a reference is 8 bytes on a 64-bit process.
-- `Unsafe.SizeOf<T>()` gives you the exact size of any type at runtime; **ObjectLayoutInspector** and BenchmarkDotNet's `MemoryDiagnoser` are the practical tools for actually measuring this in your own code rather than reasoning about it in the abstract.
-
-:::qa What is the difference between a value type and a reference type?
-A value type variable contains its data, and assignment copies the data. A reference type variable contains a reference to a heap object, and assignment copies the reference so both variables see the same object. Value types can't be null (without `Nullable<T>`) and can't be inherited; reference types are garbage-collected objects that support inheritance.
-:::
-
-:::qa Do value types always live on the stack?
-No. Reference-type objects always live on the heap, but value types live wherever their container lives: locals on the stack (unless captured by a lambda or used in an async method or iterator), fields inside a class object on the heap, elements inline inside an array on the heap. The defining difference is copy semantics, not location.
+:::gotcha Mutable structs bite
+`list[0].X = 5` on a `List<SomeStruct>` is a **compile error**. The list's indexer is a method that returns a *copy* of the struct, so changing it would change a temporary copy that's thrown away at once. On a plain array the same line works, because an array element is a real variable. Same syntax, different behaviour. That's why the rule is: **keep structs immutable**.
 :::
 
 :::qa When would you use a struct instead of a class?
-For a small (≈16 bytes or less), immutable value that logically represents a single value and isn't boxed often: Money, coordinates, strongly typed IDs. Make it a `readonly struct` or `readonly record struct`. Use classes for anything with identity, behaviour, inheritance or larger size.
+For a small (about 16 bytes or less), immutable value that represents a single thing and isn't boxed often, like Money, coordinates or strongly typed IDs. Declare it `readonly struct` or `readonly record struct`. Use a class for anything with identity, behaviour, inheritance or a larger size.
 :::
 
+## Boxing: a value type in a cardboard box {i}
+
+Sometimes a value type has to be treated as an `object`, for example when it's passed to an old API that takes `object`. But `object` is a reference type, and a reference has to point at something on the heap. So the runtime makes something.
+
+That step has a name: **boxing**. The runtime allocates a small heap object (the "box"), copies the value into it, and hands back a reference. **Unboxing** is the reverse: check the type, then copy the value back out.
+
+:::scene visuals/scenes/ts-boxing.svg | What `object o = n` really does
+1. `int n = 42;` A plain value in a local. No heap involved.
+2. `object o = n;` The runtime **allocates a box on the heap** and copies 42 into it. `o` points at the box.
+3. `n = 7;` The box still says 42. It holds a *copy* made at boxing time, not a link back to `n`.
+4. `int m = (int)o;` **Unboxing** checks the box really holds an `int`, then copies 42 out into `m`.
+:::
+
+The danger is that boxing often happens in code that doesn't look like it:
+
+```csharp
+using System.Collections;
+
+var list = new ArrayList();    // old, non-generic: stores object
+list.Add(1);                   // boxes
+IComparable c = 5;             // boxes: an interface is a reference type
+string s = string.Format("{0}", 42);   // boxes 42 into an object[]
+
+Console.WriteLine($"{list[0]} {c} {s}");
+```
+
+None of those lines look expensive, but each one is a hidden heap allocation. In a loop over a million orders, that's a million objects for the GC to clean up.
+
+**The fix is generics.** `List<int>` stores `int`s directly, with no boxes, because .NET creates a dedicated version of `List<T>` just for `int`. [Generics](ch:generics) explains how.
+
 :::qa What is boxing and how do you avoid it?
-Converting a value type to `object` or an interface, which allocates a heap object and copies the value; unboxing copies it back out with a type check. Avoid it with generics (`List<int>` instead of `ArrayList`), generic constraints instead of interface parameters, `IEquatable<T>`, and interpolated strings instead of `string.Format` with value arguments.
+Boxing converts a value type to `object` or an interface. It allocates a heap object and copies the value into it. Unboxing copies it back out after a type check. Avoid it with generics (`List<int>` instead of `ArrayList`), generic constraints instead of interface-typed parameters, `IEquatable<T>`, and string interpolation instead of `string.Format` with value arguments.
+:::
+
+## string: a reference type that acts like a value {b}
+
+`string` is a class, so it's a reference type. But it was built to *feel* like a value:
+
+- **It's immutable.** `+`, `Replace` and `ToUpper` never change a string. They return a new one.
+- **`==` compares the text**, not the reference.
+- **Identical literals are shared** ("interned"): two `"hello"`s in your code are one object.
+
+Immutability has a cost. Building a string with `+=` in a loop creates a new, longer string every time. That's about n²/2 characters copied in total. Use `StringBuilder` (one growing buffer) or `string.Join`:
+
+```csharp
+using System.Text;
+
+string[] teas = ["Earl Grey", "Sencha", "Rooibos"];
+
+var sb = new StringBuilder();
+foreach (var t in teas) sb.Append(t).Append("; ");
+Console.WriteLine(sb.ToString());
+
+Console.WriteLine(string.Join(", ", teas));   // simplest when you have a collection
+
+// Comparing IDs, keys and codes: use ordinal (raw characters, no culture rules)
+Console.WriteLine(string.Equals("SKU-1", "sku-1", StringComparison.OrdinalIgnoreCase)); // True
+```
+
+:::gotcha Culture-sensitive comparisons
+`"i".ToUpper()` gives `"İ"` (dotted capital I) under Turkish culture settings. Case-insensitive lookups that rely on `ToUpper` or `ToLower` break there. For keys, codes and file paths, always use `StringComparison.Ordinal` or `OrdinalIgnoreCase`.
 :::
 
 :::qa Why is string immutable, and what are the consequences?
-Immutability makes strings thread-safe, safe to use as dictionary keys, and allows interning. The consequence is that every modification allocates a new string, so build strings in loops with StringBuilder or string.Join/Concat.
+Immutability makes strings thread-safe and safe to use as dictionary keys, and it allows identical literals to be shared (interning). The consequence is that every "change" allocates a new string, so build strings in loops with `StringBuilder`, `string.Join` or `string.Concat`.
+:::
+
+## Money must be decimal, and casts can lie {b}
+
+Kettle's first invoice says a £0.10 tea plus a £0.20 biscuit costs £0.30000000000000004. That's `double` at work.
+
+`double` stores numbers in **binary**, and 0.1 can't be written exactly in binary, just as ⅓ can't be written exactly in decimal (0.333…). `decimal` stores numbers in **base 10**, so 0.1 is exact. **Money is always `decimal`.**
+
+```csharp
+Console.WriteLine(0.1 + 0.2);      // 0.30000000000000004  (double)
+Console.WriteLine(0.1m + 0.2m);    // 0.3                  (decimal, note the m)
+
+int big = 300;
+byte b = (byte)big;                 // 44: doesn't fit in 0..255, so it silently wraps
+Console.WriteLine(b);
+try { byte c = checked((byte)big); }
+catch (OverflowException) { Console.WriteLine("checked: overflow caught"); }
+
+object o = "not an order";
+if (o is string text) Console.WriteLine($"pattern match gave a typed variable: {text}");
+var maybeUri = o as Uri;                // as: null when it isn't that type
+Console.WriteLine(maybeUri is null);    // True
+```
+
+The same idea in a few rules:
+
+- **Widening is safe and implicit** (`int` → `long`). Nothing can be lost.
+- **Narrowing needs a cast and can silently wrap** (`(byte)300` is 44). Plain arithmetic wraps too: `int.MaxValue + 1` is a large negative number. Wrap risky maths in `checked` to get an exception instead.
+- To test a type: `is` (check and get a typed variable) is the best choice. `as` returns `null` on failure. A cast `(Order)o` throws on failure.
+
+:::qa Why use decimal instead of double for money?
+`decimal` is base 10 and represents values like 0.1 exactly, with 28–29 significant digits. `double` is binary floating point, so many decimal fractions can't be represented exactly and rounding errors build up.
+:::
+
+## "Not set yet": nullable value types {b}
+
+An order has a `ShippedAt` date, but only once it ships. A `DateTime` can't be `null`, because a value type always holds *some* value. Using `DateTime.MinValue` to mean "not yet" is a lie that leaks into reports.
+
+Add `?`: **`DateTime?`** is a nullable value type, short for `Nullable<DateTime>`. It's just a small struct holding a flag (`HasValue`) plus the value.
+
+```csharp
+DateTime? shippedAt = null;
+Console.WriteLine(shippedAt.HasValue);               // False
+Console.WriteLine(shippedAt?.ToString("d") ?? "not shipped yet");
+
+int? discount = null;
+int effective = discount ?? 0;                       // ?? = "use this if null"
+Console.WriteLine(effective);
+```
+
+Don't confuse it with `string?`. Strings can already be null, and `string?` is a compile-time *warning* system covered in [Modern C#](ch:modern-csharp#nullable-reference-types-the-compiler-tracks-maybe-null).
+
+## Enums: named numbers with a sharp edge {b}
+
+An `enum` gives names to integers: `OrderStatus.Paid` is really just `2`.
+
+```csharp
+var s = OrderStatus.Paid;
+Console.WriteLine($"{s} = {(int)s}");               // Paid = 2
+
+var bogus = (OrderStatus)42;                        // compiles and runs!
+Console.WriteLine($"{bogus}, defined? {Enum.IsDefined(bogus)}");  // 42, defined? False
+
+var p = Permissions.Read | Permissions.Write;       // [Flags]: combine bits
+Console.WriteLine($"{p}, can write: {p.HasFlag(Permissions.Write)}");
+
+enum OrderStatus { Draft = 0, Placed = 1, Paid = 2, Shipped = 3, Cancelled = 9 }
+
+[Flags] enum Permissions { None = 0, Read = 1, Write = 2, Delete = 4 }
+```
+
+:::gotcha Enums aren't checked
+`(OrderStatus)42` is perfectly legal, so a bad value from JSON or the database slips straight in. Check outside input with `Enum.IsDefined` or a `switch` with a `default` arm. If you store enums as numbers, give every member an **explicit** number, or reordering the declaration silently changes the meaning of stored data. In public APIs, prefer sending enums as strings.
+:::
+
+## Equality: "the same" means three things {i}
+
+Two `Money` values of £5 are the same money. Two `Customer` objects that happen to share a name are probably *not* the same customer. C# lets you ask both questions, and each kind of type has a different default:
+
+| | class | struct | record |
+|---|---|---|---|
+| `==` | same object? (unless overloaded, like `string`) | not available unless you define it | same values? |
+| `Equals` | same object? | same values? (slow: uses reflection) | same values? (fast, generated) |
+| `ReferenceEquals` | same object? | always false | same object? |
+
+If you override `Equals` yourself, you **must** also override `GetHashCode` so that equal objects give equal hash codes. `Dictionary` and `HashSet` look items up by hash code first. If two "equal" objects have different hash codes, the lookup quietly fails.
+
+```csharp
+var a = new Sku("tea-01");
+var b = new Sku("TEA-01");
+Console.WriteLine(a == b);                          // True: same values
+
+var set = new HashSet<Sku> { a };
+Console.WriteLine(set.Contains(b));                 // True: hash codes agree
+
+// A record writes Equals, GetHashCode, == and != for you
+public sealed record Sku
+{
+    public string Code { get; }
+    public Sku(string code) => Code = code.ToUpperInvariant();
+}
+```
+
+:::gotcha A key that changes is lost forever
+If a field that feeds `GetHashCode` changes *after* the object goes into a `HashSet` or becomes a `Dictionary` key, you'll never find it again. The set filed it under the old hash code. You get no exception, just missing data. **Keys must be immutable.**
 :::
 
 :::qa If you override Equals, what else must you do?
-Override GetHashCode consistently (equal objects ⇒ equal hash codes), ideally implement `IEquatable<T>`, and overload `==`/`!=` so they agree. Or use a record, which generates all of this.
+Override `GetHashCode` consistently, so equal objects give equal hash codes. Ideally also implement `IEquatable<T>`, and overload `==` and `!=` so they agree. Or use a record, which generates all of this.
 :::
 
+## Passing to methods: you always pass a copy {i}
+
+Here's the rule that untangles every parameter question: **C# passes every argument by value, which means as a copy.** For a class, what gets copied is the *reference*. So the method gets its own arrow to *your* object.
+
+:::scene visuals/scenes/ts-passing.svg | What does a method get?
+1. The caller's variable `basket` points at a basket on the heap with two teas in it.
+2. Call `Empty(basket)`. The method's parameter `b` is a **copy of the arrow**. It points at the same basket.
+3. `b.Clear();` follows the arrow and empties the shared basket. The caller **sees** this, because it's the same object.
+4. `b = new Basket();` moves only the method's own arrow. The caller's `basket` still points at the original. Reassigning a parameter never reaches the caller.
+5. Unless you write **`ref`**. Then there's no copy: `b` *is* the caller's variable, and reassigning it moves the caller's arrow too.
+:::
+
+```csharp
+var c = new Customer { Name = "Ada" };
+Rename(c);      Console.WriteLine(c.Name);   // "Renamed": same object
+Replace(c);     Console.WriteLine(c.Name);   // still "Renamed": only the copy moved
+ReplaceRef(ref c); Console.WriteLine(c.Name); // "Brand new": ref moved the caller's variable
+
+static void Rename(Customer x)          => x.Name = "Renamed";
+static void Replace(Customer x)         => x = new Customer { Name = "Lost" };
+static void ReplaceRef(ref Customer x)  => x = new Customer { Name = "Brand new" };
+
+class Customer { public string Name = ""; }
+```
+
+The modifiers:
+
+| Modifier | Meaning | Typical use |
+|---|---|---|
+| *(none)* | A copy of the value, or a copy of the reference | Almost always |
+| `ref` | The variable itself: read and write | Swapping, mutating a big struct |
+| `out` | The method **must** set it, and the caller needn't | `int.TryParse(s, out var n)` |
+| `in` | A read-only reference, so a big struct isn't copied | Performance with big readonly structs |
+
 :::qa Are reference types passed by reference in C#?
-No. Everything is passed by value by default. For a reference type, the value passed is the reference, so the method can modify the object but reassigning the parameter doesn't affect the caller. Use `ref` to pass the variable itself.
+No. Everything is passed by value by default. For a reference type the value passed is the reference, so the method can change the object, but reassigning the parameter doesn't affect the caller. Use `ref` to pass the variable itself.
 :::
 
 :::qa ref vs out vs in?
-`ref`: the caller passes an initialised variable, and the method can read and write it. `out`: the method must assign it, and the caller needn't initialise it (TryParse pattern). `in`: a read-only reference, used to avoid copying large structs.
+`ref`: the caller passes an initialised variable, and the method can read and write it. `out`: the method must assign it, and the caller needn't initialise it (the `TryParse` pattern). `in`: a read-only reference, used to avoid copying large structs.
 :::
 
-:::qa Why use decimal instead of double for money?
-`decimal` is a base-10 type that represents values like 0.1 exactly, with 28–29 significant digits. `double` is binary floating point, so many decimal fractions can't be represented exactly and rounding errors accumulate.
-:::
+## var, object and dynamic {b}
+
+Three ways to avoid writing a type name. They're not the same thing:
+
+| | What it means | Checked when |
+|---|---|---|
+| `var` | "Compiler, you work out the type." `var x = 5;` compiles to exactly `int x = 5;` | Compile time: still fully typed |
+| `object` | The base of every type. You need casts to do anything useful. | Compile time |
+| `dynamic` | "Don't check anything until it runs." Errors become runtime exceptions. | Runtime |
+
+Use `var` freely. Almost never use `dynamic` in backend code.
 
 :::qa What is the difference between var and dynamic?
-`var` is compile-time type inference: the variable is still statically typed. `dynamic` defers all member resolution to runtime, so errors appear as runtime exceptions and you lose IntelliSense and performance.
+`var` is compile-time type inference: the variable is still statically typed. `dynamic` defers all member lookups to runtime, so mistakes show up as runtime exceptions and you lose IntelliSense and speed.
 :::
+
+## Memory layout and size {a}
+
+- Every heap object carries a hidden **16-byte header** on 64-bit (a sync-block index plus a pointer to its type's method table). So even an empty object costs about **24 bytes**. This is a CLR implementation detail, documented in *Pro .NET Memory Management* and *CLR via C#*.
+- Sizes: `int` 4 bytes, `long`/`double`/`DateTime` 8, `decimal`/`Guid` 16, a reference 8 (on 64-bit).
+- The runtime may reorder a class's fields to pack them tightly. Structs keep **declaration order** by default, which matters for native interop (`[StructLayout]`).
+- Measure rather than guess: `Unsafe.SizeOf<T>()`, ObjectLayoutInspector, and BenchmarkDotNet's `MemoryDiagnoser`.
+
+## Next episode {b}
+
+Kettle's types now copy and share the way you intend. Then an order shows up in the database with **a quantity of −3**, and another is marked *Shipped* though it was never paid. Every field is public, so any code anywhere can set anything. Time to make objects **guard their own rules**: [Episode 2 · Classes →](ch:oop)
 
 ## Further reading
 
-- [Value types (C# reference)](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/value-types) — confirms copy semantics; deliberately doesn't commit to "stack vs heap" wording, for the reason this chapter explains.
-- [Choosing between class and struct](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/choosing-between-class-and-struct) — the exact four-condition struct rule quoted above, and the "value types are allocated either on the stack or inline in containing types" sentence this chapter's stack/heap section is built on.
+- [Value types (C# reference)](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/value-types). Note that it describes copy semantics and deliberately avoids saying "stack".
+- [Choosing between class and struct](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/choosing-between-class-and-struct), the four-condition rule.
 - [Boxing and unboxing](https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/types/boxing-and-unboxing)
-- [Nullable value types — boxing and unboxing rules](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/nullable-value-types#boxing-and-unboxing) — the exact source for "boxing a null `T?` returns the null reference; boxing a non-null one boxes just the underlying value."
-- Book: *C# in Depth* by Jon Skeet. Book: *CLR via C#* by Jeffrey Richter, chapter on type fundamentals. Book: *Pro .NET Memory Management* by Konrad Kokosa, for the object-header/memory-layout numbers in the Advanced section above.
+- Books: *C# in Depth* (Jon Skeet), *CLR via C#* (Jeffrey Richter), *Pro .NET Memory Management* (Konrad Kokosa).
 
 ## Verify this chapter
 
-Exact memory layout (object header size, struct field packing) needs a profiler like ObjectLayoutInspector, not plain code — see [Further reading](#further-reading) for that. Everything else in this chapter is observable behaviour, so the program below asserts it directly. Run with `dotnet run` (plain console app, .NET 8/9, no extra packages).
+Every claim above as one program. Press **Run**. Each line should print `OK`.
 
 ```csharp
-static void Rename(Customer c) => c.Name = "Renamed";
-static void Replace(Customer c) => c = new Customer { Name = "Should not be visible" };
-static void ReplaceRef(ref Customer c) => c = new Customer { Name = "Brand New" };
+// struct assignment copies; class assignment shares
+var s1 = new PointS { X = 1 }; var s2 = s1; s2.X = 99;
+Check(s1.X == 1, "struct assignment copies the data");
+var c1 = new PointC { X = 1 }; var c2 = c1; c2.X = 99;
+Check(c1.X == 99, "class assignment copies only the reference");
 
-// Claim: assigning a struct copies the data; assigning a class copies only the reference.
-var s1 = new PointS { X = 1 };
-var s2 = s1;
-s2.X = 99;
-if (s1.X != 1) throw new Exception("FAIL: struct assignment should have copied, not shared, the data");
-Console.WriteLine("OK: struct assignment copies the value (s1.X stayed 1)");
+// a box is a frozen copy
+PointS p = new() { X = 1 }; object boxed = p; p.X = 2;
+Check(((PointS)boxed).X == 1, "a boxed value is a copy taken at boxing time");
 
-var c1 = new PointC { X = 1 };
-var c2 = c1;
-c2.X = 99;
-if (c1.X != 99) throw new Exception("FAIL: class assignment should share the same object");
-Console.WriteLine("OK: class assignment copies the reference, so both see the change (c1.X became 99)");
+// boxing a null int? gives a real null
+int? none = null; object? boxedNull = none;
+Check(boxedNull is null, "boxing a null int? produces null");
 
-// Claim: a boxed value is frozen at the moment it was boxed — later changes to the original don't show through.
-PointS p = new() { X = 1 };
-object boxed = p;
-p.X = 2;
-if (((PointS)boxed).X != 1) throw new Exception("FAIL: the box should hold a copy taken at boxing time");
-Console.WriteLine("OK: a boxed value type is an independent copy, frozen at boxing time");
+// enums aren't validated
+Check(!Enum.IsDefined((Status)42), "(Status)42 compiles but isn't a defined member");
 
-// Claim: enums are not validated — a value outside the named set compiles and runs.
-var bogus = (OrderStatus)42;
-if (Enum.IsDefined(bogus)) throw new Exception("FAIL: 42 should not be a defined OrderStatus member");
-Console.WriteLine($"OK: (OrderStatus)42 = {bogus} compiles and runs, but Enum.IsDefined correctly flags it as undefined");
+// decimal is exact for money, double isn't
+Check(0.1m + 0.2m == 0.3m && 0.1 + 0.2 != 0.3, "decimal is exact, double isn't");
 
-// Claim: decimal represents 0.1 + 0.2 exactly as 0.3; double does not.
-decimal d = 0.1m + 0.2m;
-double f = 0.1 + 0.2;
-if (d != 0.3m) throw new Exception("FAIL: decimal 0.1 + 0.2 should equal exactly 0.3");
-if (f == 0.3) throw new Exception("FAIL: expected binary double 0.1 + 0.2 to NOT equal 0.3 exactly");
-Console.WriteLine($"OK: decimal 0.1m+0.2m == 0.3m exactly; double 0.1+0.2 = {f:R} != 0.3 exactly (binary rounding)");
+// records compare by value
+Check(new Money(5m, "GBP") == new Money(5m, "GBP"), "records compare by value");
 
-// Claim: everything is passed by value — `ref` is what lets a method reassign the caller's variable.
-var customer = new Customer { Name = "Original" };
-Rename(customer);
-if (customer.Name != "Renamed") throw new Exception("FAIL: mutating through the reference should be visible to the caller");
-Console.WriteLine("OK: Rename mutated the shared object — caller sees 'Renamed'");
+// parameters are copies; ref passes the variable
+var cust = new PointC { X = 1 };
+Mutate(cust); Check(cust.X == 7, "a method can change the object through its copy of the reference");
+Reassign(cust); Check(cust.X == 7, "reassigning the parameter doesn't touch the caller");
+ReassignRef(ref cust); Check(cust.X == 42, "ref lets the method reassign the caller's variable");
 
-Replace(customer);
-if (customer.Name != "Renamed") throw new Exception("FAIL: reassigning the local copy of the reference must NOT affect the caller");
-Console.WriteLine("OK: Replace reassigned only its own local copy — caller's variable is untouched");
-
-ReplaceRef(ref customer);
-if (customer.Name != "Brand New") throw new Exception("FAIL: ref should let the method reassign the caller's variable");
-Console.WriteLine("OK: ReplaceRef (with `ref`) reassigned the caller's own variable");
-
-// Claim: boxing a null Nullable<T> produces an actual null reference, not a box of "no value".
-int? maybeNull = null;
-object? boxedNullable = maybeNull;
-if (boxedNullable is not null) throw new Exception("FAIL: boxing a null int? should produce a real null reference");
-Console.WriteLine("OK: boxing a null int? produces an actual null reference");
+static void Mutate(PointC c) => c.X = 7;
+static void Reassign(PointC c) => c = new PointC { X = 0 };
+static void ReassignRef(ref PointC c) => c = new PointC { X = 42 };
+static void Check(bool ok, string claim) =>
+    Console.WriteLine(ok ? $"OK: {claim}" : throw new Exception($"FAIL: {claim}"));
 
 struct PointS { public int X; }
 class PointC { public int X; }
-class Customer { public string Name = ""; }
-enum OrderStatus { Draft = 0, Placed = 1, Paid = 2, Shipped = 3, Cancelled = 9 }
+enum Status { Draft, Paid }
+readonly record struct Money(decimal Amount, string Currency);
 ```

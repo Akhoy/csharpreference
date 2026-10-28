@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A closure: a captured local is moved into a hidden heap object, so it survives after the method returns">
+<defs><marker id="dc-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="28">STACK</text><text class="t-cap" x="380" y="28">HEAP</text>
+<rect x="24" y="40" width="320" height="236" rx="10" class="b-sunk"/><rect x="380" y="40" width="316" height="236" rx="10" class="b-sunk"/>
+<rect x="40" y="226" width="288" height="36" rx="6" class="b"/><text class="t-c" x="52" y="249">Main()  next ●</text>
+<g data-s="1-2"><rect x="40" y="96" width="288" height="118" rx="6" class="b-acc"/><text class="t-c" x="52" y="118">MakeCounter()</text>
+<g data-s="1-1"><rect x="52" y="132" width="130" height="30" rx="4" class="b"/><text class="t-c" x="62" y="152">count = 0</text></g>
+<g data-s="2-2"><rect x="52" y="132" width="130" height="30" rx="4" class="b-dash"/><text class="t-m" x="62" y="152">count moved →</text>
+<rect x="52" y="172" width="150" height="30" rx="4" class="b"/><text class="t-c" x="62" y="192">backpack ●</text></g></g>
+<g data-s="2" class="fly-r"><rect x="410" y="70" width="256" height="84" rx="10" class="b-warn"/><text class="t-cap" x="422" y="90">HIDDEN CLASS (the "backpack")</text>
+<text class="t-c" x="422" y="118" data-s="2-3">count = 0</text><text class="t-c t-acc" x="422" y="118" data-s="4">count = 3</text>
+<text class="t-m" x="422" y="140">made by the compiler for you</text></g>
+<g data-s="2" class="fly-r"><rect x="410" y="180" width="256" height="62" rx="10" class="b-info"/><text class="t-cap" x="422" y="200">DELEGATE: () =&gt; ++count</text><text class="t-m" x="422" y="224">holds the backpack ●</text>
+<path d="M600,220 C690,220 690,112 670,112" class="ln" marker-end="url(#dc-ar)"/></g>
+<g data-s="2-2"><path d="M190,187 C280,187 300,110 404,110" class="ln" marker-end="url(#dc-ar)"/></g>
+<g data-s="3"><path d="M136,244 C280,244 300,212 404,212" class="ln-acc" marker-end="url(#dc-ar)"/></g>
+<text class="t-s t-acc" x="40" y="80" data-s="3">MakeCounter returned: its frame is gone,</text>
+<text class="t-s t-acc" x="40" y="98" data-s="3">but count lives on in the backpack.</text>
+<text class="t-s t-good" x="410" y="270" data-s="4">next(); next(); next(); → 1, 2, 3</text>
+</svg>

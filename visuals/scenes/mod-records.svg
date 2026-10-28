@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-label="A one-line record replaces dozens of lines of equality and ToString boilerplate, compares by value, and supports non-destructive with-copies">
+<defs><marker id="mr-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<g data-s="1-2"><text class="t-cap" x="24" y="28">A PLAIN CLASS</text>
+<rect x="24" y="40" width="330" height="76" rx="8" class="b"/><text class="t-c" x="36" y="62" style="font-size:12px">class OrderDto {</text><text class="t-c" x="36" y="82" style="font-size:12px">  public int Id; public string Tea;</text><text class="t-c" x="36" y="102" style="font-size:12px">  public decimal Total; }</text></g>
+<g data-s="1-1"><text class="t-c" x="380" y="62" style="font-size:12px">new OrderDto(1,"Sencha",6) ==</text><text class="t-c" x="380" y="82" style="font-size:12px">new OrderDto(1,"Sencha",6)</text><text class="t-h t-bad" x="380" y="110">False</text><text class="t-s" x="430" y="110">two objects, so "not equal"</text></g>
+<g data-s="2-2"><rect x="24" y="124" width="330" height="170" rx="8" class="b-bad" style="fill-opacity:.5"/>
+<text class="t-c" x="36" y="146" style="font-size:11px">public override bool Equals(object? o) …</text><text class="t-c" x="36" y="164" style="font-size:11px">public bool Equals(OrderDto? o) …</text><text class="t-c" x="36" y="182" style="font-size:11px">public override int GetHashCode() …</text><text class="t-c" x="36" y="200" style="font-size:11px">public static bool operator ==(…) …</text><text class="t-c" x="36" y="218" style="font-size:11px">public static bool operator !=(…) …</text><text class="t-c" x="36" y="236" style="font-size:11px">public override string ToString() …</text><text class="t-c" x="36" y="254" style="font-size:11px">public void Deconstruct(out …) …</text><text class="t-c" x="36" y="272" style="font-size:11px">public OrderDto Clone() …</text>
+<text class="t-s t-bad" x="380" y="160">~40 lines you have to write,</text><text class="t-s t-bad" x="380" y="180">test, and keep in sync every</text><text class="t-s t-bad" x="380" y="200">time a property is added.</text></g>
+<g data-s="3"><text class="t-cap" x="24" y="28">A RECORD</text>
+<rect x="24" y="40" width="672" height="44" rx="8" class="b-good"/><text class="t-c" x="36" y="68">record OrderDto(int Id, string Tea, decimal Total);</text>
+<text class="t-s" x="24" y="112">One line. The compiler writes Equals, GetHashCode, ==, !=, ToString, Deconstruct and copy.</text>
+<text class="t-c" x="24" y="142" style="font-size:12px">new OrderDto(1,"Sencha",6) == new OrderDto(1,"Sencha",6)</text><text class="t-h t-good" x="500" y="142">True ✓</text>
+<text class="t-c" x="24" y="166" style="font-size:12px">ToString() → OrderDto { Id = 1, Tea = Sencha, Total = 6 }</text></g>
+<g data-s="4" class="fly"><rect x="24" y="190" width="260" height="56" rx="8" class="b"/><text class="t-cap" x="36" y="208">a</text><text class="t-c" x="36" y="232" style="font-size:12px">Id 1 · Sencha · £6</text>
+<path d="M284,218 L392,218" class="ln" marker-end="url(#mr-ar)"/><text class="t-c" x="296" y="208" style="font-size:11px">a with { Total = 9 }</text>
+<rect x="400" y="190" width="260" height="56" rx="8" class="b-acc"/><text class="t-cap" x="412" y="208">b (a NEW copy)</text><text class="t-c" x="412" y="232" style="font-size:12px">Id 1 · Sencha · <tspan class="t-acc" font-weight="700">£9</tspan></text>
+<text class="t-s" x="24" y="276">with makes a changed copy. a is untouched: safe to share, nothing changes behind your back.</text></g>
+</svg>

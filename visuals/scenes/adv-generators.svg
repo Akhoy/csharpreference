@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="Reflection discovers your types at runtime on every start; a source generator does that work once at build time and writes plain C#">
+<text class="t-cap" x="24" y="28">BUILD TIME (once, on your machine)</text><text class="t-cap" x="380" y="28">RUN TIME (every app start)</text>
+<line x1="360" y1="16" x2="360" y2="310" class="ln-m"/>
+<rect x="24" y="44" width="150" height="50" rx="8" class="b"/><text class="t-c" x="36" y="74" style="font-size:12.5px">your .cs files</text>
+<path d="M174,69 L196,69" class="ln"/><rect x="200" y="44" width="140" height="50" rx="8" class="b-acc"/><text class="t-c" x="212" y="74" style="font-size:12.5px">compiler</text>
+<g data-s="1-3"><rect x="380" y="44" width="316" height="96" rx="10" class="b-warn"/><text class="t-h" x="394" y="68">Reflection</text>
+<text class="t-s" x="394" y="92">"What properties does OrderDto have?"</text><text class="t-s" x="394" y="112">Read metadata, look up names as strings,</text><text class="t-s" x="394" y="132">box every value. On every single start.</text></g>
+<g data-s="2-3"><rect x="380" y="150" width="316" height="56" rx="10" class="b-bad"/><text class="t-s t-bad" x="394" y="172">Rename a property: it still compiles…</text><text class="t-s t-bad" x="394" y="192">and breaks at runtime, by string.</text></g>
+<g data-s="3-3"><rect x="380" y="216" width="316" height="56" rx="10" class="b-bad"/><text class="t-s t-bad" x="394" y="238">Native AOT / trimming can't see string</text><text class="t-s t-bad" x="394" y="258">lookups, so needed code gets removed.</text></g>
+<g data-s="4"><rect x="24" y="120" width="316" height="96" rx="10" class="b-good"/><text class="t-h" x="38" y="144">Source generator</text>
+<text class="t-s" x="38" y="168">A compiler plugin reads your code and</text><text class="t-s" x="38" y="188">WRITES plain C#, compiled in with yours.</text><text class="t-c t-good" x="38" y="208" style="font-size:11.5px">OrderDtoJson.g.cs (generated)</text></g>
+<g data-s="5"><rect x="380" y="44" width="316" height="228" rx="10" class="b-good"/><text class="t-h" x="394" y="70">Run time: nothing to discover</text>
+<text class="t-s" x="394" y="98">✓ Fast startup: the work was done at build</text><text class="t-s" x="394" y="122">✓ No boxing, no string lookups</text><text class="t-s" x="394" y="146">✓ Rename a property and the build fails</text><text class="t-s" x="410" y="166">(where you can see it)</text><text class="t-s" x="394" y="190">✓ The trimmer can see everything, so</text><text class="t-s" x="410" y="210">Native AOT works</text>
+<text class="t-m" x="394" y="246">e.g. [JsonSerializable], [LoggerMessage]</text></g>
+</svg>

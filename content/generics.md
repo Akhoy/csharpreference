@@ -1,360 +1,326 @@
 ---
 id: generics
-title: Generics, Constraints and Variance
-summary: Writing code once for many types without losing type safety or speed. Generic types and methods, constraints, how the runtime implements generics, covariance and contravariance, and generic math.
+title: "Generics: Write It Once, for Any Type"
+summary: "Episode 3. Kettle has OrderCache, CustomerCache and ProductCache: the same code three times. Generics let you write a Cache<T> once and have the compiler fill in the type, with full type checking and no boxing. Covers generic types and methods, constraints, how the runtime implements generics, variance (in/out), generic math, and the generics you already use in ASP.NET Core."
 layer: language
 where: C# language › Types › Generics
-fits: Layer 1, but used everywhere above: `List<T>` (collections), `ILogger<T>` and `IOptions<T>` (ASP.NET Core), `DbSet<T>` (EF Core), `Result<T>` and `IRequestHandler<TReq,TRes>` (architecture). Understanding variance explains why some assignments compile and others don't.
+fits: Layer 1, but used everywhere above it. `List<T>` (collections), `ILogger<T>` and `IOptions<T>` (ASP.NET Core), `DbSet<T>` (EF Core), `Result<T>` (architecture). Variance explains why some assignments compile and others don't.
 levels: b,i,a
 prereqs: type-system, oop
 next: delegates-events, collections
 ---
 
-## TL;DR
+## The 30-second version
 
-- Generics let you write one class/method that works for any type, with the compiler still checking types at compile time instead of at runtime.
-- Without generics, you'd store everything as `object`, which loses type safety and boxes value types (see [Type system](ch:type-system#boxing-what-happens-when-a-value-type-has-to-pretend-to-be-a)).
-- **Constraints** (`where T : ...`) tell the compiler what `T` is guaranteed to support, unlocking members you couldn't otherwise call.
-- .NET generics are **reified** (real types at runtime, no boxing for value types) unlike Java, which erases them.
-- **Variance** (`out T`/`in T`) lets `IEnumerable<Cat>` act as `IEnumerable<Animal>` safely — but only for interfaces/delegates that only read or only write `T`, never both.
-- You already use generics constantly: `ILogger<T>`, `IOptions<T>`, `DbSet<T>`, `Task<T>` all lean on them.
+- A generic type is a type **with a blank in it**. In `Cache<T>`, `T` is a **type parameter**, and `Cache<Order>` fills the blank with `Order`.
+- You write and test one class. The compiler checks every use, so putting a `Customer` into a `Cache<Order>` is a compile error. You need no casts, and value types aren't boxed.
+- **Constraints** (`where T : IEntity`) promise what `T` can do, so your generic code can use those members.
+- .NET generics are **real at runtime** ("reified"). `List<int>` gets its own fast machine code. Java erases generics instead.
+- **Variance**: a read-only `IEnumerable<Cat>` can be used as an `IEnumerable<Animal>` (`out`), but a read-write `List<Cat>` can't be used as a `List<Animal>`.
 
-:::analogy A warehouse story to hold onto
-Picture a warehouse that only has one size of crate, labelled "contents: anything." Every item — a book, a bag of flour, a car battery — gets shoved into the same crate, so pulling an item back out means guessing what's inside before you can use it, and every book was wasted effort because it never needed that crate's padding in the first place. Generics are the warehouse switching to crates sized and labelled for what's actually going in: a `Crate<Book>` only ever holds books, the forklift (the compiler) refuses to load a car battery into one, and a book goes in without any extra padding at all. Keep that picture running through this chapter — "the one-size-crate problem" is `ArrayList`, and everything below is really about how C# builds better crates.
+## Previously, and the problem {b}
+
+In [Episode 2](ch:oop) Kettle's objects learned to guard their own rules. Pages got slow, so you added a cache for orders:
+
+```csharp norun
+class OrderCache
+{
+    private readonly Dictionary<int, Order> _items = new();
+    public void Add(Order item) => _items[item.Id] = item;
+    public Order? Get(int id) => _items.GetValueOrDefault(id);
+}
+```
+
+Then you needed one for customers, and then for products. Now there are three files that are identical except for the type name. Every bug fix has to be made three times.
+
+The old-school fix is one cache that stores `object`, since every type is an `object`:
+
+```csharp
+using System.Collections;
+
+var cache = new Hashtable();          // stores object → object
+cache[1] = new Order(1);
+cache[2] = "oops, a string";          // compiles fine
+
+var order = (Order)cache[1]!;         // you must cast everything back out
+Console.WriteLine(order.Id);
+try { var bad = (Order)cache[2]!; }    // the mistake only shows up at RUNTIME
+catch (InvalidCastException) { Console.WriteLine("crash: that wasn't an Order"); }
+
+record Order(int Id);
+```
+
+It compiles, but the compiler has stopped helping. It can't stop a string going in, every read needs a cast, and value types get boxed ([Episode 1](ch:type-system#boxing-a-value-type-in-a-cardboard-box)). You've swapped copy-paste for runtime crashes.
+
+## The lightbulb: a type with a blank in it {b}
+
+What you want is to write the cache once, with a **blank where the type goes**, and let each user fill the blank in.
+
+That's a **generic type**. The blank is called a **type parameter**, written `T` by convention: `class Cache<T>`. When you write `Cache<Order>`, `Order` is the **type argument**, and `Cache<Order>` is a real, fully checked type in which every `T` has become `Order`. The compiler does the filling-in, not you.
+
+:::scene visuals/scenes/gen-template.svg | One template, many real types
+1. You write `Cache<T>` once. Every place a type would go says `T`, which is the blank.
+2. Somewhere you write `Cache<Order>`. The compiler fills every `T` with `Order`, so `Add` now takes an `Order` and `Get` returns one.
+3. `Cache<Customer>` is the same template with a different fill. It's a completely separate, fully typed class.
+4. Try to put a `Customer` into a `Cache<Order>` and it's a **compile error**. The mistake from the `Hashtable` version can't happen any more.
+5. One class to write, test and fix. There are no casts and no boxing, and every use is checked.
 :::
 
-## The problem before generics existed {b}
-
-Before generics arrived in C# 1, if you wanted one reusable collection class that could hold *any* type, there was only one way to do it: store everything as `object`, since `object` is the one type every other type can be treated as.
-
 ```csharp
-var list = new ArrayList();
-list.Add(42);              // boxes
-list.Add("oops");          // compiles: no type safety
-int n = (int)list[0];      // cast + unbox needed; list[1] would throw at RUNTIME
-```
+var orders = new Cache<Order>();
+orders.Add(new Order(1, 25m));
+Order? o = orders.Get(1);                // no cast: it's already an Order
+Console.WriteLine(o);
 
-Look at what that costs you. `list.Add("oops")` **compiles without complaint** right next to an `int` — `ArrayList` has no way to say "only ints, please," because its `Add` method takes a plain `object`, and a string is just as valid an `object` as an int is. The mistake doesn't surface until `(int)list[0]` runs, and then only if you happen to touch the wrong element; `list[1]` would throw an `InvalidCastException` the moment anyone actually tried to read it back as an int. On top of the lost type safety, you also saw in [Type system](ch:type-system#boxing-what-happens-when-a-value-type-has-to-pretend-to-be-a) exactly what `list.Add(42)` costs: that `int` has to be **boxed** — heap-allocated — purely so it can fit through a parameter typed as `object`.
+var customers = new Cache<Customer>();
+customers.Add(new Customer(7, "Ada"));
+Console.WriteLine(customers.Get(7)?.Name);
 
-Generics fix both problems at once, by letting the *caller* choose the type, and having the compiler remember and enforce that choice everywhere afterward:
+// orders.Add(new Customer(2, "Bob"));   // ← compile error: Add takes an Order
 
-```csharp
-var list = new List<int>();
-list.Add(42);              // no boxing
-list.Add("oops");          // compile ERROR
-int n = list[0];           // no cast
-```
-
-Same two lines, opposite outcome: `list.Add("oops")` is now a compile error, not a runtime surprise, and `list[0]` comes back out already typed as `int`, with no cast and — as the next section explains properly — no boxing either. Three wins, all from the one idea of a **type parameter**: real **type safety** (caught at compile time, not discovered at runtime), real **performance** (no boxing, no casting), and genuine **reuse** (one implementation serving every type, instead of writing `IntList`, `StringList`, `OrderList` by hand).
-
-## Writing your own generic types and methods {b}
-
-```csharp
-// Generic class
-public class Result<T>
+class Cache<T> where T : IEntity         // "where": explained in the next section
 {
-    public T? Value { get; }
-    public string? Error { get; }
-    public bool IsSuccess => Error is null;
-    private Result(T? value, string? error) { Value = value; Error = error; }
-    public static Result<T> Ok(T value) => new(value, null);
-    public static Result<T> Fail(string error) => new(default, error);
+    private readonly Dictionary<int, T> _items = new();
+    public void Add(T item) => _items[item.Id] = item;
+    public T? Get(int id) => _items.GetValueOrDefault(id);
 }
 
-// Generic interface with two type parameters
-public interface IRequestHandler<in TRequest, TResponse>
-{
-    Task<TResponse> Handle(TRequest request, CancellationToken ct);
-}
+interface IEntity { int Id { get; } }
+record Order(int Id, decimal Total) : IEntity;
+record Customer(int Id, string Name) : IEntity;
+```
 
-// Generic method: type inferred from arguments
-public static T FirstOrFallback<T>(IEnumerable<T> items, T fallback)
+You've used generics since your first C# program: `List<string>` is `List<T>` with `T` filled in as `string`.
+
+### Generic methods: the blank can be on one method
+
+A method can have its own type parameter. Usually you don't even write it, because the compiler **infers** `T` from the arguments:
+
+```csharp
+Console.WriteLine(FirstOr(new[] { 3, 4 }, 0));         // T inferred as int
+Console.WriteLine(FirstOr(Array.Empty<string>(), "none"));   // T inferred as string
+
+static T FirstOr<T>(IEnumerable<T> items, T fallback)
 {
     foreach (var item in items) return item;
     return fallback;
 }
-
-var x = FirstOrFallback(new[] { 1, 2 }, 0);   // T inferred as int
 ```
 
-Notice the last line doesn't say `FirstOrFallback<int>(...)` anywhere — the compiler looks at the arguments you actually passed (`new[] { 1, 2 }` and `0`), works out that `T` must be `int` to make both fit, and fills it in silently. This is why you rarely see explicit type arguments on everyday generic method calls; the compiler almost always figures it out for you from context.
+Two conventions: use `T` when there's one type parameter, and descriptive names (`TKey`, `TValue`, `TRequest`) when there are several. `default(T)` is the "empty" value for any `T`: `null` for a reference type and zero for a value type.
 
-Two small conventions worth knowing, because you'll see them everywhere: use `T` alone when there's a single type parameter with no real ambiguity about what it represents, and switch to a descriptive name — `TKey`, `TValue`, `TRequest`, `TEntity` — the moment there's more than one, so the parameter list actually reads like documentation. And `default(T)` (or the shorthand `default`) is how you get a type-parameter-generic "empty" value: it resolves to `null` when `T` ends up being a reference type, and to all-zero-bits when `T` ends up being a value type — exactly the default-value rule from [Type system](ch:type-system#one-question-that-predicts-a-huge-amount-of-c-behaviour), just expressed generically.
+:::qa What are generics and what problems do they solve?
+Type parameters let you write classes, interfaces and methods once for any type. They give you compile-time type safety, avoid boxing and casts (so they're faster), and allow reuse. Code written against `object` gives you none of those.
+:::
 
-## Constraints: telling the compiler what `T` is allowed to be {i}
+## Constraints: a job description for T {b}
 
-With a bare `T`, the compiler doesn't know what type you'll plug in, so it only lets you call members that *every* type has — in practice, just the handful inherited from `object`. A **constraint** is a promise about `T` ("it will always derive from `Entity`", "it will always implement `IComparable<T>`"). Once you make that promise, the compiler trusts it and unlocks the matching members inside your generic code.
+Inside `Cache<T>`, the line `_items[item.Id] = item` needs `item.Id`. But a bare `T` could be *anything*: an `int`, a `string`, a `Stream`. The compiler won't let you call `.Id` on "anything".
 
-| Constraint | Meaning |
+A **constraint** is a promise about `T`, written with `where`. `where T : IEntity` says "only types that implement `IEntity` may fill this blank". The compiler enforces that at every use, and in return it lets your code use `IEntity`'s members on `T`.
+
+:::analogy A job advert
+"Applicants must hold a driving licence." That constraint limits who can apply. But it also means that once someone's hired, you can hand them the van keys without checking. `where T : IEntity` limits who can fill `T`, and in return you can call `.Id` on it.
+:::
+
+| Constraint | `T` must be… |
 |---|---|
-| `where T : class` | Reference type (`class?` allows nullable) |
-| `where T : struct` | Non-nullable value type |
-| `where T : notnull` | Non-nullable reference or value type |
-| `where T : unmanaged` | Struct with no references (can be used with pointers/`stackalloc`) |
-| `where T : new()` | Has a public parameterless constructor |
-| `where T : BaseEntity` | Derives from a base class |
-| `where T : IComparable<T>` | Implements an interface |
-| `where T : U` | Derives from another type parameter |
-| `where T : allows ref struct` (C# 13) | Permits `Span<T>`-like types as arguments |
+| `where T : class` | a reference type |
+| `where T : struct` | a non-nullable value type |
+| `where T : notnull` | non-nullable (reference or value) |
+| `where T : new()` | creatable with `new T()` |
+| `where T : SomeBase` | `SomeBase` or a subclass of it |
+| `where T : ISomething` | something that implements the interface |
+| `where T : unmanaged` | a struct containing no references (for low-level code) |
+| `where T : allows ref struct` (C# 13) | allowed to be a `Span`-like type |
 
 ```csharp
-public abstract class Entity { public Guid Id { get; protected set; } = Guid.NewGuid(); }
+Console.WriteLine(Max(3, 9));                     // 9
+Console.WriteLine(Max("earl grey", "sencha"));    // sencha
+var fresh = Create<List<int>>();                  // new() constraint at work
+Console.WriteLine(fresh.Count);
 
-public class InMemoryRepository<T> where T : Entity
-{
-    private readonly Dictionary<Guid, T> _items = new();
-    public void Add(T item) => _items[item.Id] = item;          // .Id is usable because of the constraint
-    public T? Find(Guid id) => _items.GetValueOrDefault(id);
-}
-
-public static T Max<T>(T a, T b) where T : IComparable<T> => a.CompareTo(b) >= 0 ? a : b;
-
-public static T Create<T>() where T : new() => new T();
+static T Max<T>(T a, T b) where T : IComparable<T> => a.CompareTo(b) >= 0 ? a : b;
+static T Create<T>() where T : new() => new T();
 ```
 
-Why does `item.Id` compile above? Because `where T : Entity` guarantees `T` is always an `Entity` (or something derived from it), so the compiler lets you touch `Entity`'s members on a bare `T`. Without that constraint, `.Id` wouldn't compile at all. `Max<T>` works the same way: `a.CompareTo(b)` only compiles because `where T : IComparable<T>` guarantees every `T` has a `CompareTo` method. `Create<T>` is a different kind of promise, about construction rather than members: plain `new T()` is illegal in generic code (the compiler can't assume `T` has a parameterless constructor), so `where T : new()` exists specifically to grant that.
+:::qa What generic constraints are available?
+`class`, `class?`, `struct`, `notnull`, `unmanaged`, `new()`, a base class, an interface, another type parameter, `default` (for overrides), and `allows ref struct` (C# 13). A constraint lets you use the constrained type's members inside generic code.
+:::
 
-## What the runtime actually does with a generic type {a}
+## What the runtime does with `List<int>` vs `List<string>` {a}
 
-Does `List<int>` and `List<string>` still exist as two separate things once the program is actually running, or does that distinction disappear after compilation? This matters for performance, and .NET and Java answer it differently (see [Further reading](#further-reading) for the source on both).
+Are `List<int>` and `List<string>` still different things while the app runs? In .NET, yes. Generics are **reified**: they exist for real at runtime, and `typeof(T)` gives the real type. Java **erases** generics, so at runtime every `List` is the same type-blind list.
 
-Java **erases** generics at compile time: at runtime, `List<Cat>` and `List<Dog>` both collapse into the same type-blind `List`. .NET's generics are **reified** instead: `List<int>` and `List<string>` stay genuinely distinct types at runtime, and `typeof(T)` inside generic code returns the real type it was called with.
+The JIT then handles the two families of types differently:
 
-That split works differently depending on whether `T` is a value type or a reference type:
-
-- **Value types** (`int`, `Guid`, ...): the JIT compiles a separate, specialised copy of the method for each one — `List<int>` and `List<Guid>` each get their own machine code. That's why there's no boxing: `List<int>`'s code was built to hold raw `int`s directly, the same way hand-written `IntList` code would.
-- **Reference types**: every reference is the same size (a pointer), so there's nothing to specialise — the JIT shares one compiled implementation across all of them, looking up type-specific details in a small hidden table only when needed.
+- **Value types** (`int`, `Guid`, `Money`): each one gets its **own copy of the machine code**, built for that exact type. `List<int>` stores raw `int`s inline, which is why there's no boxing.
+- **Reference types**: every reference is the same size (one pointer), so all of them **share one copy** of the code.
 
 ![List<T> compiled two ways: a specialised, inline copy per value-type T with no boxing, versus one shared implementation for every reference-type T](visuals/generics-reification.svg)
 
-Back to the warehouse: a `Crate<int>` is like a crate built with int-shaped dividers baked right into its walls — the int sits directly in the slot, no wrapping needed. A `Crate<string>` is more like a crate that just holds a shelf of pointers to wherever the actual strings live elsewhere in the warehouse — one crate *design* serves every reference type, because a pointer is a pointer regardless of what it points to.
-
-One useful side effect: **static fields are per closed type**, not shared across instantiations. `Cache<int>.Instance` and `Cache<string>.Instance` are two unrelated fields. That gives you a simple, lock-free per-type cache:
+One useful side effect: **static fields are per filled-in type**. `Counter<Order>.Count` and `Counter<Customer>.Count` are two separate fields, which gives you a free per-type cache:
 
 ```csharp
-static class TypeName<T> { public static readonly string Value = typeof(T).Name; } // computed once per T
+Counter<Order>.Hit(); Counter<Order>.Hit(); Counter<Customer>.Hit();
+Console.WriteLine($"Order: {Counter<Order>.Count}, Customer: {Counter<Customer>.Count}");   // 2, 1
+
+static class Counter<T> { public static int Count; public static void Hit() => Count++; }
+record Order; record Customer;
 ```
-
-`TypeName<Order>.Value` runs its field initializer once, caches `"Order"`, and never recomputes it. `TypeName<Customer>` has its own independent field, computed the first time *it's* touched.
-
-## Variance: when is `List<Cat>` actually a `List<Animal>`? {a}
-
-If `Cat` inherits from `Animal`, is `List<Cat>` also a `List<Animal>`? This trips up even experienced developers. The honest answer: **it depends which interface you're asking about.**
-
-First, see why `List<Cat>` itself can never safely be treated as a `List<Animal>` — watch what would go wrong if the compiler allowed it:
-
-```csharp
-List<Cat> cats = new();
-List<Animal> animals = cats;     // suppose this compiled
-animals.Add(new Dog());          // now a Dog is in the List<Cat>!
-```
-
-If that first assignment were legal, the second line lets you add a `Dog` through `animals` — but `animals` and `cats` are the same list in memory, so you'd have just put a `Dog` inside what's supposedly a `List<Cat>`. The next `foreach (Cat c in cats)` would throw, trying to treat that `Dog` as a `Cat`. This is why generic types are **invariant** by default: `List<T>` lets you both *read and write* `T`, and allowing this substitution would make writing unsafe.
-
-The danger comes from **writing**, not reading. So for an interface or delegate where `T` only ever flows **one direction** — only read out, or only accepted in, never both — the danger disappears, and C# lets you declare that one-directional promise explicitly:
-
-| Kind | Keyword | Allowed when T is… | Effect | Examples |
-|---|---|---|---|---|
-| **Covariance** | `out T` | only **returned** (output) | `I<Derived>` → `I<Base>` | `IEnumerable<out T>`, `IReadOnlyList<out T>`, `IAsyncEnumerable<out T>` (a sequence of values produced over time — see [async/await](ch:async-await)), `Func<out TResult>` — a delegate, a type representing "a method with this signature", covered in [Delegates & events](ch:delegates-events) (not `Task<T>`: it's a class, so invariant) |
-| **Contravariance** | `in T` | only **accepted** (input) | `I<Base>` → `I<Derived>` | `Action<in T>`, `IComparer<in T>`, `IEqualityComparer<in T>`, `Func<in T, …>` (delegates, see [Delegates & events](ch:delegates-events)) |
-
-```csharp
-IEnumerable<Cat> cats = new List<Cat>();
-IEnumerable<Animal> animals = cats;          // ✔ covariant: you can only READ Animals out
-
-Action<Animal> feedAny = a => a.Feed();
-Action<Cat> feedCat = feedAny;               // ✔ contravariant: something that can feed any Animal can feed a Cat
-
-IComparer<Animal> byWeight = Comparer<Animal>.Create((x, y) => x.Kg.CompareTo(y.Kg));
-var sortedCats = cats.Order(byWeight);       // ✔ an Animal comparer works for Cats
-```
-
-Why is each one actually safe, not just permitted? `IEnumerable<Cat>` only ever hands `Cat`s *out* — there's no `Add` method — so treating it as `IEnumerable<Animal>` can never let a `Dog` sneak in; everything you pull out really is a `Cat`, and a `Cat` really is a valid `Animal`. `Action<Animal>` only ever *accepts* an `Animal` as input, never hands one back — so using it where an `Action<Cat>` is expected is equally safe: something that already knows how to handle *any* `Animal` obviously handles the more specific case of a `Cat`.
-
-:::analogy Remember it with producers and consumers
-**Out = producer.** Something that only ever *produces* Cats is also, trivially, something that produces Animals — anyone expecting Animals back is perfectly happy receiving Cats specifically. **In = consumer.** Something that can *consume* any Animal can certainly consume a Cat, since a Cat always qualifies as an Animal. Interfaces that do **both** — produce and consume the same `T`, the way `IList<T>` does with its `Add` and its indexer — can't safely claim either direction, and have to stay invariant.
-:::
-
-Three rules, so you don't have to rediscover them by trial and error:
-
-1. Variance only applies to **interfaces and delegates** — never to classes like `List<T>`, which is why the first example in this section fails.
-2. It only applies to **reference type** arguments — `IEnumerable<int>` can never be an `IEnumerable<object>`, because that would require silent boxing, which C# variance doesn't do.
-3. **Arrays** are a historical exception: `object[] o = new string[1]; o[0] = 1;` compiles (arrays have been covariant in C# since before generics existed, for backward compatibility) but throws `ArrayTypeMismatchException` at runtime — because, unlike `IEnumerable<T>`, an array *does* let you write into it. Arrays trade the compile-time safety interfaces give you for a runtime check instead.
-
-## Generic math: interfaces that require static members {a}
-
-```csharp
-public static T Sum<T>(ReadOnlySpan<T> values) where T : INumber<T>
-{
-    T total = T.Zero;
-    foreach (var v in values) total += v;
-    return total;
-}
-
-Sum<int>([1, 2, 3]);         // 6
-Sum<decimal>([1.5m, 2.5m]);  // 4.0
-```
-
-`T.Zero` and `total += v` are calls to **static** members (`Zero`, the `+` operator) on a type the method only knows as a generic parameter. Before C# 11, constraints could only describe *instance* members, so this couldn't be written. **Static abstract interface members** (C# 11 / .NET 7) close that gap: `Sum` can now be written once and work for `int`, `decimal`, or anything else implementing `INumber<T>`, instead of a hand-written overload per numeric type. `INumber<T>`, `IAdditionOperators<…>`, `IParsable<T>` and friends live in `System.Numerics`. Most backend code never writes its own generic-math code, but you'll meet `IParsable<T>` when binding custom types from route/query parameters (see [Building APIs](ch:building-apis)).
-
-## Spotting generics you already use every day {i}
-
-Framework APIs lean on generics constantly, and recognising *what role* `T` is actually playing in each one takes most of the mystery out of reading unfamiliar code:
-
-| API | What `T` does |
-|---|---|
-| `ILogger<OrderService>` | `T` is only a **category name** for logs (the full type name) |
-| `IOptions<PaymentOptions>` | Which options class to bind |
-| `DbSet<Order>` | Which entity/table |
-| `IValidator<CreateOrder>` | Which type to validate |
-| `services.AddScoped<IRepo, Repo>()` | Interface → implementation mapping |
-| `services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>))` | **Open generic** registration: any `IRepository<X>` resolves to `EfRepository<X>` |
-| `Task<T>`, `ValueTask<T>` | Result type of async work |
-| `IAsyncEnumerable<T>` | Async stream of `T` |
-| `Results<Ok<T>, NotFound>` | Union of possible HTTP results for OpenAPI |
-
-The `ILogger<OrderService>` row surprises people: `T` does nothing functional here — `ILogger<T>` never constructs or calls a `T`. It's purely a label, tagging every log line with `OrderService`'s full type name so you can filter logs by which class produced them. Same generic mechanism, used for a purpose that has nothing to do with type safety.
-
-The open-generic registration is worth a second look, since the syntax is unusual the first time you see it:
-
-```csharp
-// Open generic registration: one line covers every entity type
-builder.Services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
-```
-
-`IRepository<>` — no type argument inside the brackets — is an **open** generic: a description of a whole family of types, not one specific closed type like `IRepository<Order>`. Registering it once lets the DI container (see [Dependency injection](ch:dependency-injection)) build a matching `EfRepository<X>` for *any* `IRepository<X>` requested later, without a separate registration line per entity.
-
-:::qa What are generics and what problems do they solve?
-Type parameters that let you write classes, interfaces and methods once for any type. They give compile-time type safety, avoid boxing and casts (better performance), and enable reuse, unlike object-based code.
-:::
-
-:::qa What generic constraints are available?
-class, class?, struct, notnull, unmanaged, new(), a base class, an interface, another type parameter, default (for overrides), and allows ref struct (C# 13). Constraints let you use the members of the constrained type inside generic code.
-:::
-
-:::qa Explain covariance and contravariance.
-Covariance (`out T`) lets `I<Derived>` be used as `I<Base>`; safe when T only appears in output positions (IEnumerable&lt;out T&gt;). Contravariance (`in T`) lets `I<Base>` be used as `I<Derived>`; safe when T only appears in input positions (Action&lt;in T&gt;, IComparer&lt;in T&gt;). It applies to interfaces and delegates with reference-type arguments.
-:::
-
-:::qa Why isn't List<Cat> assignable to List<Animal>?
-Because List&lt;T&gt; both reads and writes T. If it were allowed, you could add a Dog through the List&lt;Animal&gt; reference into what is actually a List&lt;Cat&gt;. Use IEnumerable&lt;Animal&gt; or IReadOnlyList&lt;Animal&gt; (covariant) if you only need to read.
-:::
 
 :::qa How are .NET generics different from Java generics?
-.NET generics are reified: closed generic types exist at runtime, `typeof(T)` works, and value-type instantiations get specialised code with no boxing. Java uses type erasure, so generic type info is gone at runtime and primitives must be boxed.
-:::
-
-:::qa What is an open generic registration in DI?
-Registering a generic type definition, e.g. `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))`, so the container can create any closed version (IRepository&lt;Order&gt;) on demand without registering each one.
+.NET generics are reified: closed generic types exist at runtime, `typeof(T)` works, and value-type instantiations get specialised code with no boxing. Java uses type erasure, so the type information is gone at runtime and primitives must be boxed.
 :::
 
 :::qa Are static fields shared across generic instantiations?
-No. Each closed generic type (Foo&lt;int&gt;, Foo&lt;string&gt;) has its own copy of static fields, which is useful for per-type caches.
+No. Each closed generic type (`Foo<int>`, `Foo<string>`) has its own copy of the static fields, which is handy for per-type caches.
 :::
 
-## Further reading
+## Variance: is a box of cats a box of animals? {a}
 
-- [Generics in .NET](https://learn.microsoft.com/en-us/dotnet/standard/generics/)
-- [Covariance and contravariance](https://learn.microsoft.com/en-us/dotnet/standard/generics/covariance-and-contravariance) — confirmed against this page: variance applies only to generic interfaces/delegates with reference-type arguments, never to classes, never to value types.
-- [Generic math](https://learn.microsoft.com/en-us/dotnet/standard/generics/math)
+If `Cat` is an `Animal`, can a `List<Cat>` be used where a `List<Animal>` is expected? It seems obvious that it should. It isn't allowed, and the reason is the key to the whole topic. It comes down to whether things go **in**, come **out**, or both.
 
-## Verify this chapter
+:::scene visuals/scenes/gen-variance.svg | When does "of Cat" count as "of Animal"?
+1. A `List<Cat>` is a basket. You can **take cats out** and **put cats in**.
+2. Suppose C# let you treat it as a `List<Animal>`. Then someone could `Add` a `Dog`, since a dog is an animal, straight into your cat basket. So it's **not allowed**. `List<T>` is **invariant**.
+3. `IEnumerable<T>` only **gives things out**. It has no `Add`. Everything it hands you is a Cat, and every Cat is an Animal, so treating it as `IEnumerable<Animal>` is safe. This is **covariance**, marked `out T`.
+4. `Action<T>` only **takes things in**. A vet who can treat *any* animal can certainly treat a cat, so an `Action<Animal>` can be used as an `Action<Cat>`. This is **contravariance**, marked `in T`.
+:::
 
-Save this as `Program.cs` in a new console project (`dotnet new console`) and run it with `dotnet run`. It exercises type inference, constraints, reification, variance, array-covariance's runtime check, and generic math from this chapter; each line should print `OK:`.
+```csharp
+List<Cat> cats = [new Cat("Tom"), new Cat("Mog")];
+
+IEnumerable<Animal> animals = cats;          // ✓ covariant (out): read-only
+foreach (var a in animals) Console.WriteLine(a.Name);
+
+Action<Animal> checkUp = a => Console.WriteLine($"vet sees {a.Name}");
+Action<Cat> catCheckUp = checkUp;            // ✓ contravariant (in): input-only
+catCheckUp(cats[0]);
+
+// List<Animal> broken = cats;               // ✗ compile error: List<T> is invariant
+
+record Animal(string Name);
+record Cat(string Name) : Animal(Name);
+```
+
+The rules:
+
+| | Keyword | Allowed when `T` only… | Examples |
+|---|---|---|---|
+| **Covariance** | `out T` | comes **out** (returned) | `IEnumerable<out T>`, `IReadOnlyList<out T>`, `Func<out TResult>` |
+| **Contravariance** | `in T` | goes **in** (parameters) | `Action<in T>`, `IComparer<in T>`, `IEqualityComparer<in T>` |
+| **Invariant** | *(none)* | goes both ways | `List<T>`, `IList<T>`, `Dictionary<K,V>`, `Task<T>` (a class) |
+
+- Variance works only on **interfaces and delegates**, never on classes.
+- It works only with **reference types**. `IEnumerable<int>` is never an `IEnumerable<object>`, because that would need boxing.
+- **Arrays** are an old exception: `object[] o = new string[1];` compiles, but `o[0] = 1;` throws `ArrayTypeMismatchException` at runtime.
+
+:::qa Explain covariance and contravariance.
+Covariance (`out T`) lets `I<Derived>` be used as `I<Base>`. It's safe when T only appears in output positions, as in `IEnumerable<out T>`. Contravariance (`in T`) lets `I<Base>` be used as `I<Derived>`. It's safe when T only appears in input positions, as in `Action<in T>` and `IComparer<in T>`. It applies to interfaces and delegates with reference-type arguments.
+:::
+
+:::qa Why isn't List<Cat> assignable to List<Animal>?
+Because `List<T>` both reads and writes T. If it were allowed, you could add a Dog through the `List<Animal>` reference into what is really a `List<Cat>`. If you only need to read, use `IEnumerable<Animal>` or `IReadOnlyList<Animal>`, which are covariant.
+:::
+
+## Generic math {a}
+
+Since C# 11, an interface can require **static** members such as `+` or `Zero`. That lets you write maths once for every number type:
 
 ```csharp
 using System.Numerics;
 
-int failures = 0;
-void Check(string claim, bool ok)
+Console.WriteLine(Sum(new[] { 1, 2, 3 }));          // 6
+Console.WriteLine(Sum(new[] { 1.5m, 2.25m }));      // 3.75
+
+static T Sum<T>(IEnumerable<T> values) where T : INumber<T>
 {
-    if (ok) Console.WriteLine($"OK: {claim}");
-    else { Console.WriteLine($"FAIL: {claim}"); failures++; }
-}
-
-// 1. Type inference picks T from arguments
-static T FirstOrFallback<T>(IEnumerable<T> items, T fallback)
-{
-    foreach (var item in items) return item;
-    return fallback;
-}
-var inferred = FirstOrFallback(new[] { 1, 2 }, 0);
-Check("generic method type argument is inferred from the call", inferred == 1);
-
-// 2. Constraint unlocks members: InMemoryRepository<T> where T : Entity
-var repo = new InMemoryRepository<Order>();
-var order = new Order();
-repo.Add(order);
-Check("where T : Entity lets generic code use T.Id", repo.Find(order.Id) == order);
-
-// 3. where T : IComparable<T>
-Check("Max<T> with IComparable constraint picks the larger value", Max(3, 7) == 7);
-
-// 4. where T : new()
-var created = Create<Order>();
-Check("where T : new() allows new T() inside generic code", created is Order);
-
-// 5. Reification: closed generic types are genuinely distinct at runtime, typeof(T) works
-Check("typeof(T) inside a generic method returns the real closed type",
-    typeof(List<int>) != typeof(List<string>) && GetTypeName<int>() == "Int32" && GetTypeName<string>() == "String");
-
-// 6. Static fields are per closed generic type, not shared
-Check("static fields are independent per closed generic type (Cache<int> vs Cache<string>)",
-    Cache<int>.Value != Cache<string>.Value);
-
-// 7. Variance: IEnumerable<Cat> usable as IEnumerable<Animal> (covariance)
-IEnumerable<Cat> cats = new List<Cat> { new Cat() };
-IEnumerable<Animal> animalsOut = cats;
-Check("IEnumerable<out T> covariance: IEnumerable<Cat> assignable to IEnumerable<Animal>", animalsOut.Count() == 1);
-
-// 8. Variance: Action<Animal> usable as Action<Cat> (contravariance)
-int fedCount = 0;
-Action<Animal> feedAny = a => fedCount++;
-Action<Cat> feedCat = feedAny;
-feedCat(new Cat());
-Check("Action<in T> contravariance: Action<Animal> assignable to Action<Cat>", fedCount == 1);
-
-// 9. Array covariance is a runtime-checked exception, not compile-time safe
-bool threw = false;
-try
-{
-    object[] arr = new string[1];
-    arr[0] = 1; // compiles, but...
-}
-catch (ArrayTypeMismatchException) { threw = true; }
-Check("writing a non-string into a string[] via object[] throws ArrayTypeMismatchException at runtime", threw);
-
-// 10. Generic math: one Sum<T> implementation works for int and decimal
-Check("Sum<int> via INumber<T> generic math", Sum<int>([1, 2, 3]) == 6);
-Check("Sum<decimal> via INumber<T> generic math", Sum<decimal>([1.5m, 2.5m]) == 4.0m);
-
-Console.WriteLine(failures == 0 ? "\nAll checks passed." : $"\n{failures} check(s) failed.");
-if (failures > 0) Environment.Exit(1);
-
-static T Max<T>(T a, T b) where T : IComparable<T> => a.CompareTo(b) >= 0 ? a : b;
-static T Create<T>() where T : new() => new T();
-static string GetTypeName<T>() => typeof(T).Name;
-static T Sum<T>(ReadOnlySpan<T> values) where T : INumber<T>
-{
-    T total = T.Zero;
+    T total = T.Zero;                  // a static member, called on a type parameter
     foreach (var v in values) total += v;
     return total;
 }
+```
 
-abstract class Entity { public Guid Id { get; protected set; } = Guid.NewGuid(); }
-class Order : Entity { }
+You'll rarely write this in backend code, but you'll meet its cousin `IParsable<T>` when binding custom types from routes and query strings ([Building APIs](ch:building-apis)).
 
-class InMemoryRepository<T> where T : Entity
+## The generics you already use every day {i}
+
+Once you know `T` is "the blank", ASP.NET Core code becomes much easier to read:
+
+| API | What the `T` is doing |
+|---|---|
+| `List<Order>`, `Dictionary<int, Order>` | What the collection holds |
+| `Task<Order>` | What the async work eventually returns |
+| `ILogger<OrderService>` | Just a **label**: log lines are tagged with the class name |
+| `IOptions<PaymentOptions>` | Which settings class to bind config into |
+| `DbSet<Order>` | Which table EF Core maps |
+| `services.AddScoped<IRepo, Repo>()` | Interface → implementation |
+| `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))` | An **open generic**, which covers every `IRepository<X>` at once |
+
+`IRepository<>`, with the brackets left empty, is an **open** generic: the template with its blank still unfilled. Registering it once lets the [DI container](ch:dependency-injection) build `EfRepository<Order>`, `EfRepository<Customer>` and the rest on demand.
+
+:::qa What is an open generic registration in DI?
+Registering a generic type definition, such as `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))`. The container can then create any closed version (`IRepository<Order>`) on demand, without a separate registration for each.
+:::
+
+## Next episode {b}
+
+Kettle's caching is now one class, `Cache<T>`. Next, the owner changes the discount rule: 10% off orders over £50. Next week it's "buy two, get one free" on Tuesdays. Then it's a Christmas special. Each change means editing and redeploying checkout code. What if the *rule itself* could be handed to checkout like any other value? [Episode 4 · Delegates →](ch:delegates-events)
+
+## Further reading
+
+- [Generics in .NET](https://learn.microsoft.com/en-us/dotnet/standard/generics/)
+- [Covariance and contravariance](https://learn.microsoft.com/en-us/dotnet/standard/generics/covariance-and-contravariance)
+- [Generic math](https://learn.microsoft.com/en-us/dotnet/standard/generics/math)
+
+## Verify this chapter
+
+```csharp
+using System.Numerics;
+
+// type safety: the filled-in type is enforced, with no casts
+var c = new Cache<Order>(); c.Add(new Order(1));
+Check(c.Get(1) is Order, "Cache<Order>.Get returns an Order with no cast");
+
+// inference
+Check(FirstOr(new[] { 5 }, 0) == 5, "T is inferred from the arguments");
+
+// reified: the real type exists at runtime
+Check(typeof(List<int>) != typeof(List<string>), "List<int> and List<string> are different runtime types");
+
+// statics are per closed type
+Counter<int>.Count++; Counter<int>.Count++; Counter<string>.Count++;
+Check(Counter<int>.Count == 2 && Counter<string>.Count == 1, "static fields are per closed generic type");
+
+// variance
+IEnumerable<Animal> animals = new List<Cat> { new() };
+Check(animals.Count() == 1, "IEnumerable<Cat> can be used as IEnumerable<Animal> (out)");
+Action<Animal> any = _ => { }; Action<Cat> cat = any;
+Check(cat is not null, "Action<Animal> can be used as Action<Cat> (in)");
+
+// array covariance is checked at runtime
+object[] arr = new string[1];
+Check(Throws(() => arr[0] = 1), "array covariance throws ArrayTypeMismatchException on a bad write");
+
+// generic math
+Check(Sum(new[] { 1, 2, 3 }) == 6 && Sum(new[] { 0.5m, 0.25m }) == 0.75m, "one Sum<T> for int and decimal");
+
+static T FirstOr<T>(IEnumerable<T> xs, T fallback) { foreach (var x in xs) return x; return fallback; }
+static T Sum<T>(IEnumerable<T> xs) where T : INumber<T> { var t = T.Zero; foreach (var x in xs) t += x; return t; }
+static bool Throws(Action a) { try { a(); return false; } catch (ArrayTypeMismatchException) { return true; } }
+static void Check(bool ok, string claim) =>
+    Console.WriteLine(ok ? $"OK: {claim}" : throw new Exception($"FAIL: {claim}"));
+
+class Cache<T> where T : IEntity
 {
-    private readonly Dictionary<Guid, T> _items = new();
+    private readonly Dictionary<int, T> _items = new();
     public void Add(T item) => _items[item.Id] = item;
-    public T? Find(Guid id) => _items.GetValueOrDefault(id);
+    public T? Get(int id) => _items.GetValueOrDefault(id);
 }
-
-static class Cache<T> { public static readonly string Value = Guid.NewGuid().ToString(); }
-
+interface IEntity { int Id { get; } }
+record Order(int Id) : IEntity;
+static class Counter<T> { public static int Count; }
 class Animal { }
 class Cat : Animal { }
 ```
-
-Not runtime-verifiable here (needs disassembly, not just execution): that the JIT emits genuinely separate native code per value-type instantiation, and that no boxing occurs for `List<int>`. For those, see [Further reading](#further-reading) or inspect the generated IL/assembly in SharpLab.

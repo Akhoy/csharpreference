@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-label="await splits a method in two: the first half runs, the method returns an unfinished Task and frees the thread; when the I/O completes, a pool thread runs the second half">
+<defs><marker id="as-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<text class="t-cap" x="24" y="28">YOUR METHOD</text><text class="t-cap" x="430" y="28">WHAT HAPPENS</text>
+<rect x="24" y="40" width="380" height="64" rx="8" class="b" data-hl="1"/>
+<text class="t-c" x="36" y="64" style="font-size:12.5px">Console.WriteLine("charging…");</text><text class="t-c" x="36" y="86" style="font-size:12.5px">var orderId = 42;</text>
+<rect x="24" y="112" width="380" height="36" rx="8" class="b-acc" data-hl="2"/><text class="t-c" x="36" y="135" style="font-size:12.5px">var charged = <tspan class="t-acc" font-weight="700">await</tspan> payments.ChargeAsync(…);</text>
+<rect x="24" y="156" width="380" height="64" rx="8" class="b" data-hl="4"/>
+<text class="t-c" x="36" y="180" style="font-size:12.5px">Save(orderId, charged);</text><text class="t-c" x="36" y="202" style="font-size:12.5px">return "paid";</text>
+<text class="t-cap" x="36" y="236" data-s="2">↑ part 1 ran   ↓ part 2 = the "continuation"</text>
+<g data-s="1-1"><text class="t-s" x="430" y="60">Thread 7 runs part 1, like any</text><text class="t-s" x="430" y="80">normal method.</text></g>
+<g data-s="2-2"><text class="t-s" x="430" y="60">ChargeAsync starts the HTTP call and</text><text class="t-s" x="430" y="80">hands back an unfinished Task.</text>
+<text class="t-s t-acc" x="430" y="110">await sees "not done yet", so it saves</text><text class="t-s t-acc" x="430" y="130">orderId, notes "resume here", and</text><text class="t-s t-acc" x="430" y="150">RETURNS an unfinished Task to the caller.</text></g>
+<g data-s="3-3"><rect x="430" y="44" width="266" height="74" rx="10" class="b-good"/><text class="t-s" x="442" y="68">Thread 7 is back in the pool,</text><text class="t-s" x="442" y="88">serving other requests.</text><text class="t-s t-good" x="442" y="108">Nothing is blocked.</text>
+<rect x="430" y="132" width="266" height="74" rx="10" class="b-sunk"/><text class="t-s" x="442" y="156">The network card is waiting.</text><text class="t-s" x="442" y="176">No thread is. When bytes arrive,</text><text class="t-s" x="442" y="196">the OS notifies .NET.</text></g>
+<g data-s="4-4"><path d="M690,188 C690,230 450,240 410,190" class="ln-acc" marker-end="url(#as-ar)"/>
+<text class="t-s" x="430" y="60">The reply arrives. A free pool thread,</text><text class="t-s" x="430" y="80">say thread 3, restores orderId</text><text class="t-s" x="430" y="100">and runs part 2.</text><text class="t-s t-acc" x="430" y="130">It may be a different thread.</text><text class="t-s t-acc" x="430" y="150">That's fine.</text></g>
+<g data-s="5"><rect x="430" y="44" width="266" height="98" rx="10" class="b-deep"/><text class="t-s" x="442" y="68">The compiler built this for you:</text><text class="t-s" x="442" y="90">a state machine with a "where was I"</text><text class="t-s" x="442" y="110">number and your locals as fields.</text><text class="t-s" x="442" y="130">return "paid" completes the Task.</text></g>
+<text class="t-m" x="24" y="280">Thread 7 → part 1 → (free) … (I/O) … thread 3 → part 2</text>
+</svg>

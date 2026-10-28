@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="An exception unwinds the call stack: each frame is checked for a matching catch, finally blocks run on the way, and the first matching catch stops it">
+<defs><marker id="eu-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker></defs>
+<text class="t-cap" x="24" y="28">THE CALL STACK (newest call on top)</text>
+<g data-s="1-2"><rect x="24" y="44" width="400" height="66" rx="8" class="b" data-hl="2"/><text class="t-c" x="40" y="70">ChargeCard()</text><text class="t-m" x="40" y="92">no try/catch</text></g>
+<g data-s="3"><rect x="24" y="44" width="400" height="66" rx="8" class="b-dash"/><text class="t-m" x="40" y="82">ChargeCard: no catch here, frame torn down</text></g>
+<g data-s="1-3"><rect x="24" y="122" width="400" height="66" rx="8" class="b" data-hl="3"/><text class="t-c" x="40" y="148">PlaceOrder()</text><text class="t-m" x="40" y="170">try { … } finally { ReleaseStock(); }</text></g>
+<g data-s="4"><rect x="24" y="122" width="400" height="66" rx="8" class="b-dash"/><text class="t-m" x="40" y="160">PlaceOrder: finally ran, frame torn down</text></g>
+<g><rect x="24" y="200" width="400" height="66" rx="8" class="b" data-hl="4"/><text class="t-c" x="40" y="226">Checkout()</text><text class="t-m" x="40" y="248">catch (PaymentFailedException) { … }</text></g>
+<g data-s="2" class="fly-r"><rect x="460" y="50" width="236" height="54" rx="27" class="b-bad"/><text class="t-c" x="578" y="74" text-anchor="middle" style="font-size:12px">PaymentFailedException</text><text class="t-m" x="578" y="92" text-anchor="middle">thrown! normal flow stops</text></g>
+<g data-s="3"><path d="M520,104 C520,130 470,150 430,150" class="ln-bad" marker-end="url(#eu-ar)"/>
+<rect x="460" y="122" width="236" height="66" rx="8" class="b-warn"/><text class="t-s" x="472" y="146">No matching catch, but the</text><text class="t-s t-warn" x="472" y="166">finally runs: stock released ✓</text></g>
+<g data-s="4"><path d="M520,188 C520,210 470,230 430,230" class="ln-bad" marker-end="url(#eu-ar)"/>
+<rect x="460" y="200" width="236" height="66" rx="8" class="b-good"/><text class="t-s" x="472" y="224">The catch type matches.</text><text class="t-s t-good" x="472" y="244">Handled: "try another card"</text></g>
+<text class="t-s" x="24" y="300" data-s="1-1">Checkout called PlaceOrder, which called ChargeCard. Each call is a frame.</text>
+<text class="t-s t-bad" x="24" y="300" data-s="2-2">ChargeCard throws. The runtime starts walking back DOWN the stack, looking for a catch.</text>
+<text class="t-s t-warn" x="24" y="300" data-s="3-3">Every finally on the way runs, even though nobody has caught it yet.</text>
+<text class="t-s t-good" x="24" y="300" data-s="4-4">The first catch with a matching type stops the unwinding. Execution continues there.</text>
+<text class="t-s t-bad" x="24" y="300" data-s="5">No catch anywhere? In ASP.NET Core, the error middleware turns it into a 500 response.</text>
+</svg>

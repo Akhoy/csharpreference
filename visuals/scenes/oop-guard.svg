@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Encapsulation: private fields behind public methods that check the rules before changing state">
+<defs><marker id="og-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+<marker id="og-arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker>
+<marker id="og-arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-good"/></marker></defs>
+<text class="t-cap" x="24" y="28">OUTSIDE CODE</text><text class="t-cap" x="330" y="28">THE Order OBJECT</text>
+<rect x="24" y="44" width="250" height="44" rx="6" class="b-sunk"/>
+<text class="t-c" x="36" y="71" data-s="1-1">order.Quantity = -3;</text>
+<text class="t-c" x="36" y="71" data-s="2-2">order.Quantity = -3;</text>
+<text class="t-c" x="36" y="71" data-s="3-3">order.Ship();</text>
+<text class="t-c" x="36" y="71" data-s="4-4">order.Pay();</text>
+<text class="t-c" x="36" y="71" data-s="5-5">order.Ship();</text>
+<rect x="330" y="44" width="366" height="236" rx="12" class="b-dash"/>
+<g data-s="2"><rect x="330" y="44" width="366" height="236" rx="12" class="b-acc" style="stroke-width:3;fill-opacity:.35"/>
+<g><rect x="316" y="96" width="120" height="30" rx="15" class="b-solid"/><text class="t-c t-w" x="376" y="116" text-anchor="middle">AddItems(n)</text></g>
+<g data-hl="4"><rect x="316" y="146" width="120" height="30" rx="15" class="b-solid"/><text class="t-c t-w" x="376" y="166" text-anchor="middle">Pay()</text></g>
+<g data-hl="3,5"><rect x="316" y="196" width="120" height="30" rx="15" class="b-solid"/><text class="t-c t-w" x="376" y="216" text-anchor="middle">Ship()</text></g>
+<text class="t-m" x="344" y="86">public methods = doors</text></g>
+<text class="t-s t-bad" x="480" y="78" data-s="1-1">public fields: anyone can write</text>
+<text class="t-s t-good" x="480" y="78" data-s="2">private fields: hidden inside</text>
+<rect x="480" y="92" width="196" height="40" rx="6" class="b"/>
+<text class="t-c t-bad" x="492" y="117" data-s="1-1">Quantity = -3  ✗</text><text class="t-c" x="492" y="117" data-s="2">Quantity = 1</text>
+<rect x="480" y="146" width="196" height="40" rx="6" class="b"/>
+<text class="t-c" x="492" y="171" data-s="1-3">Status = Placed</text><text class="t-c t-good" x="492" y="171" data-s="4-4">Status = Paid ✓</text><text class="t-c t-good" x="492" y="171" data-s="5">Status = Shipped ✓</text>
+<g data-s="1-1"><path d="M274,66 C380,66 400,112 474,112" class="ln-bad" marker-end="url(#og-arb)"/><text class="t-s t-bad" x="24" y="120">Nothing stops it. The rule</text><text class="t-s t-bad" x="24" y="138">"quantity ≥ 1" lives only in your head.</text></g>
+<g data-s="2-2"><path d="M274,66 L322,66" class="ln-bad" marker-end="url(#og-arb)"/><text class="t-h t-bad" x="300" y="58">✗</text><text class="t-s t-bad" x="24" y="120">Compile error: the setter is private.</text><text class="t-s" x="24" y="138">Outside code can't touch the data at all.</text></g>
+<g data-s="3-3"><path d="M274,66 C300,66 290,211 310,211" class="ln" marker-end="url(#og-ar)"/><rect x="448" y="200" width="236" height="62" rx="8" class="b-bad"/><text class="t-s" x="460" y="222">Ship() checks the rule first:</text><text class="t-c t-bad" x="460" y="246">not paid → throw ✗</text></g>
+<g data-s="4-4"><path d="M274,66 C300,66 290,161 310,161" class="ln" marker-end="url(#og-ar)"/><path d="M436,161 L474,166" class="ln-good" marker-end="url(#og-arg)"/></g>
+<g data-s="5"><path d="M274,66 C300,66 290,211 310,211" class="ln" marker-end="url(#og-ar)"/><path d="M436,211 C460,211 455,170 474,168" class="ln-good" marker-end="url(#og-arg)"/><text class="t-s t-good" x="24" y="120">Paid first, so Ship() allows it.</text><text class="t-s" x="24" y="138">Every change went through a door</text><text class="t-s" x="24" y="156">that checked the rules.</text></g>
+<g data-s="3-3"><text class="t-s" x="24" y="120">The door refuses: an unpaid order</text><text class="t-s" x="24" y="138">can't ship, from anywhere, ever.</text></g>
+<g data-s="4-4"><text class="t-s t-good" x="24" y="120">Pay() checks, then sets Status.</text></g>
+</svg>
