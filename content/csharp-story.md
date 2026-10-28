@@ -47,7 +47,7 @@ Click **Next** (or **Play**) to walk the whole road. Each stop is one chapter.
 7. **Exceptions.** The payment provider fails halfway through checkout and a database connection is left open. Exceptions **stop the work cleanly**, and `using` makes sure resources get closed even when things fail.
 8. **Async.** Black Friday. The site freezes, but the CPU is at 5%. Every thread is stuck waiting for the payment API. `async`/`await` lets a thread **serve someone else while it waits**.
 9. **Modern C#.** A 3 a.m. `NullReferenceException`, plus 300 lines of boilerplate for simple data classes. Modern C# makes the compiler **catch nulls before they ship** and gives you records, patterns and shorthand.
-10. **Advanced.** The nightly import of 2 million rows creates millions of throwaway strings and the garbage collector can't keep up. `Span<T>`, pooling and source generators let you **read data without copying it**.
+10. **Advanced.** The finale is one long night and day in seven acts. A 2-million-row import drowns the garbage collector, repricing copies millions of structs, the label printer only speaks C, finance wants every refund audited, a serverless cold start takes 2.4 seconds, and the owner wants a "filter by anything" report. Each problem gets one advanced tool: `Span<T>`, `ArrayPool`, `ref`, interop, attributes and reflection, source generators, and hand-built expression trees.
 :::
 
 ## The cast {b}

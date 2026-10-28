@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Changing structs in a collection: a normal variable gets a copy, a ref points into the slot itself so the write lands in the array">
+<defs><marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker>
+<marker id="ar-i" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="28">StockLevel[] stock: 2,000,000 STRUCTS, STORED SIDE BY SIDE</text>
+<g><rect x="24" y="40" width="160" height="56" rx="6" class="b" data-hl="2"/><text class="t-c" x="36" y="62" style="font-size:12px">TEA-01</text>
+<text class="t-c" x="36" y="84" style="font-size:12px" data-s="1-1">£10.00</text><text class="t-c" x="36" y="84" style="font-size:12px" data-s="2-2">£10.00</text><text class="t-c t-acc" x="36" y="84" style="font-size:12px" data-s="3">£10.50</text></g>
+<g><rect x="190" y="40" width="160" height="56" rx="6" class="b"/><text class="t-c" x="202" y="62" style="font-size:12px">TEA-02</text><text class="t-c" x="202" y="84" style="font-size:12px" data-s="1-2">£20.00</text><text class="t-c t-acc" x="202" y="84" style="font-size:12px" data-s="3">£21.00</text></g>
+<g><rect x="356" y="40" width="160" height="56" rx="6" class="b"/><text class="t-c" x="368" y="62" style="font-size:12px">TEA-03</text><text class="t-c" x="368" y="84" style="font-size:12px" data-s="1-2">£6.00</text><text class="t-c t-acc" x="368" y="84" style="font-size:12px" data-s="3">£6.30</text></g>
+<rect x="522" y="40" width="174" height="56" rx="6" class="b-dash"/><text class="t-m" x="609" y="73" text-anchor="middle">… 1,999,997 more</text>
+<g data-s="1-1"><path d="M104,96 L104,140" class="ln" marker-end="url(#ar-i)"/><rect x="24" y="146" width="200" height="56" rx="6" class="b-warn"/><text class="t-cap" x="36" y="164">var s = stock[0]  (A COPY)</text><text class="t-c" x="36" y="188" style="font-size:12px">£10.00 → £10.50</text>
+<text class="t-s t-bad" x="250" y="166">The change hit the COPY. The array still</text><text class="t-s t-bad" x="250" y="186">says £10.00. (foreach won't even compile.)</text></g>
+<g data-s="2-2"><rect x="24" y="146" width="200" height="56" rx="6" class="b-acc"/><text class="t-cap" x="36" y="164">ref var s = ref stock[0]</text><text class="t-c" x="36" y="188" style="font-size:12px">an arrow INTO slot 0</text>
+<path d="M124,146 L104,102" class="ln-acc" marker-end="url(#ar-a)"/><text class="t-s t-acc" x="250" y="166">No copy. s IS slot 0, so writing</text><text class="t-s t-acc" x="250" y="186">s.Price writes into the array itself.</text></g>
+<g data-s="3-3"><text class="t-c" x="24" y="166" style="font-size:12px">foreach (ref var s in stock.AsSpan()) s.Price *= 1.05m;</text>
+<text class="t-s t-good" x="24" y="192">The ref walks every slot and updates it in place. 2 million structs, 0 copies.</text></g>
+<g data-s="4-4"><rect x="24" y="146" width="672" height="76" rx="8" class="b-info"/><text class="t-c" x="36" y="170" style="font-size:12px">static bool IsValid(in StockLevel s)</text>
+<text class="t-s" x="36" y="192">in = pass a read-only arrow instead of copying a big struct.</text><text class="t-s" x="36" y="210">(Make it a readonly struct, or the compiler may copy it anyway.)</text></g>
+<g data-s="5"><rect x="24" y="146" width="672" height="84" rx="8" class="b-deep"/><text class="t-c" x="36" y="170" style="font-size:12px">ref int Broken() { int local = 5; return ref local; }   // ✗ compile error</text>
+<text class="t-s" x="36" y="196">The compiler proves every ref dies before the thing it points at.</text><text class="t-s" x="36" y="216">That's "ref safety", and it's why refs are fast AND can't dangle.</text></g>
+</svg>

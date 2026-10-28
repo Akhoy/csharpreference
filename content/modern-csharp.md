@@ -403,7 +403,7 @@ Constructor parameters declared on the type (`class Svc(IRepo repo)`) that are i
 
 ## Next episode {b}
 
-Kettle's code is now safer and shorter. The last episode is about speed at scale. Every night Kettle imports a supplier's 2-million-row CSV price file. The import takes 40 minutes, and a profiler shows why: `line.Split(',')` creates **millions of tiny strings** that are used once and thrown away, and the garbage collector spends more time cleaning up than the import spends working. You need to *read* the data without *copying* it: [Episode 10 · Advanced C# →](ch:advanced-csharp)
+Kettle's code is now safer and shorter, and Kettle is a real business: a warehouse, a nightly supplier feed, a finance team. The finale is one long night. At 01:00 the supplier's 2-million-row price file arrives, and `line.Split(',')` creates **ten million throwaway strings** that bury the garbage collector. Before the next afternoon, six more problems hit limits that normal C# can't get past: millions of struct copies, a printer that only speaks C, an audit rule people keep forgetting, a slow serverless cold start, and a report builder that has to stay safe from SQL injection: [Episode 10 · Advanced C# →](ch:advanced-csharp)
 
 ## Further reading
 
