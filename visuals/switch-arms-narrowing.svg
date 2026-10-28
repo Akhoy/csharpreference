@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 380" role="img" aria-labelledby="t d">
+<title id="t">A switch expression tests arms top to bottom until one matches</title>
+<desc id="d">Four switch arms stacked vertically. The first two arms are tested and rejected in order, the third arm matches and produces the result, and the final discard arm is never reached for this particular input. A second input shows the exhaustiveness check: when no arm would match, the compiler warns at compile time, and if that code still runs, SwitchExpressionException is thrown at runtime.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .code { font: 500 13px "JetBrains Mono",monospace; fill:#171b26; }
+  .lblw { font: 600 12px "JetBrains Mono",monospace; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .arm      { fill:#dde1ea; }
+  .arm-test { fill:#2457c5; }
+  .arm-no   { fill:#b4263a; }
+  .arm-yes  { fill:#22845a; }
+  .edge { stroke:#dde1ea; stroke-width:1.5; fill:none; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .code { fill:#e7e9f0; }
+    .tag  { fill:#959db0; }
+    .arm      { fill:#282d3b; }
+    .arm-test { fill:#7ea6ff; }
+    .arm-no   { fill:#e05a6e; }
+    .arm-yes  { fill:#4cc58a; }
+    .edge { stroke:#282d3b; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes arm1 { 0%,2%{opacity:.35;fill:var(--base,#dde1ea);} 6%,16%{opacity:1;} 20%,100%{opacity:.35;} }
+  @keyframes arm2 { 0%,22%{opacity:.35;} 26%,36%{opacity:1;} 40%,100%{opacity:.35;} }
+  @keyframes arm3 { 0%,42%{opacity:.35;} 46%,70%{opacity:1;} 74%,100%{opacity:.35;} }
+  @keyframes arm4dim { 0%,100%{opacity:.35;} }
+  @keyframes resultIn { 0%,46%{opacity:0;} 50%,74%{opacity:1;} 78%,100%{opacity:0;} }
+
+  #a1box { animation: arm1 8s ease-in-out infinite; }
+  #a2box { animation: arm2 8s ease-in-out infinite; }
+  #a3box { animation: arm3 8s ease-in-out infinite; }
+  #a4box { animation: arm4dim 8s ease-in-out infinite; }
+  #result { animation: resultIn 8s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="380"/>
+<text class="cap" x="24" y="28">o switch { ... } — arms are tried in the order they're written</text>
+<text class="sub" x="24" y="46">Each arm is tested top to bottom. The FIRST one that matches wins; the rest never even run.</text>
+
+<g>
+  <rect id="a1box" class="arm-no" x="40" y="70" width="420" height="36" rx="6"/>
+  <text class="lblw" x="56" y="93">{ Total: &gt;= 100 } =&gt; 0m</text>
+  <text class="tag" x="480" y="93">tested, no match</text>
+
+  <rect id="a2box" class="arm-no" x="40" y="116" width="420" height="36" rx="6"/>
+  <text class="lblw" x="56" y="139">{ Customer.IsVip: true } =&gt; 0m</text>
+  <text class="tag" x="480" y="139">tested, no match</text>
+
+  <rect id="a3box" class="arm-yes" x="40" y="162" width="420" height="36" rx="6"/>
+  <text class="lblw" x="56" y="185">{ ShippingAddress.Country: "DE" or "AT" } =&gt; 4.90m</text>
+
+  <rect id="a4box" class="arm" x="40" y="208" width="420" height="36" rx="6"/>
+  <text class="code" x="56" y="231">_ =&gt; throw new InvalidOperationException(...)</text>
+  <text class="tag" x="480" y="231">never reached this time</text>
+</g>
+
+<g id="result">
+  <path class="edge" d="M460 180 L540 180" marker-end="url(#a1)"/>
+  <rect class="arm-yes" x="540" y="160" width="60" height="40" rx="8"/>
+  <text class="lblw" x="570" y="185" text-anchor="middle">4.90m</text>
+  <text class="tag" x="460" y="150">first match wins — arms 1–2 already dismissed</text>
+</g>
+
+<text class="sub" x="24" y="280">If NO arm had matched: the compiler warns at compile time (non-exhaustive switch), and if that</text>
+<text class="sub" x="24" y="298">code path is ever actually reached at runtime, it throws <tspan class="code">SwitchExpressionException</tspan>.</text>
+<text class="tag" x="24" y="330">Microsoft Learn: Pattern matching overview · SwitchExpressionException class</text>
+
+<defs>
+  <marker id="a1" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto"><path d="M0,0 L4,6 L8,0 Z" fill="#22845a"/></marker>
+</defs>
+</svg>

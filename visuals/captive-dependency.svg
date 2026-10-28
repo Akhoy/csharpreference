@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 340" role="img" aria-labelledby="t d">
+<title id="t">How a captive dependency happens</title>
+<desc id="d">A singleton that depends on a scoped service captures the first request's instance of it forever. When that request's scope ends and disposes its DbContext, the singleton is left holding a reference to an object that no longer works, and every later request shares that same stale, disposed instance instead of getting its own.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 11.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .frame{ fill:none; stroke:#dde1ea; stroke-width:1.5; stroke-dasharray:4 3; }
+  .sing { fill:#512bd4; }
+  .scope{ fill:#2457c5; }
+  .bad  { fill:#c03a46; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .tag  { fill:#959db0; }
+    .frame{ stroke:#282d3b; }
+    .sing { fill:#a993ff; }
+    .scope{ fill:#7ea6ff; }
+    .bad  { fill:#f0727b; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inSing  { 0%,2%{opacity:0;} 6%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inReq1  { 0%,8%{opacity:0;} 12%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inGrab  { 0%,20%{opacity:0;} 25%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes dieReq1 { 0%,38%{opacity:1;} 44%,94%{opacity:.25;} 98%,100%{opacity:1;} }
+  @keyframes inReq2  { 0%,52%{opacity:0;} 57%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inWarn  { 0%,68%{opacity:0;} 73%,94%{opacity:1;} 98%,100%{opacity:0;} }
+
+  .sg  { animation: inSing 10s ease-in-out infinite; }
+  .r1  { animation: inReq1 10s ease-in-out infinite; }
+  .grab{ animation: inGrab 10s ease-in-out infinite; }
+  .r1die{ animation: dieReq1 10s ease-in-out infinite; }
+  .r2  { animation: inReq2 10s ease-in-out infinite; }
+  .warn{ animation: inWarn 10s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="340"/>
+<text class="cap" x="24" y="32">Why a singleton can't safely hold a scoped service</text>
+<text class="sub" x="24" y="50">It only ever meets the FIRST request's instance — and keeps it long after that request is gone.</text>
+
+<!-- singleton, lives the whole time -->
+<g class="grp sg">
+  <rect class="sing" x="240" y="72" width="160" height="46" rx="8"/>
+  <text class="lblw" x="320" y="92" text-anchor="middle">PriceCache</text>
+  <text class="lblw" x="320" y="108" text-anchor="middle" font-size="10">singleton — lives forever</text>
+</g>
+
+<!-- request 1 scope -->
+<g class="grp r1">
+  <rect class="frame" x="60" y="150" width="200" height="90" rx="8"/>
+  <text class="tag" x="160" y="142" text-anchor="middle">REQUEST 1's SCOPE</text>
+  <rect class="scope" x="80" y="170" width="160" height="46" rx="8"/>
+  <text class="lblw" x="160" y="190" text-anchor="middle">ShopDb #1</text>
+  <text class="lblw" x="160" y="206" text-anchor="middle" font-size="10">scoped to this request</text>
+</g>
+
+<g class="grp grab">
+  <path d="M260 193 L320 193 L320 118" stroke="#512bd4" stroke-width="2" fill="none" marker-end="url(#arrowUp2)"/>
+  <text class="tag" x="330" y="155" text-anchor="middle">captured once</text>
+</g>
+
+<g class="grp r1die">
+  <text class="bad" x="160" y="262" text-anchor="middle" font-size="11" font-weight="700">request 1 ends — ShopDb #1 is disposed</text>
+</g>
+
+<!-- request 2 scope, new ShopDb, singleton still points at #1 -->
+<g class="grp r2">
+  <rect class="frame" x="380" y="150" width="200" height="90" rx="8"/>
+  <text class="tag" x="480" y="142" text-anchor="middle">REQUEST 2's SCOPE</text>
+  <rect class="scope" x="400" y="170" width="160" height="46" rx="8"/>
+  <text class="lblw" x="480" y="190" text-anchor="middle">ShopDb #2</text>
+  <text class="lblw" x="480" y="206" text-anchor="middle" font-size="10">PriceCache never sees this one</text>
+</g>
+
+<g class="grp warn">
+  <rect class="bad" x="140" y="280" width="360" height="40" rx="8"/>
+  <text class="lblw" x="320" y="300" text-anchor="middle">PriceCache still points at disposed ShopDb #1</text>
+  <text class="lblw" x="320" y="314" text-anchor="middle" font-size="10">→ ObjectDisposedException, shared across every request</text>
+</g>
+
+<defs>
+  <marker id="arrowUp2" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto">
+    <path d="M0,6 L4,0 L8,6 Z" fill="#512bd4"/>
+  </marker>
+</defs>
+</svg>

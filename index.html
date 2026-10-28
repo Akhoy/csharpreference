@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The .NET Backend Book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<header class="top">
+  <button class="icon-btn only-narrow" id="navBtn" aria-label="Open contents">☰</button>
+  <a class="brand" href="#/"><span class="mark">.N</span><span class="brand-text">The .NET Backend Book</span></a>
+  <div class="search">
+    <input id="q" type="search" placeholder="Search the book  ( / )" autocomplete="off" aria-label="Search the book">
+    <div class="results" id="results" hidden></div>
+  </div>
+  <nav class="top-links">
+    <a href="#/" data-route="home">Map</a>
+    <a href="#/questions" data-route="questions">Question bank</a>
+  </nav>
+  <button class="icon-btn" id="themeBtn" aria-label="Toggle dark mode">◐</button>
+</header>
+<div class="shell">
+  <aside class="nav" id="nav" aria-label="Book contents"></aside>
+  <div class="scrim" id="scrim"></div>
+  <main id="main" tabindex="-1"></main>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</div>
+<script src="assets/book.js"></script>
+<script src="assets/reader.js"></script>
+</body>
+</html>

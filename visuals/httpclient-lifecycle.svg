@@ -1,0 +1,81 @@
+<svg viewBox="0 0 860 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hc-title hc-desc">
+  <title id="hc-title">Three HttpClient lifetimes and what goes wrong with two of them</title>
+  <desc id="hc-desc">New HttpClient per request opens a new connection pool each time and leaves sockets in TIME_WAIT, exhausting ephemeral ports under load. One static HttpClient forever keeps the same pooled connection indefinitely, missing DNS changes after a failover. IHttpClientFactory recycles the underlying handler every two minutes by default, reusing connections while still picking up DNS changes.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root { --bg:#ffffff; --ink:#1b1f27; --dim:#6b7280;
+        --bad1:#c03a46; --bad2:#f0727b; --warn1:#b06f08; --warn2:#e6a83a; --ok1:#22845a; --ok2:#4cc58a; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#14161c; --ink:#eef0f6; --dim:#9aa3b2; }
+      }
+      text { font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; fill: var(--ink); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .dim { fill: var(--dim); }
+      .grp { opacity: 0; }
+      @media (prefers-reduced-motion: reduce) { .grp { opacity: 1; animation: none !important; } }
+      .lane { animation: fade 11s ease-in-out infinite; }
+      @keyframes fade { 0% { opacity:0; } 6%,100% { opacity:1; } }
+      .l1 { animation-delay: 0s; } .l2 { animation-delay: .2s; } .l3 { animation-delay: .4s; }
+
+      .sock { fill: var(--bad1); }
+      @media (prefers-color-scheme: dark) { .sock { fill: var(--bad2); } }
+      .sockgrow { animation: grow 11s steps(6) infinite; animation-delay: .6s; }
+      @keyframes grow { 0% { opacity: 0; } 5% { opacity: 1; } 100% { opacity: 1; } }
+      .s0 { animation-delay: .6s; } .s1b { animation-delay: 1.1s; } .s2b { animation-delay: 1.6s; }
+      .s3 { animation-delay: 2.1s; } .s4 { animation-delay: 2.6s; } .s5 { animation-delay: 3.1s; }
+
+      .pin { fill: var(--warn1); }
+      @media (prefers-color-scheme: dark) { .pin { fill: var(--warn2); } }
+      .pinpulse { animation: pin 11s ease-in-out infinite; animation-delay: 4s; }
+      @keyframes pin { 0%,36% { opacity: .3; } 40%,60% { opacity: 1; } 64%,100% { opacity: .3; } }
+
+      .recycle { fill: var(--ok1); }
+      @media (prefers-color-scheme: dark) { .recycle { fill: var(--ok2); } }
+      .swap { animation: swap 11s ease-in-out infinite; animation-delay: 7s; }
+      @keyframes swap { 0%,36% { opacity: 1; transform: translateX(0); } 40% { opacity: .2; transform: translateX(8px); } 46%,100% { opacity: 1; transform: translateX(0); } }
+      ]]>
+    </style>
+  </defs>
+
+  <rect width="860" height="440" fill="var(--bg)"/>
+  <text x="20" y="28" font-size="15" font-weight="600">Three ways to hold an HttpClient, and what time does to each one</text>
+
+  <!-- lane 1: new per request -->
+  <g class="grp lane l1">
+    <text x="20" y="70" font-size="13" font-weight="600">new HttpClient() per request</text>
+    <text x="20" y="88" class="dim" font-size="11">each call opens a fresh connection; disposing leaves the socket in TIME_WAIT (~2–4 min)</text>
+    <g class="sockgrow">
+      <rect class="sock s0" x="40" y="100" width="16" height="16" rx="3"/>
+      <rect class="sock s1b" x="64" y="100" width="16" height="16" rx="3"/>
+      <rect class="sock s2b" x="88" y="100" width="16" height="16" rx="3"/>
+      <rect class="sock s3" x="112" y="100" width="16" height="16" rx="3"/>
+      <rect class="sock s4" x="136" y="100" width="16" height="16" rx="3"/>
+      <rect class="sock s5" x="160" y="100" width="16" height="16" rx="3"/>
+    </g>
+    <text x="190" y="113" class="mono" font-size="11" fill="var(--bad1)">… sockets pile up → port exhaustion</text>
+  </g>
+
+  <!-- lane 2: static forever -->
+  <g class="grp lane l2">
+    <text x="20" y="190" font-size="13" font-weight="600">static readonly HttpClient (forever)</text>
+    <text x="20" y="208" class="dim" font-size="11">one connection, reused indefinitely — convenient, until the target's IP changes</text>
+    <rect class="pin pinpulse" x="40" y="220" width="200" height="22" rx="4"/>
+    <text x="50" y="235" class="mono" font-size="11" fill="var(--bg)">pinned to old IP after failover</text>
+  </g>
+
+  <!-- lane 3: factory -->
+  <g class="grp lane l3">
+    <text x="20" y="310" font-size="13" font-weight="600">IHttpClientFactory</text>
+    <text x="20" y="328" class="dim" font-size="11">connections reused, but the underlying handler is recycled every 2 minutes by default</text>
+    <g class="swap">
+      <rect class="recycle" x="40" y="340" width="90" height="22" rx="4"/>
+      <text x="55" y="355" class="mono" font-size="10" fill="var(--bg)">handler A</text>
+      <rect class="recycle" x="150" y="340" width="90" height="22" rx="4"/>
+      <text x="165" y="355" class="mono" font-size="10" fill="var(--bg)">handler B</text>
+    </g>
+    <text x="260" y="356" class="mono" font-size="11" fill="var(--ok1)">old handler drains, new one picks up fresh DNS</text>
+  </g>
+
+  <text x="20" y="420" font-size="12" class="dim">The expensive part — the connection pool — lives in the primary handler, not in HttpClient itself.</text>
+</svg>

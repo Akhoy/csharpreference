@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d">
+<title id="t">How the JIT warms up a method</title>
+<desc id="d">A method is first compiled quickly and crudely at Tier 0 so the app starts fast. After enough calls, the JIT recompiles it as fully optimized Tier 1 code in the background, then switches future calls to the fast version. Native AOT skips this entirely by compiling everything before the app even starts.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lbl  { font: 600 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .lblw { font: 600 12px "IBM Plex Sans","Segoe UI",sans-serif; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .frame{ fill:none; stroke:#dde1ea; stroke-width:1.5; stroke-dasharray:4 3; }
+  .tier0 { fill:#b06f08; }
+  .tier1 { fill:#22845a; }
+  .aot   { fill:#512bd4; }
+  .track { stroke:#dde1ea; stroke-width:1.5; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .lbl  { fill:#e7e9f0; }
+    .tag  { fill:#959db0; }
+    .frame{ stroke:#282d3b; }
+    .track{ stroke:#282d3b; }
+    .tier0 { fill:#e6a83a; }
+    .tier1 { fill:#4cc58a; }
+    .aot   { fill:#a993ff; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inCall  { 0%,2%{opacity:0;} 6%,91%{opacity:1;} 97%,100%{opacity:0;} }
+  @keyframes inT0    { 0%,8%{opacity:0;transform:translateY(10px);} 14%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes countUp { 0%,16%{opacity:0;} 20%,45%{opacity:1;} 97%,100%{opacity:0;} }
+  @keyframes inBg    { 0%,46%{opacity:0;} 52%,70%{opacity:1;} 97%,100%{opacity:0;} }
+  @keyframes inT1    { 0%,70%{opacity:0;transform:translateY(10px);} 76%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes fadeT0  { 0%,75%{opacity:1;} 82%,91%{opacity:.35;} 97%,100%{opacity:1;} }
+  @keyframes inAot   { 0%,4%{opacity:0;} 10%,91%{opacity:1;} 97%,100%{opacity:0;} }
+
+  .call  { animation: inCall 11s ease-in-out infinite; }
+  .t0    { animation: inT0 11s ease-in-out infinite, fadeT0 11s ease-in-out infinite; transform-origin:150px 120px; }
+  .count { animation: countUp 11s ease-in-out infinite; }
+  .bgcomp{ animation: inBg 11s ease-in-out infinite; }
+  .t1    { animation: inT1 11s ease-in-out infinite; transform-origin:430px 120px; }
+  .aotg  { animation: inAot 11s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="360"/>
+<text class="cap" x="24" y="32">Warming up: how a method gets fast</text>
+<text class="sub" x="24" y="50">The JIT trades a quick first draft for a polished rewrite, once it knows the method is worth the effort.</text>
+
+<!-- timeline -->
+<line class="track" x1="24" y1="70" x2="616" y2="70"/>
+
+<!-- call arrives -->
+<g class="grp call">
+  <circle cx="150" cy="70" r="5" fill="#646c7e"/>
+  <text class="tag" x="150" y="90" text-anchor="middle">METHOD CALLED</text>
+</g>
+
+<!-- Tier 0 box -->
+<g class="grp t0">
+  <rect class="tier0" x="70" y="100" width="160" height="60" rx="8"/>
+  <text class="lblw" x="150" y="125" text-anchor="middle">Tier 0</text>
+  <text class="lblw" x="150" y="143" text-anchor="middle" font-size="10.5">quick, sloppy, ready now</text>
+</g>
+
+<!-- call counter -->
+<g class="grp count">
+  <rect class="frame" x="70" y="178" width="160" height="40" rx="8"/>
+  <text class="tag" x="150" y="202" text-anchor="middle">CALLED 30+ TIMES</text>
+</g>
+
+<!-- background compile -->
+<g class="grp bgcomp">
+  <path d="M232 130 L348 130" stroke="#646c7e" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arrow)"/>
+  <text class="sub" x="290" y="118" text-anchor="middle">recompiling</text>
+  <text class="sub" x="290" y="150" text-anchor="middle">in the background</text>
+</g>
+
+<!-- Tier 1 box -->
+<g class="grp t1">
+  <rect class="tier1" x="350" y="100" width="160" height="60" rx="8"/>
+  <text class="lblw" x="430" y="125" text-anchor="middle">Tier 1</text>
+  <text class="lblw" x="430" y="143" text-anchor="middle" font-size="10.5">slow to produce, fast to run</text>
+  <text class="tag" x="430" y="178" text-anchor="middle">FUTURE CALLS LAND HERE</text>
+</g>
+
+<!-- AOT lane -->
+<text class="cap" x="24" y="250">Native AOT: no warm-up at all</text>
+<text class="sub" x="24" y="268">Everything is compiled before the app ever starts, so there's no Tier 0 to outgrow.</text>
+<g class="grp aotg">
+  <rect class="aot" x="70" y="282" width="440" height="50" rx="8"/>
+  <text class="lblw" x="290" y="312" text-anchor="middle">Already native machine code — first call is as fast as the millionth</text>
+</g>
+
+<defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L6,3 L0,6 Z" fill="#646c7e"/>
+  </marker>
+</defs>
+</svg>

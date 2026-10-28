@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 340" role="img" aria-labelledby="t d">
+<title id="t">A multicast delegate calls its invocation list in order, and keeps only the last result</title>
+<desc id="d">notify holds a list of two subscribers, email then sms. Calling notify() walks the invocation list in the order each was added with plus-equals, running email first, then sms. If notify has a return type, the value handed back to the caller is only the last subscriber's result; earlier results are discarded. If a subscriber throws partway through, the remaining subscribers never run.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 11.5px "JetBrains Mono",monospace; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .code { font: 500 13px "JetBrains Mono",monospace; fill:#171b26; }
+  .deleg{ fill:#512bd4; }
+  .slot1{ fill:#22845a; }
+  .slot2{ fill:#2457c5; }
+  .result{ fill:#b06f08; }
+  .edge { stroke:#dde1ea; stroke-width:1.5; fill:none; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .tag  { fill:#959db0; }
+    .code { fill:#e7e9f0; }
+    .deleg{ fill:#a993ff; }
+    .slot1{ fill:#4cc58a; }
+    .slot2{ fill:#7ea6ff; }
+    .result{ fill:#e6a83a; }
+    .edge { stroke:#282d3b; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inList  { 0%,2%{opacity:0;} 6%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inFirst { 0%,18%{opacity:0;} 23%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inSecond{ 0%,42%{opacity:0;} 47%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inResult{ 0%,66%{opacity:0;} 71%,94%{opacity:1;} 98%,100%{opacity:0;} }
+
+  .list-g   { animation: inList 11s ease-in-out infinite; }
+  .first-g  { animation: inFirst 11s ease-in-out infinite; }
+  .second-g { animation: inSecond 11s ease-in-out infinite; }
+  .result-g { animation: inResult 11s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="340"/>
+<text class="cap" x="24" y="28">notify += Email; notify += Sms; notify();  — one call, invocation list runs in add order</text>
+<text class="sub" x="24" y="46">Each slot runs in turn. If the delegate returns a value, only the LAST slot's result survives.</text>
+
+<g class="grp list-g">
+  <rect class="deleg" x="40" y="70" width="560" height="44" rx="8"/>
+  <text class="lblw" x="320" y="97" text-anchor="middle">notify's invocation list: [ Email, Sms ]</text>
+</g>
+
+<g class="grp first-g">
+  <path class="edge" d="M140 114 L140 150" marker-end="url(#m1)"/>
+  <rect class="slot1" x="60" y="150" width="160" height="50" rx="8"/>
+  <text class="lblw" x="140" y="172" text-anchor="middle">1. Email(...) runs</text>
+  <text class="lblw" x="140" y="188" text-anchor="middle" font-size="10">returns 1 — noted, not kept</text>
+</g>
+
+<g class="grp second-g">
+  <path class="edge" d="M460 114 L460 150" marker-end="url(#m2)"/>
+  <rect class="slot2" x="380" y="150" width="160" height="50" rx="8"/>
+  <text class="lblw" x="460" y="172" text-anchor="middle">2. Sms(...) runs</text>
+  <text class="lblw" x="460" y="188" text-anchor="middle" font-size="10">returns 2 — this one wins</text>
+</g>
+
+<g class="grp result-g">
+  <path class="edge" d="M140 200 Q 300 240 460 200" marker-end="url(#m3)"/>
+  <rect class="result" x="220" y="250" width="200" height="46" rx="8"/>
+  <text class="lblw" x="320" y="270" text-anchor="middle">notify() returns 2</text>
+  <text class="lblw" x="320" y="285" text-anchor="middle" font-size="10">Email's result is discarded</text>
+</g>
+
+<defs>
+  <marker id="m1" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto"><path d="M0,0 L4,6 L8,0 Z" fill="#22845a"/></marker>
+  <marker id="m2" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto"><path d="M0,0 L4,6 L8,0 Z" fill="#2457c5"/></marker>
+  <marker id="m3" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto"><path d="M0,0 L4,6 L8,0 Z" fill="#b06f08"/></marker>
+</defs>
+</svg>

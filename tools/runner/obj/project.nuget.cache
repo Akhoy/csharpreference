@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "4AdteGWr1lI=",
+  "success": true,
+  "projectFilePath": "/Users/akhoy/Programming/c# structure/tools/runner/runner.csproj",
+  "expectedPackageFiles": [
+    "/Users/akhoy/.nuget/packages/microsoft.codeanalysis.analyzers/3.3.4/microsoft.codeanalysis.analyzers.3.3.4.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/microsoft.codeanalysis.common/4.11.0/microsoft.codeanalysis.common.4.11.0.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/microsoft.codeanalysis.csharp/4.11.0/microsoft.codeanalysis.csharp.4.11.0.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/microsoft.net.sdk.webassembly.pack/9.0.22/microsoft.net.sdk.webassembly.pack.9.0.22.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/system.collections.immutable/8.0.0/system.collections.immutable.8.0.0.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/system.reflection.metadata/8.0.0/system.reflection.metadata.8.0.0.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/microsoft.netcore.app.ref/8.0.33/microsoft.netcore.app.ref.8.0.33.nupkg.sha512",
+    "/Users/akhoy/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.33/microsoft.aspnetcore.app.ref.8.0.33.nupkg.sha512"
+  ],
+  "logs": []
+}

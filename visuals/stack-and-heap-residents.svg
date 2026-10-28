@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 400" role="img" aria-labelledby="t d">
+<title id="t">Where locals actually live: one thread's stack next to the shared heap</title>
+<desc id="d">Inside method M, the local int lives inline in M's stack frame. The order variable is an 8-byte reference that also lives in the stack frame, but it points to an Order object allocated on the shared heap. The nums array variable is likewise a reference on the stack, pointing to an array object on the heap that holds its three ints inline, inside the array itself. When M returns, its stack frame is popped immediately; the heap objects stay alive for as long as something still references them, and the GC reclaims them only once nothing does.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 11.5px "JetBrains Mono",monospace; fill:#ffffff; }
+  .lbld { font: 600 11.5px "JetBrains Mono",monospace; fill:#171b26; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .region { fill:#eceef3; stroke:#dde1ea; stroke-width:1.5; }
+  .frame  { fill:#2457c5; }
+  .slot   { fill:#3a6fe0; }
+  .heapbg { fill:#f3edff; stroke:#d8c9ff; stroke-width:1.5; }
+  .obj    { fill:#512bd4; }
+  .arr    { fill:#7a4fe0; }
+  .edge   { stroke:#22845a; stroke-width:2; fill:none; }
+  @media (prefers-color-scheme: dark) {
+    .bg     { fill:#0d0f15; }
+    .cap    { fill:#e7e9f0; }
+    .sub    { fill:#959db0; }
+    .tag    { fill:#959db0; }
+    .lbld   { fill:#e7e9f0; }
+    .region { fill:#161a24; stroke:#282d3b; }
+    .frame  { fill:#5f93ff; }
+    .slot   { fill:#3f6fd1; }
+    .heapbg { fill:#1c1430; stroke:#3c2d66; }
+    .obj    { fill:#a993ff; }
+    .arr    { fill:#9879e8; }
+    .edge   { stroke:#4cc58a; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inFrame { 0%,2%{opacity:0;} 6%,96%{opacity:1;} 99%,100%{opacity:0;} }
+  @keyframes inLocal { 0%,10%{opacity:0;} 14%,96%{opacity:1;} 99%,100%{opacity:0;} }
+  @keyframes inOrderEdge { 0%,26%{opacity:0;} 30%,96%{opacity:1;} 99%,100%{opacity:0;} }
+  @keyframes inNumsEdge  { 0%,46%{opacity:0;} 50%,96%{opacity:1;} 99%,100%{opacity:0;} }
+  @keyframes popFrame { 0%,78%{opacity:1;} 86%,100%{opacity:0;} }
+  @keyframes staySame { 0%,100%{opacity:1;} }
+
+  .frameGrp { animation: inFrame 12s ease-in-out infinite; }
+  .popsWithFrame { animation: popFrame 12s ease-in-out infinite; }
+  .local  { animation: inLocal 12s ease-in-out infinite; }
+  .orderEdge { animation: inOrderEdge 12s ease-in-out infinite; }
+  .numsEdge  { animation: inNumsEdge 12s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="680" height="400"/>
+<text class="cap" x="24" y="28">void M() { int local = 5; var order = new Order(); int[] nums = {1,2,3}; }</text>
+<text class="sub" x="24" y="46">The stack frame holds the local value and two 8-byte references. The objects they point to live on the heap.</text>
+
+<!-- Stack region -->
+<rect class="region" x="24" y="66" width="280" height="300" rx="10"/>
+<text class="tag" x="40" y="88">THIS THREAD'S STACK (≈1 MB, private)</text>
+
+<g class="grp frameGrp popsWithFrame">
+  <rect class="frame" x="40" y="104" width="248" height="130" rx="8"/>
+  <text class="lblw" x="164" y="124" text-anchor="middle">stack frame for M()</text>
+
+  <g class="grp local">
+    <rect class="slot" x="52" y="134" width="224" height="26" rx="5"/>
+    <text class="lblw" x="64" y="152">local = 5</text>
+    <text class="lblw" x="240" y="152" text-anchor="end">inline</text>
+  </g>
+
+  <rect class="slot" x="52" y="166" width="224" height="26" rx="5"/>
+  <text class="lblw" x="64" y="184">order → (8-byte ref)</text>
+
+  <rect class="slot" x="52" y="198" width="224" height="26" rx="5"/>
+  <text class="lblw" x="64" y="216">nums → (8-byte ref)</text>
+</g>
+
+<text class="sub grp popsWithFrame" x="40" y="252">frame is popped the instant M() returns —</text>
+<text class="sub" x="40" y="268">no GC involved, just a pointer move.</text>
+
+<!-- Heap region -->
+<rect class="heapbg" x="356" y="66" width="300" height="300" rx="10"/>
+<text class="tag" x="372" y="88">PROCESS HEAP (shared, GC-managed)</text>
+
+<rect class="obj" x="372" y="110" width="268" height="50" rx="8"/>
+<text class="lblw" x="506" y="140" text-anchor="middle">Order object</text>
+
+<rect class="arr" x="372" y="176" width="268" height="60" rx="8"/>
+<text class="lblw" x="506" y="196" text-anchor="middle">int[] array object</text>
+<text class="lblw" x="506" y="216" text-anchor="middle">[ 1, 2, 3 ]  — elements stored inline, inside the array itself</text>
+
+<text class="sub" x="372" y="266">Both objects stay alive only as long as something</text>
+<text class="sub" x="372" y="282">still references them — M()'s frame being popped does not</text>
+<text class="sub" x="372" y="298">free them if another reference elsewhere still points here.</text>
+
+<g class="grp orderEdge">
+  <path class="edge" d="M276 179 C 320 179, 330 135, 372 135" marker-end="url(#a1)"/>
+</g>
+<g class="grp numsEdge">
+  <path class="edge" d="M276 211 C 320 211, 330 206, 372 206" marker-end="url(#a1)"/>
+</g>
+
+<defs>
+  <marker id="a1" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto"><path d="M0,0 L4,6 L8,0 Z" fill="#22845a"/></marker>
+</defs>
+</svg>

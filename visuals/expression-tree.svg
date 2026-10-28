@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="t d">
+<title id="t">How an expression tree becomes SQL</title>
+<desc id="d">A lambda assigned to Expression of Func is not compiled into runnable code. Instead the compiler builds a tree of objects describing the code: an AndAlso node with two comparison children, each pointing at a member access and a constant. EF Core walks this tree node by node and emits the equivalent SQL WHERE clause.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 11.5px "JetBrains Mono",monospace; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .sql  { font: 500 13px "JetBrains Mono",monospace; fill:#171b26; }
+  .edge { stroke:#dde1ea; stroke-width:1.5; fill:none; }
+  .root { fill:#512bd4; }
+  .cmp  { fill:#2457c5; }
+  .leaf { fill:#22845a; }
+  .sqlbox{ fill:none; stroke:#dde1ea; stroke-width:1.5; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .tag  { fill:#959db0; }
+    .sql  { fill:#e7e9f0; }
+    .edge { stroke:#282d3b; }
+    .root { fill:#a993ff; }
+    .cmp  { fill:#7ea6ff; }
+    .leaf { fill:#4cc58a; }
+    .sqlbox{ stroke:#282d3b; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inLambda { 0%,2%{opacity:0;} 6%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inRoot   { 0%,10%{opacity:0;transform:scale(.9);} 15%,94%{opacity:1;transform:scale(1);} 98%,100%{opacity:0;} }
+  @keyframes inCmp    { 0%,22%{opacity:0;transform:translateY(-6px);} 28%,94%{opacity:1;transform:translateY(0);} 98%,100%{opacity:0;} }
+  @keyframes inLeaf   { 0%,38%{opacity:0;transform:translateY(-6px);} 44%,94%{opacity:1;transform:translateY(0);} 98%,100%{opacity:0;} }
+  @keyframes inWalk   { 0%,56%{opacity:0;} 60%,94%{opacity:1;} 98%,100%{opacity:0;} }
+  @keyframes inSql    { 0%,68%{opacity:0;transform:translateY(8px);} 74%,94%{opacity:1;transform:translateY(0);} 98%,100%{opacity:0;} }
+
+  .lam  { animation: inLambda 11s ease-in-out infinite; }
+  .root1{ animation: inRoot 11s ease-in-out infinite; transform-origin:320px 100px; }
+  .cmpg { animation: inCmp 11s ease-in-out infinite; }
+  .leafg{ animation: inLeaf 11s ease-in-out infinite; }
+  .walk { animation: inWalk 11s ease-in-out infinite; }
+  .sqlg { animation: inSql 11s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="400"/>
+<text class="cap" x="24" y="28">Expression&lt;Func&lt;Order,bool&gt;&gt; isn't code — it's a description of code</text>
+<text class="sub" x="24" y="46">That's what lets EF Core read it and write its own SQL instead of running it.</text>
+
+<g class="grp lam">
+  <text class="sql" x="320" y="70" text-anchor="middle">o =&gt; o.Total &gt; 100 &amp;&amp; o.Country == "DE"</text>
+</g>
+
+<!-- root AndAlso -->
+<g class="grp root1">
+  <rect class="root" x="250" y="88" width="140" height="36" rx="8"/>
+  <text class="lblw" x="320" y="111" text-anchor="middle">AndAlso</text>
+</g>
+
+<!-- edges to comparisons -->
+<g class="grp cmpg">
+  <path class="edge" d="M290 124 L170 160"/>
+  <path class="edge" d="M350 124 L470 160"/>
+  <rect class="cmp" x="100" y="160" width="140" height="34" rx="7"/>
+  <text class="lblw" x="170" y="181" text-anchor="middle">GreaterThan</text>
+  <rect class="cmp" x="400" y="160" width="140" height="34" rx="7"/>
+  <text class="lblw" x="470" y="181" text-anchor="middle">Equal</text>
+</g>
+
+<!-- leaves -->
+<g class="grp leafg">
+  <path class="edge" d="M140 194 L80 232"/>
+  <path class="edge" d="M200 194 L240 232"/>
+  <rect class="leaf" x="40" y="232" width="100" height="32" rx="6"/>
+  <text class="lblw" x="90" y="252" text-anchor="middle" font-size="10.5">Member(Total)</text>
+  <rect class="leaf" x="190" y="232" width="100" height="32" rx="6"/>
+  <text class="lblw" x="240" y="252" text-anchor="middle" font-size="10.5">Constant(100)</text>
+
+  <path class="edge" d="M440 194 L390 232"/>
+  <path class="edge" d="M500 194 L550 232"/>
+  <rect class="leaf" x="340" y="232" width="110" height="32" rx="6"/>
+  <text class="lblw" x="395" y="252" text-anchor="middle" font-size="10.5">Member(Country)</text>
+  <rect class="leaf" x="500" y="232" width="100" height="32" rx="6"/>
+  <text class="lblw" x="550" y="252" text-anchor="middle" font-size="10.5">Constant("DE")</text>
+</g>
+
+<g class="grp walk">
+  <text class="tag" x="320" y="290" text-anchor="middle">EF CORE WALKS THIS TREE, NODE BY NODE</text>
+</g>
+
+<g class="grp sqlg">
+  <rect class="sqlbox" x="70" y="310" width="500" height="60" rx="8"/>
+  <text class="sql" x="320" y="336" text-anchor="middle">WHERE [o].[Total] &gt; 100.0</text>
+  <text class="sql" x="320" y="356" text-anchor="middle">AND [o].[Country] = N'DE'</text>
+</g>
+
+</svg>

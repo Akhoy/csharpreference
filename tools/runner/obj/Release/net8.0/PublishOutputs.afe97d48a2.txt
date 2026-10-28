@@ -1,0 +1,4 @@
+/Users/akhoy/Programming/c# structure/tools/runner/bin/Release/net8.0/publish/runtimeconfig.template.json
+/Users/akhoy/Programming/c# structure/tools/runner/bin/Release/net8.0/publish/runner.runtimeconfig.json
+/Users/akhoy/Programming/c# structure/tools/runner/bin/Release/net8.0/publish/emcc-props.json
+/Users/akhoy/Programming/c# structure/tools/runner/bin/Release/net8.0/publish/web.config

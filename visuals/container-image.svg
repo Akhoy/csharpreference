@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 430" role="img" aria-labelledby="t d">
+<title id="t">How a Docker image becomes containers</title>
+<desc id="d">Three layers stack bottom to top to form a read-only image. A writable layer on top turns it into a running container. The same image spins up several containers, each with its own writable layer.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lbl  { font: 600 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .lblw { font: 600 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .frame{ fill:none; stroke:#dde1ea; stroke-width:1.5; stroke-dasharray:4 3; }
+  .os    { fill:#22845a; }
+  .rt    { fill:#2457c5; }
+  .app   { fill:#512bd4; }
+  .wr    { fill:#b06f08; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .lbl  { fill:#e7e9f0; }
+    .tag  { fill:#959db0; }
+    .frame{ stroke:#282d3b; }
+    .os   { fill:#4cc58a; }
+    .rt   { fill:#7ea6ff; }
+    .app  { fill:#a993ff; }
+    .wr   { fill:#e6a83a; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inL1 { 0%,4%{opacity:0;transform:translateY(16px);} 10%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;transform:translateY(16px);} }
+  @keyframes inL2 { 0%,13%{opacity:0;transform:translateY(16px);} 19%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inL3 { 0%,22%{opacity:0;transform:translateY(16px);} 28%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inImg{ 0%,31%{opacity:0;} 36%,91%{opacity:1;} 97%,100%{opacity:0;} }
+  @keyframes inL4 { 0%,40%{opacity:0;transform:translateY(16px);} 46%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inCtr{ 0%,49%{opacity:0;} 54%,91%{opacity:1;} 97%,100%{opacity:0;} }
+  @keyframes inC1 { 0%,58%{opacity:0;transform:translateY(10px);} 63%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inC2 { 0%,64%{opacity:0;transform:translateY(10px);} 69%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inC3 { 0%,70%{opacity:0;transform:translateY(10px);} 75%,91%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inMany{ 0%,76%{opacity:0;} 81%,91%{opacity:1;} 97%,100%{opacity:0;} }
+
+  .l1   { animation: inL1 10s ease-in-out infinite; transform-origin:150px 323px; }
+  .l2   { animation: inL2 10s ease-in-out infinite; transform-origin:150px 274px; }
+  .l3   { animation: inL3 10s ease-in-out infinite; transform-origin:150px 225px; }
+  .imgb { animation: inImg 10s ease-in-out infinite; }
+  .l4   { animation: inL4 10s ease-in-out infinite; transform-origin:150px 176px; }
+  .ctrb { animation: inCtr 10s ease-in-out infinite; }
+  .c1   { animation: inC1 10s ease-in-out infinite; transform-origin:360px 300px; }
+  .c2   { animation: inC2 10s ease-in-out infinite; transform-origin:450px 300px; }
+  .c3   { animation: inC3 10s ease-in-out infinite; transform-origin:540px 300px; }
+  .many { animation: inMany 10s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="430"/>
+<text class="cap" x="24" y="32">One layer at a time, bottom to top</text>
+<text class="sub" x="24" y="50">Each Dockerfile step adds one layer. Stack them and you get an image. Run the image and you get a container.</text>
+
+<!-- main stack: image forming -->
+<g class="grp l1"><rect class="os" x="70" y="300" width="160" height="46" rx="6"/><text class="lblw" x="150" y="328" text-anchor="middle">Ubuntu base OS</text></g>
+<g class="grp l2"><rect class="rt" x="70" y="251" width="160" height="46" rx="6"/><text class="lblw" x="150" y="279" text-anchor="middle">.NET runtime</text></g>
+<g class="grp l3"><rect class="app" x="70" y="202" width="160" height="46" rx="6"/><text class="lblw" x="150" y="230" text-anchor="middle">App files</text></g>
+
+<g class="grp imgb">
+  <rect class="frame" x="62" y="194" width="176" height="160" rx="10"/>
+  <text class="tag" x="150" y="372" text-anchor="middle">= IMAGE (READ-ONLY)</text>
+</g>
+
+<g class="grp l4"><rect class="wr" x="70" y="153" width="160" height="46" rx="6"/><text class="lblw" x="150" y="174" text-anchor="middle">Container's own</text><text class="lblw" x="150" y="190" text-anchor="middle">writable layer</text></g>
+
+<g class="grp ctrb">
+  <rect class="frame" x="62" y="145" width="176" height="209" rx="10"/>
+  <text class="tag" x="150" y="128" text-anchor="middle">RUNNING CONTAINER</text>
+</g>
+
+<!-- arrow to the right-hand group -->
+<g class="grp many">
+  <path d="M248 270 L320 270" stroke="#646c7e" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text class="sub" x="284" y="256" text-anchor="middle">same image</text>
+</g>
+
+<!-- three containers from the same image -->
+<g class="grp many">
+  <text class="cap" x="450" y="340" text-anchor="middle">Many containers, one image</text>
+</g>
+
+<g class="grp c1">
+  <rect class="os" x="330" y="300" width="60" height="12"/>
+  <rect class="rt" x="330" y="288" width="60" height="12"/>
+  <rect class="app" x="330" y="276" width="60" height="12"/>
+  <rect class="wr" x="330" y="264" width="60" height="12"/>
+  <rect class="frame" x="327" y="261" width="66" height="54" rx="4"/>
+  <text class="tag" x="360" y="326" text-anchor="middle">CONTAINER 1</text>
+</g>
+<g class="grp c2">
+  <rect class="os" x="420" y="300" width="60" height="12"/>
+  <rect class="rt" x="420" y="288" width="60" height="12"/>
+  <rect class="app" x="420" y="276" width="60" height="12"/>
+  <rect class="wr" x="420" y="264" width="60" height="12"/>
+  <rect class="frame" x="417" y="261" width="66" height="54" rx="4"/>
+  <text class="tag" x="450" y="326" text-anchor="middle">CONTAINER 2</text>
+</g>
+<g class="grp c3">
+  <rect class="os" x="510" y="300" width="60" height="12"/>
+  <rect class="rt" x="510" y="288" width="60" height="12"/>
+  <rect class="app" x="510" y="276" width="60" height="12"/>
+  <rect class="wr" x="510" y="264" width="60" height="12"/>
+  <rect class="frame" x="507" y="261" width="66" height="54" rx="4"/>
+  <text class="tag" x="540" y="326" text-anchor="middle">CONTAINER 3</text>
+</g>
+
+<defs>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L6,3 L0,6 Z" fill="#646c7e"/>
+  </marker>
+</defs>
+</svg>

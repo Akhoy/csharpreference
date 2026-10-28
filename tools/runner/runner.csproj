@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmBuildNative>true</WasmBuildNative>
+    <!-- Roslyn's Scripting API leans heavily on reflection and satellite metadata;
+         trimming/AOT reliably breaks it, so this build stays interpreted + untrimmed. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- Ship assemblies as plain .dll (real PE/IL) instead of the WebCIL-wrapped .wasm
+         container, so we can read them back as ordinary MetadataReference images. -->
+    <WasmEnableWebcil>false</WasmEnableWebcil>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
+  </ItemGroup>
+</Project>

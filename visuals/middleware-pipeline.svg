@@ -1,0 +1,87 @@
+<svg viewBox="0 0 860 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mp-title mp-desc">
+  <title id="mp-title">How the middleware pipeline is built and run</title>
+  <desc id="mp-desc">Three middleware A, B, C registered with app.Use are composed in reverse into one nested delegate A(B(C(endpoint))). A request enters A, passes through B and C to the endpoint, then the response travels back out through C, B, A in reverse order.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root { --bg:#ffffff; --ink:#1b1f27; --dim:#6b7280;
+        --a1:#512bd4; --a2:#a993ff;
+        --b1:#2457c5; --b2:#7ea6ff;
+        --c1:#22845a; --c2:#4cc58a;
+        --end1:#b06f08; --end2:#e6a83a;
+        --req1:#c03a46; --req2:#f0727b; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#14161c; --ink:#eef0f6; --dim:#9aa3b2; }
+      }
+      text { font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; fill: var(--ink); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .dim { fill: var(--dim); }
+      .grp { opacity: 0; }
+      @media (prefers-reduced-motion: reduce) { .grp { opacity: 1; animation: none !important; } }
+      .box { fill: none; stroke-width: 2.5; rx: 10; }
+      .boxA { stroke: var(--a1); } .boxB { stroke: var(--b1); } .boxC { stroke: var(--c1); } .boxE { stroke: var(--end1); }
+      @media (prefers-color-scheme: dark) { .boxA { stroke: var(--a2); } .boxB { stroke: var(--b2); } .boxC { stroke: var(--c2); } .boxE { stroke: var(--end2); } }
+
+      .reveal-a { animation: fade 11s ease-in-out infinite; animation-delay: 0s; }
+      .reveal-b { animation: fade 11s ease-in-out infinite; animation-delay: .3s; }
+      .reveal-c { animation: fade 11s ease-in-out infinite; animation-delay: .6s; }
+      .reveal-e { animation: fade 11s ease-in-out infinite; animation-delay: .9s; }
+      @keyframes fade { 0% { opacity:0; transform: translateY(6px); } 8%,100% { opacity:1; transform: translateY(0); } }
+
+      .dotReq { animation: req 11s linear infinite; }
+      @keyframes req {
+        0%,10%   { offset-distance: 0%;   opacity: 0; }
+        12%      { opacity: 1; }
+        45%      { offset-distance: 100%; opacity: 1; }
+        47%,100% { opacity: 0; }
+      }
+      .pathReq { offset-path: path('M 60,330 L 780,330'); }
+
+      .dotResp { animation: resp 11s linear infinite; }
+      @keyframes resp {
+        0%,48%   { offset-distance: 0%; opacity: 0; }
+        50%      { opacity: 1; }
+        85%      { offset-distance: 100%; opacity: 1; }
+        87%,100% { opacity: 0; }
+      }
+      .pathResp { offset-path: path('M 780,360 L 60,360'); }
+
+      .lbl { animation: fade 11s ease-in-out infinite; }
+      .lblReq { animation-delay: 1.2s; }
+      .lblResp { animation-delay: 5.8s; }
+      ]]>
+    </style>
+  </defs>
+
+  <rect width="860" height="420" fill="var(--bg)"/>
+
+  <text x="20" y="28" font-size="15" font-weight="600">app.Use(A); app.Use(B); app.Use(C);  →  built as A(B(C(endpoint)))</text>
+
+  <!-- nested boxes, outer to inner -->
+  <g class="grp reveal-a">
+    <rect class="box boxA" x="40" y="60" width="760" height="300" rx="10"/>
+    <text x="56" y="84" class="mono" font-size="14" fill="var(--a1)">A</text>
+  </g>
+  <g class="grp reveal-b">
+    <rect class="box boxB" x="90" y="90" width="660" height="240" rx="10"/>
+    <text x="106" y="114" class="mono" font-size="14" fill="var(--b1)">B</text>
+  </g>
+  <g class="grp reveal-c">
+    <rect class="box boxC" x="140" y="120" width="560" height="180" rx="10"/>
+    <text x="156" y="144" class="mono" font-size="14" fill="var(--c1)">C</text>
+  </g>
+  <g class="grp reveal-e">
+    <rect class="box boxE" x="330" y="160" width="180" height="100" rx="10"/>
+    <text x="420" y="216" text-anchor="middle" class="mono" font-size="14" fill="var(--end1)">endpoint</text>
+  </g>
+
+  <!-- request path dot -->
+  <circle r="7" class="dotReq pathReq" fill="var(--req1)"/>
+  <text x="430" y="320" text-anchor="middle" class="lbl lblReq mono" font-size="13" fill="var(--req1)">request: A → B → C → endpoint</text>
+
+  <!-- response path dot -->
+  <circle r="7" class="dotResp pathResp" fill="var(--b1)"/>
+  <text x="430" y="378" text-anchor="middle" class="lbl lblResp mono" font-size="13" fill="var(--b1)">response: endpoint → C → B → A  (reverse order)</text>
+
+  <text x="20" y="408" font-size="12" class="dim">Code after `await next()` in A runs LAST — once B, C and the endpoint have all finished.</text>
+</svg>

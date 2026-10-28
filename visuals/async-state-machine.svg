@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="t d">
+<title id="t">What async/await compiles into</title>
+<desc id="d">An async method is rewritten by the compiler into a state machine. It runs normally until it hits an await on work that isn't finished yet, then it returns control to the caller instead of blocking. When the awaited work completes, the state machine resumes exactly where it left off, often on a different thread.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lbl  { font: 600 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .lblw { font: 600 12px "IBM Plex Sans","Segoe UI",sans-serif; fill:#ffffff; }
+  .code { font: 500 12px "JetBrains Mono",monospace; fill:#171b26; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .frame{ fill:none; stroke:#dde1ea; stroke-width:1.5; }
+  .track{ stroke:#dde1ea; stroke-width:1.5; stroke-dasharray:3 3; }
+  .run   { fill:#512bd4; }
+  .wait  { fill:#b06f08; }
+  .resume{ fill:#22845a; }
+  .caller{ fill:#2457c5; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .lbl  { fill:#e7e9f0; }
+    .code { fill:#e7e9f0; }
+    .tag  { fill:#959db0; }
+    .frame{ stroke:#282d3b; }
+    .track{ stroke:#282d3b; }
+    .run   { fill:#a993ff; }
+    .wait  { fill:#e6a83a; }
+    .resume{ fill:#4cc58a; }
+    .caller{ fill:#7ea6ff; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inRun    { 0%,3%{opacity:0;transform:translateY(8px);} 8%,90%{opacity:1;transform:translateY(0);} 96%,100%{opacity:0;} }
+  @keyframes inAwait  { 0%,20%{opacity:0;} 26%,90%{opacity:1;} 96%,100%{opacity:0;} }
+  @keyframes inReturn { 0%,32%{opacity:0;transform:translateX(-8px);} 38%,90%{opacity:1;transform:translateX(0);} 96%,100%{opacity:0;} }
+  @keyframes inFree   { 0%,44%{opacity:0;} 50%,66%{opacity:1;} 96%,100%{opacity:0;} }
+  @keyframes inDone   { 0%,66%{opacity:0;} 72%,90%{opacity:1;} 96%,100%{opacity:0;} }
+  @keyframes inResume { 0%,72%{opacity:0;transform:translateY(8px);} 78%,90%{opacity:1;transform:translateY(0);} 96%,100%{opacity:0;} }
+
+  .run1  { animation: inRun 10s ease-in-out infinite; transform-origin:150px 115px; }
+  .awaitline { animation: inAwait 10s ease-in-out infinite; }
+  .ret   { animation: inReturn 10s ease-in-out infinite; }
+  .free  { animation: inFree 10s ease-in-out infinite; }
+  .done  { animation: inDone 10s ease-in-out infinite; }
+  .resumeg { animation: inResume 10s ease-in-out infinite; transform-origin:470px 115px; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="400"/>
+<text class="cap" x="24" y="32">What "await" actually does to your method</text>
+<text class="sub" x="24" y="50">It doesn't block. It pauses, hands the thread back, and the method picks up later — maybe on a different thread entirely.</text>
+
+<!-- caller lane -->
+<text class="tag" x="24" y="82">CALLER THREAD</text>
+<line class="track" x1="24" y1="92" x2="616" y2="92"/>
+
+<!-- method starts running synchronously -->
+<g class="grp run1">
+  <rect class="run" x="70" y="100" width="160" height="50" rx="8"/>
+  <text class="lblw" x="150" y="122" text-anchor="middle">GetTotalAsync runs</text>
+  <text class="lblw" x="150" y="138" text-anchor="middle" font-size="10.5">on the caller's thread</text>
+</g>
+
+<!-- hits await -->
+<g class="grp awaitline">
+  <line x1="230" y1="125" x2="300" y2="125" stroke="#b06f08" stroke-width="2"/>
+  <text class="tag" x="265" y="112" text-anchor="middle">await repo.GetAsync()</text>
+  <text class="sub" x="265" y="145" text-anchor="middle">not finished yet</text>
+</g>
+
+<!-- method returns an incomplete task, control goes back to caller -->
+<g class="grp ret">
+  <path d="M230 175 L80 175 L80 160" stroke="#2457c5" stroke-width="2" fill="none" marker-end="url(#arrowUp)"/>
+  <text class="caller" x="155" y="192" text-anchor="middle" font-size="11.5" font-weight="600">method returns an incomplete Task here</text>
+  <text class="sub" x="155" y="208" text-anchor="middle">caller's thread is FREE to do other work</text>
+</g>
+
+<!-- the paused state machine sits on the heap -->
+<g class="grp free">
+  <rect class="wait" x="300" y="100" width="130" height="50" rx="8"/>
+  <text class="lblw" x="365" y="122" text-anchor="middle">paused state</text>
+  <text class="lblw" x="365" y="138" text-anchor="middle" font-size="10.5">locals saved on the heap</text>
+  <text class="tag" x="365" y="168" text-anchor="middle">WAITING FOR repo.GetAsync()</text>
+</g>
+
+<!-- dependency completes -->
+<g class="grp done">
+  <circle cx="365" cy="230" r="5" fill="#22845a"/>
+  <text class="sub" x="365" y="250" text-anchor="middle">repo.GetAsync() finishes</text>
+</g>
+
+<!-- pool thread lane -->
+<text class="tag" x="24" y="300">A THREAD-POOL THREAD (maybe a different one)</text>
+<line class="track" x1="24" y1="310" x2="616" y2="310"/>
+
+<g class="grp resumeg">
+  <rect class="resume" x="390" y="318" width="190" height="50" rx="8"/>
+  <text class="lblw" x="485" y="340" text-anchor="middle">GetTotalAsync resumes</text>
+  <text class="lblw" x="485" y="356" text-anchor="middle" font-size="10.5">right after the await, same locals</text>
+</g>
+
+<defs>
+  <marker id="arrowUp" markerWidth="8" markerHeight="8" refX="4" refY="6" orient="auto">
+    <path d="M0,6 L4,0 L8,6 Z" fill="#2457c5"/>
+  </marker>
+</defs>
+</svg>

@@ -1,0 +1,26 @@
+{
+  "layers": [
+    { "id": "language",  "name": "C# language",              "note": "the code you write" },
+    { "id": "runtime",   "name": "Runtime & platform",       "note": "CLR, BCL, SDK, tooling" },
+    { "id": "framework", "name": "Application frameworks",   "note": "ASP.NET Core, EF Core, hosting" },
+    { "id": "arch",      "name": "Application architecture", "note": "how you organise the code" },
+    { "id": "data",      "name": "Data & state",             "note": "databases, caches, storage" },
+    { "id": "comms",     "name": "Service communication",    "note": "HTTP, messaging, events" },
+    { "id": "infra",     "name": "Hosting & infrastructure", "note": "containers, cloud, pipelines" },
+    { "id": "cross",     "name": "Cross-cutting concerns",   "note": "testing, security, observability, performance" }
+  ],
+  "parts": [
+    { "id": "p0", "num": "0", "title": "Orientation", "chapters": ["big-picture"] },
+    { "id": "p1", "num": "I", "title": "The .NET Platform", "chapters": ["what-is-dotnet", "how-code-runs", "projects-sdk-nuget"] },
+    { "id": "p2", "num": "II", "title": "The C# Language", "chapters": ["type-system", "oop", "generics", "delegates-events", "collections", "linq", "exceptions-disposal", "async-await", "modern-csharp", "advanced-csharp"] },
+    { "id": "p3", "num": "III", "title": "ASP.NET Core", "chapters": ["aspnet-hosting", "dependency-injection", "configuration-options", "middleware", "routing", "building-apis", "errors-logging", "auth", "http-client", "caching-ratelimit-cors", "background-work", "api-design", "app-models"] },
+    { "id": "p4", "num": "IV", "title": "Data Access", "chapters": ["relational-fundamentals", "ado-dapper", "efcore-fundamentals", "efcore-querying", "efcore-advanced", "nosql-redis"] },
+    { "id": "p5", "num": "V", "title": "Architecture & Design", "chapters": ["design-principles", "design-patterns", "app-architectures", "cqrs-mediator-result", "ddd", "microservices"] },
+    { "id": "p6", "num": "VI", "title": "Testing", "chapters": ["unit-testing", "integration-testing"] },
+    { "id": "p7", "num": "VII", "title": "Distributed Systems", "chapters": ["messaging-events", "resilience", "observability-aspire"] },
+    { "id": "p8", "num": "VIII", "title": "Cloud & DevOps", "chapters": ["cloud-azure-overview", "docker", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"] },
+    { "id": "p9", "num": "IX", "title": "Performance & Internals", "chapters": ["memory-gc", "threading-concurrency", "performance-engineering"] },
+    { "id": "p10", "num": "X", "title": "Security", "chapters": ["web-security", "oauth-oidc-identity"] },
+    { "id": "p11", "num": "XI", "title": "Interview Preparation", "chapters": ["system-design", "study-plan-resources"] }
+  ]
+}

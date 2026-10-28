@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 380" role="img" aria-labelledby="t d">
+<title id="t">How objects move through the GC generations</title>
+<desc id="d">New objects are allocated in Gen0. When Gen0 fills up, a collection runs: most objects are garbage and disappear, while the few that are still referenced survive and get promoted to Gen1. The same happens from Gen1 to Gen2. Most objects never make it past Gen0.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lbl  { font: 700 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .col  { fill:none; stroke:#dde1ea; stroke-width:1.5; }
+  .obj  { fill:#512bd4; }
+  .surv { fill:#22845a; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .lbl  { fill:#e7e9f0; }
+    .tag  { fill:#959db0; }
+    .col  { stroke:#282d3b; }
+    .obj  { fill:#a993ff; }
+    .surv { fill:#4cc58a; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes fillG0   { 0%,2%{opacity:0;} 6%,34%{opacity:1;} 40%,100%{opacity:0;} }
+  @keyframes gcMark   { 0%,34%{opacity:0;} 36%,42%{opacity:1;} 44%,100%{opacity:0;} }
+  @keyframes dieG0    { 0%,40%{opacity:1;transform:translateY(0);} 46%,100%{opacity:0;transform:translateY(6px);} }
+  @keyframes promote1 { 0%,42%{opacity:0;transform:translateX(0);} 48%{opacity:1;transform:translateX(130px);} 60%,100%{opacity:1;transform:translateX(130px);} }
+  @keyframes fillG0b  { 0%,60%{opacity:0;} 64%,86%{opacity:1;} 92%,100%{opacity:0;} }
+  @keyframes dieG0b   { 0%,90%{opacity:1;} 94%,100%{opacity:0;} }
+  @keyframes promote2 { 0%,90%{opacity:0;transform:translateX(0);} 94%{opacity:1;transform:translateX(130px);} 100%{opacity:1;transform:translateX(130px);} }
+
+  .g0obj  { animation: fillG0 9s ease-in-out infinite; }
+  .mark   { animation: gcMark 9s ease-in-out infinite; }
+  .g0die  { animation: dieG0 9s ease-in-out infinite; }
+  .g0surv { animation: promote1 9s ease-in-out infinite; }
+  .g0obj2 { animation: fillG0b 9s ease-in-out infinite; }
+  .g0die2 { animation: dieG0b 9s ease-in-out infinite; }
+  .g1surv { animation: promote2 9s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="380"/>
+<text class="cap" x="24" y="32">Most objects die young</text>
+<text class="sub" x="24" y="50">New objects fill Gen0. When it's collected, almost everything disappears — only real survivors move up.</text>
+
+<!-- columns -->
+<rect class="col" x="40" y="80" width="130" height="260" rx="8"/>
+<text class="lbl" x="105" y="70" text-anchor="middle">Gen 0</text>
+<rect class="col" x="230" y="80" width="130" height="260" rx="8"/>
+<text class="lbl" x="295" y="70" text-anchor="middle">Gen 1</text>
+<rect class="col" x="420" y="80" width="130" height="260" rx="8"/>
+<text class="lbl" x="485" y="70" text-anchor="middle">Gen 2</text>
+<text class="sub" x="105" y="352" text-anchor="middle">new objects</text>
+<text class="sub" x="295" y="352" text-anchor="middle">survived once</text>
+<text class="sub" x="485" y="352" text-anchor="middle">long-lived</text>
+
+<!-- wave 1: Gen0 fills with objects, bottom-up -->
+<g class="grp g0obj">
+  <rect class="obj" x="52"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="52"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="270" width="24" height="24" rx="4"/>
+  <rect class="surv" x="136" y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="52"  y="240" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="240" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="240" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="240" width="24" height="24" rx="4"/>
+</g>
+<g class="grp mark"><text class="tag" x="105" y="225" text-anchor="middle">GEN0 FULL — COLLECTING</text></g>
+
+<!-- survivor highlighted and moves right; the rest fade -->
+<g class="grp g0die">
+  <rect class="obj" x="52"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="52"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="52"  y="240" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="240" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="240" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="240" width="24" height="24" rx="4"/>
+</g>
+<g class="grp g0surv">
+  <rect class="surv" x="136" y="270" width="24" height="24" rx="4"/>
+  <text class="tag" x="148" y="230" text-anchor="middle">survivor</text>
+</g>
+
+<!-- wave 2: Gen0 fills again -->
+<g class="grp g0obj2">
+  <rect class="obj" x="52"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="52"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="270" width="24" height="24" rx="4"/>
+</g>
+<g class="grp g0die2">
+  <rect class="obj" x="52"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="136" y="300" width="24" height="24" rx="4"/>
+  <rect class="obj" x="52"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="80"  y="270" width="24" height="24" rx="4"/>
+  <rect class="obj" x="108" y="270" width="24" height="24" rx="4"/>
+</g>
+
+<!-- the original Gen1 survivor now gets promoted again to Gen2 -->
+<g class="grp g1surv">
+  <rect class="surv" x="326" y="270" width="24" height="24" rx="4"/>
+</g>
+
+<defs/>
+</svg>

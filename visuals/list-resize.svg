@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d">
+<title id="t">List&lt;T&gt; growing past capacity: allocate double, copy, then add</title>
+<desc id="d">A List with capacity 4 is full. Add(5) must first allocate a brand new array of double the capacity (8), copy all four existing elements across one by one, and only then place the fifth element in the new array. The original array is discarded. This one-time O(n) copy is what "amortised O(1)" is paying for.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 12px "JetBrains Mono",monospace; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .old  { fill:#8a5a2b; }
+  .new  { fill:#22845a; }
+  .newitem { fill:#512bd4; }
+  .slot { fill:#2457c5; stroke:#171b26; stroke-width:0; }
+  .edge { stroke:#dde1ea; stroke-width:1.5; fill:none; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .tag  { fill:#959db0; }
+    .old  { fill:#c98b4a; }
+    .new  { fill:#4cc58a; }
+    .newitem { fill:#a993ff; }
+    .slot { fill:#7ea6ff; }
+    .edge { stroke:#282d3b; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inFull    { 0%,2%{opacity:0;} 6%,26%{opacity:1;} 30%,100%{opacity:0;} }
+  @keyframes inAlloc   { 0%,28%{opacity:0;} 32%,52%{opacity:1;} 56%,100%{opacity:0;} }
+  @keyframes inCopy    { 0%,30%{opacity:0;} 34%,70%{opacity:1;} 74%,100%{opacity:0;} }
+  @keyframes inDone    { 0%,72%{opacity:0;} 76%,96%{opacity:1;} 99%,100%{opacity:0;} }
+
+  .stageFull  { animation: inFull 13s ease-in-out infinite; }
+  .stageAlloc { animation: inAlloc 13s ease-in-out infinite; }
+  .stageCopy  { animation: inCopy 13s ease-in-out infinite; }
+  .stageDone  { animation: inDone 13s ease-in-out infinite; }
+
+  @keyframes slideOver {
+    0%, 20% { transform: translate(0,0); opacity: 1; }
+    55%, 100% { transform: translate(0,150px); opacity: 1; }
+  }
+  .mover1 { animation: slideOver 4s ease-in-out infinite; animation-delay: 4.3s; }
+  .mover2 { animation: slideOver 4s ease-in-out infinite; animation-delay: 4.6s; }
+  .mover3 { animation: slideOver 4s ease-in-out infinite; animation-delay: 4.9s; }
+  .mover4 { animation: slideOver 4s ease-in-out infinite; animation-delay: 5.2s; }
+  @media (prefers-reduced-motion: reduce) { .mover1,.mover2,.mover3,.mover4 { animation:none !important; transform: translate(0,150px); } }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="360"/>
+<text class="cap" x="24" y="28">list.Add(5) when Capacity == Count == 4</text>
+<text class="sub" x="24" y="46">Full array → allocate a new array at double the size → copy every element → only then add the new one.</text>
+
+<g class="grp stageFull">
+  <text class="tag" x="24" y="90">1. the array is full: Count == Capacity == 4</text>
+  <g class="old">
+    <rect x="40" y="110" width="60" height="50"/>
+    <rect x="100" y="110" width="60" height="50"/>
+    <rect x="160" y="110" width="60" height="50"/>
+    <rect x="220" y="110" width="60" height="50"/>
+  </g>
+  <text class="lblw" x="70" y="140" text-anchor="middle">1</text>
+  <text class="lblw" x="130" y="140" text-anchor="middle">2</text>
+  <text class="lblw" x="190" y="140" text-anchor="middle">3</text>
+  <text class="lblw" x="250" y="140" text-anchor="middle">4</text>
+  <text class="sub" x="40" y="180">no spare room — the next Add can't just drop in</text>
+</g>
+
+<g class="grp stageAlloc">
+  <text class="tag" x="24" y="90">2. allocate a NEW array, capacity doubled: 4 → 8</text>
+  <g class="old" opacity="0.5">
+    <rect x="40" y="110" width="60" height="50"/>
+    <rect x="100" y="110" width="60" height="50"/>
+    <rect x="160" y="110" width="60" height="50"/>
+    <rect x="220" y="110" width="60" height="50"/>
+  </g>
+  <text class="lblw" x="70" y="140" text-anchor="middle" opacity="0.8">1</text>
+  <text class="lblw" x="130" y="140" text-anchor="middle" opacity="0.8">2</text>
+  <text class="lblw" x="190" y="140" text-anchor="middle" opacity="0.8">3</text>
+  <text class="lblw" x="250" y="140" text-anchor="middle" opacity="0.8">4</text>
+  <g class="new">
+    <rect x="40" y="260" width="60" height="50"/>
+    <rect x="100" y="260" width="60" height="50"/>
+    <rect x="160" y="260" width="60" height="50"/>
+    <rect x="220" y="260" width="60" height="50"/>
+    <rect x="280" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="340" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="400" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="460" y="260" width="60" height="50" opacity="0.3"/>
+  </g>
+  <text class="sub" x="40" y="330">new array: 8 empty slots, nothing copied yet</text>
+</g>
+
+<g class="grp stageCopy">
+  <text class="tag" x="24" y="90">3. copy every existing element across — this part is O(n)</text>
+  <g class="new">
+    <rect x="40" y="260" width="60" height="50"/>
+    <rect x="100" y="260" width="60" height="50"/>
+    <rect x="160" y="260" width="60" height="50"/>
+    <rect x="220" y="260" width="60" height="50"/>
+    <rect x="280" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="340" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="400" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="460" y="260" width="60" height="50" opacity="0.3"/>
+  </g>
+  <g class="slot mover1"><rect x="40" y="110" width="60" height="50"/><text class="lblw" x="70" y="140" text-anchor="middle">1</text></g>
+  <g class="slot mover2"><rect x="100" y="110" width="60" height="50"/><text class="lblw" x="130" y="140" text-anchor="middle">2</text></g>
+  <g class="slot mover3"><rect x="160" y="110" width="60" height="50"/><text class="lblw" x="190" y="140" text-anchor="middle">3</text></g>
+  <g class="slot mover4"><rect x="220" y="110" width="60" height="50"/><text class="lblw" x="250" y="140" text-anchor="middle">4</text></g>
+  <text class="sub" x="40" y="330">each element copied into the same position in the new array</text>
+</g>
+
+<g class="grp stageDone">
+  <text class="tag" x="24" y="90">4. only now does the new item 5 actually go in — the old array is discarded</text>
+  <g class="new">
+    <rect x="40" y="260" width="60" height="50"/>
+    <rect x="100" y="260" width="60" height="50"/>
+    <rect x="160" y="260" width="60" height="50"/>
+    <rect x="220" y="260" width="60" height="50"/>
+    <rect class="newitem" x="280" y="260" width="60" height="50"/>
+    <rect x="340" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="400" y="260" width="60" height="50" opacity="0.3"/>
+    <rect x="460" y="260" width="60" height="50" opacity="0.3"/>
+  </g>
+  <text class="lblw" x="70" y="290" text-anchor="middle">1</text>
+  <text class="lblw" x="130" y="290" text-anchor="middle">2</text>
+  <text class="lblw" x="190" y="290" text-anchor="middle">3</text>
+  <text class="lblw" x="250" y="290" text-anchor="middle">4</text>
+  <text class="lblw" x="310" y="290" text-anchor="middle">5</text>
+  <text class="sub" x="40" y="330">Capacity is now 8, Count is 5 — three calls to Add after this one are free (O(1))</text>
+</g>
+</svg>

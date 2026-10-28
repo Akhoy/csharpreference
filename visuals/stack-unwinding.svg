@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="t d">
+<title id="t">What throwing an exception actually does to the call stack</title>
+<desc id="d">PlaceOrder calls Validate, which calls ChargeCard, which throws. The runtime unwinds one frame at a time looking for a matching catch, running any finally block it passes on the way, until PlaceOrder's catch handles it.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .frame{ fill:none; stroke:#dde1ea; stroke-width:1.5; }
+  .live   { fill:#2457c5; }
+  .throwf { fill:#b23b3b; }
+  .finallyf { fill:#b06f08; }
+  .catchf { fill:#22845a; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .tag  { fill:#959db0; }
+    .frame{ stroke:#282d3b; }
+    .live   { fill:#7ea6ff; }
+    .throwf { fill:#e2685f; }
+    .finallyf { fill:#e6a83a; }
+    .catchf { fill:#4cc58a; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes stay   { 0%,100% { opacity:1; } }
+  @keyframes popC   { 0%,8%{opacity:1;} 16%,100%{opacity:0;} }
+  @keyframes finallyFlash { 0%,10%{opacity:0;} 16%,30%{opacity:1;} 38%,100%{opacity:0;} }
+  @keyframes popB   { 0%,36%{opacity:1;} 44%,100%{opacity:0;} }
+  @keyframes catchGlow { 0%,58%{opacity:0;} 64%,90%{opacity:1;} 98%,100%{opacity:0.4;} }
+  @keyframes caught { 0%,62%{opacity:0;} 68%,96%{opacity:1;} 100%{opacity:0;} }
+
+  .fA { animation: stay 9s linear infinite; }
+  .fB { animation: popB 9s ease-in-out infinite; }
+  .fC { animation: popC 9s ease-in-out infinite; }
+  .fFinally { animation: finallyFlash 9s ease-in-out infinite; }
+  .fCatch { animation: catchGlow 9s ease-in-out infinite; }
+  .fCaughtText { animation: caught 9s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="400"/>
+<text class="cap" x="24" y="32">Throwing unwinds the stack one frame at a time</text>
+<text class="sub" x="24" y="50">ChargeCard throws. Validate has no matching catch, but its finally still runs. PlaceOrder's catch finally stops the unwind.</text>
+
+<text class="tag" x="24" y="80">CALL STACK (top = most recently called)</text>
+
+<!-- frame C: ChargeCard, throws -->
+<g class="grp fC">
+  <rect class="throwf" x="60" y="92" width="520" height="52" rx="8"/>
+  <text class="lblw" x="80" y="114">ChargeCard(order)</text>
+  <text class="lblw" x="80" y="132" font-size="10.5">throws PaymentDeclinedException — unwind starts HERE</text>
+</g>
+
+<!-- frame B: Validate, has a finally, no matching catch -->
+<g class="grp fB">
+  <rect class="frame" x="60" y="156" width="520" height="68" rx="8" fill="#242b3d" opacity="0.08"/>
+  <rect class="live" x="60" y="156" width="520" height="68" rx="8"/>
+  <text class="lblw" x="80" y="178">Validate(order)</text>
+  <text class="lblw" x="80" y="196" font-size="10.5">no catch for PaymentDeclinedException here — keeps unwinding</text>
+  <g class="fFinally">
+    <rect x="420" y="164" width="150" height="24" rx="6" fill="#171b26" opacity="0.001"/>
+    <text class="lblw" x="495" y="180" text-anchor="middle" font-size="10.5" fill="#fff">finally still runs ✓</text>
+  </g>
+</g>
+
+<!-- frame A: PlaceOrder, has the matching catch -->
+<g class="grp fA">
+  <rect class="frame" x="60" y="238" width="520" height="68" rx="8"/>
+  <text class="cap" x="80" y="260">PlaceOrder(order)</text>
+  <text class="sub" x="80" y="278" font-size="10.5">try { Validate(order); } catch (PaymentDeclinedException ex) { ... }</text>
+  <rect class="catchf fCatch" x="60" y="238" width="520" height="68" rx="8" opacity="0"/>
+</g>
+<g class="grp fCatch">
+  <rect class="catchf" x="60" y="238" width="520" height="68" rx="8"/>
+  <text class="lblw" x="80" y="260">PlaceOrder(order)</text>
+  <text class="lblw" x="80" y="278" font-size="10.5">catch (PaymentDeclinedException ex) — matched. Unwind stops here.</text>
+</g>
+
+<text class="tag fCaughtText" x="320" y="340" text-anchor="middle"></text>
+<g class="grp fCaughtText">
+  <text class="sub" x="320" y="340" text-anchor="middle">Stack unwound C → B → A. B's finally ran even though B never caught anything.</text>
+</g>
+
+</svg>

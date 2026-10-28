@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" role="img" aria-labelledby="t d">
+<title id="t">How a lost update actually happens</title>
+<desc id="d">Two threads both run count++ on a shared counter starting at 5. Each thread reads the value, adds one, then writes it back. Because both threads read 5 before either writes, both compute 6 and both write 6 — one of the two increments is silently lost.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lbl  { font: 600 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .lblw { font: 600 11.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .track{ stroke:#dde1ea; stroke-width:1.5; }
+  .a    { fill:#512bd4; }
+  .b    { fill:#2457c5; }
+  .bad  { fill:#c03a46; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .lbl  { fill:#e7e9f0; }
+    .tag  { fill:#959db0; }
+    .track{ stroke:#282d3b; }
+    .a    { fill:#a993ff; }
+    .b    { fill:#7ea6ff; }
+    .bad  { fill:#f0727b; }
+  }
+  .grp { opacity:0; }
+  @media (prefers-reduced-motion: reduce) { .grp { opacity:1; animation:none !important; } }
+
+  @keyframes inStart { 0%,3%{opacity:0;} 7%,92%{opacity:1;} 97%,100%{opacity:0;} }
+  @keyframes inAr  { 0%,12%{opacity:0;transform:translateY(6px);} 17%,92%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inBr  { 0%,22%{opacity:0;transform:translateY(6px);} 27%,92%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inAw  { 0%,45%{opacity:0;transform:translateY(6px);} 50%,92%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inBw  { 0%,58%{opacity:0;transform:translateY(6px);} 63%,92%{opacity:1;transform:translateY(0);} 97%,100%{opacity:0;} }
+  @keyframes inBad { 0%,70%{opacity:0;} 76%,92%{opacity:1;} 97%,100%{opacity:0;} }
+
+  .start { animation: inStart 9s ease-in-out infinite; }
+  .ar { animation: inAr 9s ease-in-out infinite; }
+  .br { animation: inBr 9s ease-in-out infinite; }
+  .aw { animation: inAw 9s ease-in-out infinite; }
+  .bw { animation: inBw 9s ease-in-out infinite; }
+  .bad { animation: inBad 9s ease-in-out infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="300"/>
+<text class="cap" x="24" y="32">count++ is not one step</text>
+<text class="sub" x="24" y="50">It's read, then add, then write — three separate steps another thread can slip between.</text>
+
+<g class="grp start">
+  <rect class="tag" x="0" y="0" width="0" height="0"/>
+  <text class="tag" x="320" y="78" text-anchor="middle">SHARED: _count = 5</text>
+</g>
+
+<text class="tag" x="24" y="108">THREAD A</text>
+<line class="track" x1="24" y1="116" x2="616" y2="116"/>
+<text class="tag" x="24" y="196">THREAD B</text>
+<line class="track" x1="24" y1="204" x2="616" y2="204"/>
+
+<g class="grp ar">
+  <rect class="a" x="100" y="124" width="150" height="40" rx="8"/>
+  <text class="lblw" x="175" y="148" text-anchor="middle">reads _count → 5</text>
+</g>
+<g class="grp br">
+  <rect class="b" x="170" y="212" width="150" height="40" rx="8"/>
+  <text class="lblw" x="245" y="236" text-anchor="middle">reads _count → 5</text>
+</g>
+
+<g class="grp aw">
+  <rect class="a" x="340" y="124" width="150" height="40" rx="8"/>
+  <text class="lblw" x="415" y="142" text-anchor="middle">computes 5+1,</text>
+  <text class="lblw" x="415" y="156" text-anchor="middle">writes _count = 6</text>
+</g>
+<g class="grp bw">
+  <rect class="b" x="420" y="212" width="150" height="40" rx="8"/>
+  <text class="lblw" x="495" y="230" text-anchor="middle">computes 5+1,</text>
+  <text class="lblw" x="495" y="244" text-anchor="middle">writes _count = 6</text>
+</g>
+
+<g class="grp bad">
+  <rect class="bad" x="440" y="264" width="176" height="28" rx="6"/>
+  <text class="lblw" x="528" y="283" text-anchor="middle">_count = 6, not 7 — one increment lost</text>
+</g>
+
+</svg>

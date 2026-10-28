@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="t d">
+<title id="t">The real order new Derived() runs things in</title>
+<desc id="d">Four steps light up in sequence: derived field initialisers run first, then base field initialisers, then the base constructor body, then finally the derived constructor body. The arrow only reaches the derived class's own fields after the base object is fully built.</desc>
+<style>
+  <![CDATA[
+  .bg   { fill:#f5f6f9; }
+  .cap  { font: 600 13px "IBM Plex Sans","Segoe UI",sans-serif; fill:#171b26; }
+  .sub  { font: 400 12.5px "IBM Plex Sans","Segoe UI",sans-serif; fill:#646c7e; }
+  .lblw { font: 600 12px "JetBrains Mono",monospace; fill:#ffffff; }
+  .num  { font: 700 13px "JetBrains Mono",monospace; fill:#ffffff; }
+  .tag  { font: 700 10.5px "JetBrains Mono",monospace; letter-spacing:.04em; fill:#646c7e; }
+  .step1{ fill:#a993ff; }
+  .step2{ fill:#7ea6ff; }
+  .step3{ fill:#4cc58a; }
+  .step4{ fill:#e6a83a; }
+  .idle { fill:#dde1ea; }
+  .edge { stroke:#646c7e; stroke-width:2; fill:none; }
+  @media (prefers-color-scheme: dark) {
+    .bg   { fill:#0d0f15; }
+    .cap  { fill:#e7e9f0; }
+    .sub  { fill:#959db0; }
+    .tag  { fill:#959db0; }
+    .idle { fill:#282d3b; }
+    .edge { stroke:#959db0; }
+  }
+  .box { transition: none; }
+  .ring { opacity:0; stroke-width:3; fill:none; }
+  @media (prefers-reduced-motion: reduce) { .ring { opacity:0 !important; animation:none !important; } .arrow { animation:none !important; opacity:1 !important; } }
+
+  @keyframes ring1 { 0%,2%{opacity:1;} 20%,100%{opacity:0;} }
+  @keyframes ring2 { 0%,22%{opacity:0;} 24%,26%{opacity:1;} 44%,100%{opacity:0;} }
+  @keyframes ring3 { 0%,46%{opacity:0;} 48%,50%{opacity:1;} 68%,100%{opacity:0;} }
+  @keyframes ring4 { 0%,70%{opacity:0;} 72%,74%{opacity:1;} 92%,100%{opacity:0;} }
+  .r1 { animation: ring1 8s linear infinite; stroke:#a993ff; }
+  .r2 { animation: ring2 8s linear infinite; stroke:#7ea6ff; }
+  .r3 { animation: ring3 8s linear infinite; stroke:#4cc58a; }
+  .r4 { animation: ring4 8s linear infinite; stroke:#e6a83a; }
+
+  @keyframes arrowMove { 0%,2%{ transform:translateY(0px); } 24%{ transform:translateY(70px); } 48%{ transform:translateY(140px); } 72%{ transform:translateY(210px); } 100%{ transform:translateY(210px); } }
+  .arrow { animation: arrowMove 8s linear infinite; }
+  ]]>
+</style>
+
+<rect class="bg" x="0" y="0" width="640" height="360"/>
+<text class="cap" x="24" y="28">new Derived() — what actually runs, in order</text>
+<text class="sub" x="24" y="46">Intuition says "Derived first." The runtime disagrees: watch where the arrow is at each step.</text>
+
+<g>
+  <rect class="step1 box" x="40" y="70" width="560" height="52" rx="8"/>
+  <rect class="ring r1" x="38" y="68" width="564" height="56" rx="10"/>
+  <text class="num" x="58" y="101">1</text>
+  <text class="lblw" x="82" y="101">Derived's own field initialisers run (e.g. _retries = 3) — before any constructor body</text>
+
+  <rect class="step2 box" x="40" y="140" width="560" height="52" rx="8"/>
+  <rect class="ring r2" x="38" y="138" width="564" height="56" rx="10"/>
+  <text class="num" x="58" y="171">2</text>
+  <text class="lblw" x="82" y="171">Base's field initialisers run next</text>
+
+  <rect class="step3 box" x="40" y="210" width="560" height="52" rx="8"/>
+  <rect class="ring r3" x="38" y="208" width="564" height="56" rx="10"/>
+  <text class="num" x="58" y="241">3</text>
+  <text class="lblw" x="82" y="241">The base constructor's body runs — the base object is now fully built</text>
+
+  <rect class="step4 box" x="40" y="280" width="560" height="52" rx="8"/>
+  <rect class="ring r4" x="38" y="278" width="564" height="56" rx="10"/>
+  <text class="num" x="58" y="311">4</text>
+  <text class="lblw" x="82" y="311">Only now does the derived constructor's own body run</text>
+</g>
+
+<g class="arrow">
+  <path class="edge" d="M14 96 L34 96" marker-end="url(#a1)"/>
+</g>
+
+<defs>
+  <marker id="a1" markerWidth="9" markerHeight="9" refX="4" refY="5" orient="auto"><path d="M0,0 L5,5 L0,10 Z" fill="#646c7e"/></marker>
+</defs>
+</svg>

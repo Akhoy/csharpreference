@@ -1,0 +1,89 @@
+<svg viewBox="0 0 860 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="jwt-title jwt-desc">
+  <title id="jwt-title">How an API validates a JWT with no database call</title>
+  <desc id="jwt-desc">Five steps: parse the header to find the key id, fetch the issuer's public signing keys from its OIDC discovery document, verify the signature with that key, check issuer, audience and expiry, then build the ClaimsPrincipal. The signing key fetch is cached so only the first request pays that cost.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root { --bg:#ffffff; --ink:#1b1f27; --dim:#6b7280; --card:#f3f4f8;
+        --s1:#512bd4; --s2:#a993ff; --ok1:#22845a; --ok2:#4cc58a; --warn1:#b06f08; --warn2:#e6a83a; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#14161c; --ink:#eef0f6; --dim:#9aa3b2; --card:#1d2029; }
+      }
+      text { font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif; fill: var(--ink); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .dim { fill: var(--dim); }
+      .grp { opacity: 0; }
+      @media (prefers-reduced-motion: reduce) { .grp { opacity: 1; animation: none !important; } }
+      .card { fill: var(--card); stroke: var(--s1); stroke-width: 1.5; rx: 8; }
+      @media (prefers-color-scheme: dark) { .card { stroke: var(--s2); } }
+
+      .step { animation: fade 11s ease-in-out infinite; }
+      @keyframes fade { 0% { opacity:0; transform: translateY(6px); } 8%,88%,100% { opacity:1; transform: translateY(0); } }
+      .s1 { animation-delay: 0s; }
+      .s2 { animation-delay: 1.4s; }
+      .s3 { animation-delay: 2.8s; }
+      .s4 { animation-delay: 4.2s; }
+      .s5 { animation-delay: 5.6s; }
+
+      .arrow { stroke: var(--ok1); stroke-width: 2.5; fill: none; }
+      @media (prefers-color-scheme: dark) { .arrow { stroke: var(--ok2); } }
+      .pulse { animation: pulse 11s ease-in-out infinite; transform-origin: center; }
+      @keyframes pulse { 0%,96%,100% { opacity: .35; } 10%,86% { opacity: 1; } }
+      ]]>
+    </style>
+    <marker id="jwtArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ok1)"/>
+    </marker>
+  </defs>
+
+  <rect width="860" height="460" fill="var(--bg)"/>
+  <text x="20" y="28" font-size="15" font-weight="600">Validating a JWT: five steps, no round trip to your own database</text>
+
+  <!-- step 1 -->
+  <g class="grp step s1">
+    <rect class="card" x="40" y="55" width="200" height="70"/>
+    <text x="52" y="78" font-size="13" font-weight="600">1. Parse header</text>
+    <text x="52" y="98" class="mono dim" font-size="11">find "kid" (key id)</text>
+  </g>
+
+  <!-- step 2 -->
+  <g class="grp step s2">
+    <rect class="card" x="310" y="55" width="220" height="70"/>
+    <text x="322" y="78" font-size="13" font-weight="600">2. Fetch signing keys</text>
+    <text x="322" y="98" class="mono dim" font-size="11">/.well-known/openid-configuration</text>
+    <text x="322" y="113" class="dim" font-size="10">(cached after first request)</text>
+  </g>
+
+  <!-- step 3 -->
+  <g class="grp step s3">
+    <rect class="card" x="600" y="55" width="220" height="70"/>
+    <text x="612" y="78" font-size="13" font-weight="600">3. Verify signature</text>
+    <text x="612" y="98" class="mono dim" font-size="11">RS256 / ES256 with public key</text>
+  </g>
+
+  <path class="arrow pulse" d="M 240,90 L 310,90" marker-end="url(#jwtArrow)"/>
+  <path class="arrow pulse" d="M 530,90 L 600,90" marker-end="url(#jwtArrow)"/>
+
+  <!-- step 4 -->
+  <g class="grp step s4">
+    <rect class="card" x="310" y="190" width="240" height="90"/>
+    <text x="322" y="213" font-size="13" font-weight="600">4. Check claims</text>
+    <text x="322" y="233" class="mono dim" font-size="11">iss == expected issuer</text>
+    <text x="322" y="249" class="mono dim" font-size="11">aud == this API</text>
+    <text x="322" y="265" class="mono dim" font-size="11">now between nbf and exp</text>
+  </g>
+
+  <path class="arrow pulse" d="M 710,125 L 710,160 L 430,160 L 430,190" marker-end="url(#jwtArrow)"/>
+
+  <!-- step 5 -->
+  <g class="grp step s5">
+    <rect class="card" x="310" y="330" width="240" height="90"/>
+    <text x="322" y="353" font-size="13" font-weight="600">5. Build ClaimsPrincipal</text>
+    <text x="322" y="373" class="mono dim" font-size="11">sub, roles, scope → claims</text>
+    <text x="322" y="389" class="mono dim" font-size="11">HttpContext.User is set</text>
+  </g>
+
+  <path class="arrow pulse" d="M 430,280 L 430,330" marker-end="url(#jwtArrow)"/>
+
+  <text x="20" y="440" font-size="12" class="dim">No step calls back to your own database — the token's signature stands in for that round trip.</text>
+</svg>
