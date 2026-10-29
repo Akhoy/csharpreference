@@ -48,6 +48,12 @@ public IActionResult Pay(int orderId)
 
 A web server handles requests on threads from a shared **thread pool**. This code takes a thread and then *sits on it* for 820 ms doing nothing but waiting. At 500 checkouts a second you'd need hundreds of threads all waiting. The pool adds threads only slowly, so new requests **queue up for a free thread** while the existing ones stare at the network.
 
+Do the sums. One checkout holds a thread for 0.82 seconds. At 500 checkouts a second, that's 500 × 0.82 ≈ **410 threads** waiting at any moment, just for checkout. Each thread reserves about 1 MB of stack, and the pool only adds roughly one new thread per second when it's under pressure. So the queue grows faster than the pool can grow, and every page on the site, not just checkout, waits in that queue.
+
+:::why Why not just add more threads?
+Because the problem isn't a shortage of threads. It's that the threads are **doing nothing**. A thread is expensive (memory for its stack, and the OS has to switch between them). Thousands of threads that mostly sleep is a very costly way to wait for a network reply. What you really want is a way to say "I'm waiting, here's my thread back, call me when the reply arrives". That's what `await` is.
+:::
+
 ## The lightbulb: free the thread while you wait {b}
 
 During those 800 ms the thread isn't *doing* anything. The network card is waiting for bytes. So why hold a thread at all?
@@ -84,6 +90,7 @@ Not for a single operation, which actually gets a small overhead. It improves sc
 
 Here's the exact sequence, in a program you can run. The "payment API" is a `TaskCompletionSource`, a Task that we finish by hand, so you can watch every step:
 
+:::walk Watch `await` hand the thread back
 ```csharp
 var paymentApi = new TaskCompletionSource<decimal>();      // stands in for a slow HTTP call
 
@@ -106,6 +113,27 @@ static class Shop
     }
 }
 ```
+@1 | paymentApi = not replied
+A `TaskCompletionSource` is a task we finish by hand. It stands in for the payment API, so you decide when it "replies".
+@3
+Call `CheckoutAsync`. It starts running straight away, on this thread, like any method.
+@14-15 | orderId = 42 | > 1. checkout starts and calls the payment API
+The first part runs normally.
+@16 | orderId = 42 (saved) ; paymentCall = not finished
+`await` checks the task. It's **not finished**, so `await` saves the local variables, notes "resume at this line", and **returns** an unfinished task to the caller. The method is paused, but no thread is waiting inside it.
+@4 | checkout = Task (not finished) | > 2. back in the caller: checkout finished? False  ← thread is free
+We're back in the caller **before checkout has finished**. That's the whole trick: the thread is free.
+@5 | | >    (the thread could serve other requests here)
+On a real server, this is where the thread goes back to the pool and serves other shoppers.
+@7 | paymentApi = replied 18.50
+The payment API replies. Finishing the task triggers the **continuation**: the rest of `CheckoutAsync`.
+@17 | orderId = 42 (restored) ; charged = 18.50 | > 4. resumed after await (order 42 remembered)
+The method resumes at the exact line where it paused, with `orderId` still 42. (On a server it could be a different thread by now. It doesn't matter.)
+@18 | checkout = Task (finished: "order 42: charged £18.50")
+`return` completes the task.
+@8 | | > 5. order 42: charged £18.50
+The task is already finished, so reading `.Result` here doesn't block anything. The output order was 1, 2, 4, 5: the method left in the middle and came back later.
+:::
 
 Read the output order: **1, 2, 4, 5**. At the `await`, the method **returned** to its caller (step 2) before it finished. When the result arrived, it **resumed exactly where it stopped**, with `orderId` still set.
 
@@ -140,6 +168,7 @@ A **`Task`** is like a collection ticket at a dry cleaner's. It's proof the work
 | **Faulted** | it threw | rethrows the exception ([Episode 7](ch:exceptions-disposal#exceptions-in-async-code)) |
 | **Canceled** | it was cancelled | throws `OperationCanceledException` |
 
+:::walk A Task's three endings
 ```csharp
 var ok = Task.FromResult(5);                       // an already-finished Task
 Console.WriteLine($"{ok.Status}: {ok.Result}");
@@ -151,6 +180,16 @@ Console.WriteLine($"{failing.Status}: {failing.Exception!.InnerException!.Messag
 
 static async Task<int> AddOne(Task<int> t) => await t + 1;
 ```
+@1 | ok = Task (RanToCompletion, 5)
+`Task.FromResult` makes a task that is already finished, with a result.
+@2 | | > RanToCompletion: 5
+@4-5 | tcs = not finished ; failing = Task (waiting)
+`AddOne` awaits a task that hasn't finished, so it's paused.
+@6 | failing = Task (Faulted, holding TimeoutException)
+The task fails. `AddOne` resumes, the `await` rethrows the exception, and because `AddOne` is `async`, the exception is **stored in its task** instead of flying out.
+@7 | | > Faulted: payment API timed out
+Nothing crashed. The failure is sitting in the task, for whoever awaits it.
+:::
 
 Useful members: `Task.FromResult(x)` and `Task.CompletedTask` (ready-made finished tasks), `Task.Delay(ms, ct)` (wait without a thread; **never `Thread.Sleep`** in async code), and `Task.WhenAll` / `WhenAny`.
 
@@ -225,6 +264,93 @@ The order page needs the customer and their recent orders, from two different se
 3. Then `await Task.WhenAll(customerTask, historyTask)`. It finishes when the slowest one does: **200 ms** in total.
 :::
 
+You can watch the difference with two fake service calls that only finish when the code says so. First, the obvious way:
+
+:::walk One after the other: the second call waits for the first
+```csharp
+var customerApi = new TaskCompletionSource<string>();
+var historyApi  = new TaskCompletionSource<string>();
+
+Task<string> GetCustomer() { Console.WriteLine("  customer call starts"); return customerApi.Task; }
+Task<string> GetHistory()  { Console.WriteLine("  history call starts");  return historyApi.Task; }
+
+Task<string> page = OneAfterTheOther();
+Console.WriteLine($"page done? {page.IsCompleted}");
+
+customerApi.SetResult("Ada");
+Console.WriteLine("customer replied");
+
+historyApi.SetResult("3 orders");
+Console.WriteLine($"history replied. page: {page.Result}");
+
+async Task<string> OneAfterTheOther()
+{
+    var c = await GetCustomer();     // wait for the customer...
+    var h = await GetHistory();      // ...and only THEN start the history call
+    return $"{c}, {h}";
+}
+```
+@1-2 | customerApi = not replied ; historyApi = not replied
+Two fake services. Their tasks only finish when we call `SetResult`, so you control the timing.
+@7 | customerApi = not replied ; historyApi = not replied
+Build the page.
+@18 | | >   customer call starts
+Start the customer call and `await` it. It hasn't replied, so the method pauses here and returns an unfinished task.
+@8 | page = Task (not finished) | > page done? False
+Notice what *hasn't* happened: the history call hasn't started. Line 19 can't run until line 18 is finished.
+@10 | customerApi = replied "Ada" ; historyApi = not replied
+The customer service replies.
+@19 | c = "Ada" | >   history call starts
+The method resumes, and only **now** does the history call start. All the time the customer call took, the history service sat idle.
+@11 | | > customer replied
+@13-14 | page = "Ada, 3 orders" | > history replied. page: Ada, 3 orders
+The history replies and the page is done. Total time: customer time **plus** history time.
+:::
+
+Now start both, then wait:
+
+:::walk Both at once: start everything, then wait once
+```csharp
+var customerApi = new TaskCompletionSource<string>();
+var historyApi  = new TaskCompletionSource<string>();
+
+Task<string> GetCustomer() { Console.WriteLine("  customer call starts"); return customerApi.Task; }
+Task<string> GetHistory()  { Console.WriteLine("  history call starts");  return historyApi.Task; }
+
+Task<string> page = BothAtOnce();
+Console.WriteLine($"page done? {page.IsCompleted}");
+
+historyApi.SetResult("3 orders");
+Console.WriteLine($"history replied. page done? {page.IsCompleted}");
+
+customerApi.SetResult("Ada");
+Console.WriteLine($"customer replied. page: {page.Result}");
+
+async Task<string> BothAtOnce()
+{
+    var c = GetCustomer();           // start both calls...
+    var h = GetHistory();
+    await Task.WhenAll(c, h);        // ...then wait once, for the slower one
+    return $"{await c}, {await h}";
+}
+```
+@7 | customerApi = not replied ; historyApi = not replied
+Build the page again, this time with `BothAtOnce`.
+@18-19 | c = Task (customer, in flight) ; h = Task (history, in flight) | >   customer call starts | >   history call starts
+Call both methods **without** `await`. Each call starts its request and hands back a task straight away. Both requests are now in flight together.
+@20 | c = Task (in flight) ; h = Task (in flight)
+`Task.WhenAll` makes one task that finishes when **both** have. Awaiting it pauses the method once.
+@8 | page = Task (not finished) | > page done? False
+@10-11 | h = "3 orders" ; c = Task (in flight) | > history replied. page done? False
+The history replies first. `WhenAll` is still waiting for the customer, so the page isn't done.
+@13 | c = "Ada" ; h = "3 orders"
+The customer replies. Now both are finished, and the method resumes.
+@21 | page = "Ada, 3 orders" | > customer replied. page: Ada, 3 orders
+`await c` and `await h` are instant now, because both tasks are already finished. Total time: the **slower** of the two, not the sum.
+:::
+
+The same two shapes with real services:
+
 ```csharp norun
 // one after the other: ~300 ms
 var customer = await customers.GetAsync(id, ct);    // 100 ms
@@ -274,6 +400,7 @@ Cancellation in .NET is **cooperative**. A `CancellationTokenSource` raises the 
 4. Nothing is killed by force. Code stops *itself* by throwing `OperationCanceledException`, which is normal flow, not an error. Forget to pass `ct` down one level, and that level carries on working for nobody.
 :::
 
+:::walk A "please stop" flag, checked by the worker
 ```csharp
 using System.Threading;
 
@@ -295,6 +422,19 @@ for (int page = 1; page <= 5; page++)
     }
 }
 ```
+@3-4 | cts = not cancelled ; token = not cancelled
+The source can raise the flag. The token can only *read* it, so you hand the token to the code doing the work.
+@6-12 | page = 1 | > exported page 1
+Page 1: the flag isn't raised, so `ThrowIfCancellationRequested` does nothing.
+@6-12 | page = 2 | > exported page 2
+Page 2, same.
+@8 | page = 3 ; cts = cancelled ; token = cancelled
+Before page 3 the user closes the browser, and the flag goes up. Nothing is stopped by force. The loop is still running.
+@11 | page = 3 ; token = cancelled
+The worker **checks** the flag and throws `OperationCanceledException`. Stopping is the worker's own decision. That's what "cooperative" means.
+@16-17 | page = 3 | > stopped at page 3: cancelled (normal, not an error)
+Catch it, stop cleanly, and don't log it as an error. Pages 4 and 5 are never exported, so no work is wasted.
+:::
 
 Combine the request's token with your own timeout:
 
@@ -347,6 +487,7 @@ The compiler turns your async method into a small object that remembers where it
 
 The compiler rewrites every `async` method into a **state machine** (a struct). Its fields hold your **local variables**, a **state number** ("which await am I paused at?") and a **builder** that creates and completes the Task. You can see it with reflection:
 
+:::walk Look inside the state machine
 ```csharp
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -368,6 +509,15 @@ static class Shop
     }
 }
 ```
+@13-18 | -
+An ordinary async method with one local and one `await`.
+@4-5 | machine = <CheckoutAsync>d__0
+The compiler attached a hidden type to the method. Reflection finds it.
+@7 | | > <CheckoutAsync>d__0 is a struct with fields:
+It's a struct, and its fields are the method's memory between pauses.
+@8-9 | | >   Int32                    <>1__state | >   AsyncTaskMethodBuilder`1 <>t__builder | >   Task`1                   payment | >   Int32                    <orderId>5__2 | >   TaskAwaiter`1            <>u__1
+`<>1__state` is the bookmark ("paused at await number 0"). `<>t__builder` creates and completes the returned `Task`. `payment` is your parameter, and `<orderId>5__2` is your **local variable, now a field**, which is how it survives the pause. `<>u__1` holds the awaiter for the task being waited on.
+:::
 
 You'll see `<>1__state` (where it's paused), `<>t__builder` (makes the Task), your parameter, `<orderId>5__2` (your local, now a field) and an awaiter. Simplified, the generated `MoveNext` looks like this:
 
@@ -470,6 +620,7 @@ Returning a `Task` always creates a small object, even when the answer is ready 
 3. When the price isn't cached, the `ValueTask` wraps a real `Task`, so nothing is lost. The rules: await it **exactly once**, never from two places (call `.AsTask()` if you need that), and use it only in hot methods that usually finish instantly.
 :::
 
+:::walk A cache hit with no Task allocated
 ```csharp
 var catalogue = new ProductCatalogue();
 var first = catalogue.GetPriceAsync("TEA-01");      // cache hit: finished immediately, no Task allocated
@@ -487,6 +638,17 @@ class ProductCatalogue
     private static async Task<decimal> LoadPriceAsync(string sku) { await Task.Yield(); return 9.99m; }
 }
 ```
+@1 | catalogue = { TEA-01 → 6.50 }
+A catalogue with one price cached.
+@2 | first = ValueTask (already holding 6.50)
+Ask for a price that's in the cache.
+@10-11 | sku = "TEA-01" ; price = 6.50
+Found it. `ValueTask.FromResult` wraps the answer **in the struct itself**. No `Task` object is created on the heap.
+@3 | | > cache hit completed synchronously: True, £6.50
+It's already finished. On a hot path called a million times, that's a million allocations saved.
+@12 | -
+On a cache miss, the `ValueTask` wraps a real `Task` instead, so it still works. It just isn't free.
+:::
 
 Use it only for **hot methods that usually finish immediately** (cache hits, buffered reads). Await it **exactly once**, never concurrently. If you need to store it or await it twice, call `.AsTask()`. Use `Task` everywhere else.
 
