@@ -245,8 +245,8 @@ function buildChapter(id, meta, body, ctx) {
       const rows = vars.map(([k, v]) => `<tr class="${prev[k] !== v ? 'chg' : ''}"><td>${esc(k)}</td><td>${renderInlineTitle(v)}</td></tr>`).join('');
       const newOut = st.out.map(o => `<div class="new">${esc(o)}</div>`).join('');
       const html = `<div class="walk-state" data-step="${i + 1}"${i ? ' hidden' : ''}>`
-        + `<div class="walk-h">Variables</div>${rows ? `<table class="walk-vars">${rows}</table>` : '<div class="walk-none">none yet</div>'}`
-        + `<div class="walk-h">Output</div><div class="walk-out">${outSoFar.map(o => `<div>${esc(o)}</div>`).join('')}${newOut}${outSoFar.length || newOut ? '' : '<span class="walk-none">nothing printed yet</span>'}</div></div>`;
+        + `<div class="walk-col"><div class="walk-h">Variables</div>${rows ? `<table class="walk-vars">${rows}</table>` : '<div class="walk-none">none in play</div>'}</div>`
+        + `<div class="walk-col"><div class="walk-h">Output</div><div class="walk-out">${outSoFar.map(o => `<div>${esc(o)}</div>`).join('')}${newOut}${outSoFar.length || newOut ? '' : '<span class="walk-none">nothing printed yet</span>'}</div></div></div>`;
       prevVars = vars; outSoFar = outSoFar.concat(st.out);
       return html;
     }).join('');

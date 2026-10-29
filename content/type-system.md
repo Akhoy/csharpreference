@@ -34,8 +34,11 @@ next: oop, generics, memory-gc
 
 ## Previously, and the bug {b}
 
-Kettle's first feature is simple: a shopper can **save their basket for later** and keep shopping. You write it the obvious way.
+Kettle's first feature is simple: a shopper can **save their basket for later** and keep shopping. The idea is to keep a snapshot of the basket, so the shopper can carry on changing the live one. You write it the obvious way, and it passes a quick test. Then the support emails start: "I added a tea to my saved list and it appeared in my basket too."
 
+Step through the code and watch the two variables on the right:
+
+:::walk The bug: "save for later" changes the live basket
 ```csharp
 var basket = new Basket();
 basket.Add("Earl Grey");
@@ -53,8 +56,23 @@ class Basket
     public int Count => _items.Count;
 }
 ```
+@1 | basket = → basket #1 [ ]
+`new Basket()` builds one basket object on the heap. The variable `basket` doesn't hold the basket. It holds an **arrow** (an address) pointing at it. Call that object *basket #1*.
+@2 | basket = → basket #1 [Earl Grey]
+Follow the arrow and add Earl Grey to basket #1.
+@4 | basket = → basket #1 [Earl Grey] ; savedForLater = → basket #1 (the same one!)
+The key line. `Basket` is a class, so `=` copies **the arrow, not the basket**. Now two variables point at one object. No second basket was made.
+@5 | basket = → basket #1 [Earl Grey, Sencha] ; savedForLater = → basket #1 (the same one!)
+Follow `savedForLater`'s arrow and add Sencha. It lands in basket #1, the only basket there is. Look at `basket`: it changed too.
+@7 | | > Basket: 2 items
+Print the live basket. Two items, though we "only" added Sencha to the saved one.
+@8 | | > Saved:  2 items
+And the saved one has two items as well. Of course it does: it's the same basket.
+@10-15 | -
+Why did `=` share instead of copy? Because of this one word: **`class`**. Every class is a *reference type*, and that's what the next section is about.
+:::
 
-Run it. The live basket has **two** items, though you only ever added Sencha to the saved one. Nothing is wrong with `Add`. The problem is the line `savedForLater = basket`. It didn't copy the basket at all.
+Nothing is wrong with `Add`. The problem is line 4, `savedForLater = basket`. It looks like "make a copy", but it didn't copy the basket at all. To see why, you need the single most important idea in C#.
 
 ## The lightbulb: copied or shared {b}
 
@@ -102,8 +120,15 @@ Which family is each type in?
 | `record struct` | `record` (a record class), delegates, interfaces |
 | Default value: all zeros (`0`, `false`) | Default value: `null` |
 
-**The fix for Kettle** is to make a real copy on purpose:
+:::why Why would anyone design a language like this?
+Because sharing is usually what you *want*. Kettle's basket is shown in three places at once: the page, the little counter in the header, and the checkout. They must all show **the same** basket, and adding a tea in one place must update all three. If `=` copied the whole basket, every screen would hold its own stale copy. Copying would also be slow for big objects: an order with 200 lines would be duplicated every time you passed it to a method.
 
+So C# gives you both, and the type decides. Small values that *are* their data, like a price, a date or a count, are copied, because copying 16 bytes costs nothing and nobody expects 5 to change behind their back. Objects with an identity, like a basket, a customer or an order, are shared, because there should be one of each. The bug happens when you *think* you have a copy but you have a share.
+:::
+
+**The fix for Kettle** is to make a real copy on purpose. Watch the second basket appear this time:
+
+:::walk The fix: copy the contents on purpose
 ```csharp
 var basket = new Basket();
 basket.Add("Earl Grey");
@@ -127,6 +152,21 @@ class Basket
     }
 }
 ```
+@1-2 | basket = → basket #1 [Earl Grey]
+Same start: one basket, holding Earl Grey.
+@4 | basket = → basket #1 [Earl Grey]
+This time call `Copy()`. Jump into it to see what it does.
+@17 | basket = → basket #1 [Earl Grey] ; copy = → basket #2 [ ]
+`new Basket()` builds a **second** basket object, basket #2, with its own empty list.
+@18 | basket = → basket #1 [Earl Grey] ; copy = → basket #2 [Earl Grey]
+Copy the *items*, not the arrow. Earl Grey is now in both baskets, but they're separate objects.
+@19 | basket = → basket #1 [Earl Grey] ; savedForLater = → basket #2 [Earl Grey]
+Return the arrow to basket #2. `savedForLater` points at the new basket, and `basket` still points at the original.
+@5 | basket = → basket #1 [Earl Grey] ; savedForLater = → basket #2 [Earl Grey, Sencha]
+Add Sencha through `savedForLater`. Only basket #2 changes.
+@7-8 | | > Basket: 1 items | > Saved:  2 items
+The live basket still has one item. The bug is fixed, because there really are two baskets now.
+:::
 
 :::qa What is the difference between a value type and a reference type?
 A value-type variable contains its data, so assignment copies the data. A reference-type variable contains a reference to a heap object, so assignment copies the reference and both variables see the same object. Value types can't be null (without `Nullable<T>`) and can't be inherited from. Reference types are garbage-collected and support inheritance.
@@ -367,7 +407,43 @@ That step has a name: **boxing**. The runtime allocates a small heap object (the
 4. `int m = (int)o;` **Unboxing** checks the box really holds an `int`, then copies 42 out into `m`.
 :::
 
-The danger is that boxing often happens in code that doesn't look like it:
+Why should Kettle care? The nightly sales report once ran on an old `ArrayList`, a list from before generics that stores everything as `object`. Every quantity added to it was boxed. The report was slow and the server's memory graph looked like a saw. Here's that effect, measured. `GC.GetAllocatedBytesForCurrentThread()` tells you how many bytes this thread has allocated on the heap so far, so the difference "after minus before" is what a piece of code cost:
+
+:::walk Measure it: 1,000 numbers, boxed and not boxed
+```csharp
+using System.Collections;
+
+var boxed = new ArrayList(1000);    // stores object
+var plain = new List<int>(1000);    // stores int
+
+long before = GC.GetAllocatedBytesForCurrentThread();
+for (int i = 0; i < 1000; i++) boxed.Add(i);
+long boxedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+before = GC.GetAllocatedBytesForCurrentThread();
+for (int i = 0; i < 1000; i++) plain.Add(i);
+long plainBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+Console.WriteLine($"ArrayList: {boxedBytes:N0} bytes");
+Console.WriteLine($"List<int>: {plainBytes:N0} bytes");
+```
+@3-4 | boxed = ArrayList, room for 1,000 ; plain = List<int>, room for 1,000
+Make two lists, each with room for 1,000 items up front, so growing the list doesn't muddy the numbers. `ArrayList` stores `object`. `List<int>` stores `int`.
+@6 | before = (bytes allocated so far)
+Read the allocation counter before we start.
+@7 | boxed = ArrayList [0, 1, 2 … 999] (1,000 boxes) ; before = (bytes allocated so far)
+Add 1,000 ints to the `ArrayList`. Its slots hold `object`, a reference type, so every `int` must be **boxed**: a new heap object per number.
+@8 | boxedBytes = 16,672
+The counter went up by about 16 bytes per number. That's 1,000 boxes nobody asked for.
+@10-11 | boxedBytes = 16,672 ; plain = List<int> [0, 1, 2 … 999]
+Same again with `List<int>`. Its slots are real `int` slots, so each number is copied straight in.
+@12 | boxedBytes = 16,672 ; plainBytes = 0
+**Zero bytes.** Not one allocation, because nothing needed a box.
+@14-15 | | > ArrayList: 16,672 bytes | > List<int>: 0 bytes
+The numbers you see are from the 32-bit .NET runtime in your browser, where a box is 16 bytes. On a 64-bit server each box is 24 bytes, so the gap is even bigger. Scale that to a million orders and it's 24 MB of garbage per report.
+:::
+
+Boxing also hides in code that doesn't mention `object` at all:
 
 ```csharp
 using System.Collections;
@@ -380,7 +456,7 @@ string s = string.Format("{0}", 42);   // boxes 42 into an object[]
 Console.WriteLine($"{list[0]} {c} {s}");
 ```
 
-None of those lines look expensive, but each one is a hidden heap allocation. In a loop over a million orders, that's a million objects for the GC to clean up.
+None of those lines look expensive, but each one is a hidden heap allocation.
 
 **The fix is generics.** `List<int>` stores `int`s directly, with no boxes, because .NET creates a dedicated version of `List<T>` just for `int`. [Generics](ch:generics) explains how.
 
@@ -406,7 +482,43 @@ Immutability has a cost when you build a string piece by piece. Each `+=` can't 
 5. **`StringBuilder`** keeps one buffer with spare room. Each `Append` copies only the new piece, and `ToString()` makes the final string once.
 :::
 
-Use `StringBuilder` or `string.Join`:
+Kettle met this when it built the CSV export of the whole tea catalogue with `+=`. With 20 teas it was instant. With 5,000 it took seconds. Measure the difference between `+=` and `StringBuilder` yourself:
+
+:::walk Measure it: 1,000 appends, two ways
+```csharp
+using System.Text;
+
+string s = "";
+long before = GC.GetAllocatedBytesForCurrentThread();
+for (int i = 0; i < 1000; i++) s += "x";
+Console.WriteLine($"+= allocated {GC.GetAllocatedBytesForCurrentThread() - before:N0} bytes");
+
+before = GC.GetAllocatedBytesForCurrentThread();
+var sb = new StringBuilder();
+for (int i = 0; i < 1000; i++) sb.Append("x");
+string result = sb.ToString();
+Console.WriteLine($"StringBuilder allocated {GC.GetAllocatedBytesForCurrentThread() - before:N0} bytes");
+Console.WriteLine(s == result);
+```
+@3-4 | s = "" ; before = (bytes so far)
+Start with an empty string and read the allocation counter.
+@5 | s = "xxx…x" (the 1,000th new string)
+Each `+=` can't grow `s`, because strings never change. It allocates a **new** string one character longer and copies every character so far into it. Round 1 copies 1 character, round 2 copies 2, and so on up to 1,000.
+@6 | | > += allocated 1,018,792 bytes
+About **a megabyte** to build a 1,000-character string. That's half a million characters copied, and 999 dead strings for the GC.
+@9 | sb = StringBuilder (one buffer with spare room)
+A `StringBuilder` keeps an internal buffer with spare room, and grows it in big jumps only when it fills.
+@10 | sb = StringBuilder "xxx…x"
+Each `Append` copies only the one new character into the buffer.
+@11 | sb = StringBuilder "xxx…x" ; result = "xxx…x"
+`ToString()` makes the final string once.
+@12 | | > StringBuilder allocated 4,400 bytes
+**About 230 times less.** The difference grows with the length: double the characters and `+=` does four times the work, while `StringBuilder` only doubles.
+@13 | | > True
+Same text either way.
+:::
+
+For a small, fixed number of pieces, `+` and `$"..."` are fine. The compiler turns them into a single concatenation. The trap is only `+=` **in a loop**. When you have a collection, `string.Join` is simplest:
 
 ```csharp
 using System.Text;
@@ -444,6 +556,9 @@ Kettle's first invoice says a £0.10 tea plus a £0.20 biscuit costs £0.3000000
 4. `decimal` stores base-10 digits, so 0.1m is exactly "1 × 10⁻¹" with nothing dropped. That's why money is always `decimal`.
 :::
 
+Here's the invoice bug, and three more ways a number can quietly be wrong:
+
+:::walk Four numbers that look right and aren't
 ```csharp
 Console.WriteLine(0.1 + 0.2);      // 0.30000000000000004  (double)
 Console.WriteLine(0.1m + 0.2m);    // 0.3                  (decimal, note the m)
@@ -459,6 +574,27 @@ if (o is string text) Console.WriteLine($"pattern match gave a typed variable: {
 var maybeUri = o as Uri;                // as: null when it isn't that type
 Console.WriteLine(maybeUri is null);    // True
 ```
+@1 | | > 0.30000000000000004
+`0.1` and `0.2` are `double`s. Neither can be stored exactly in binary, so each is slightly off, and adding them shows the error. This was Kettle's invoice.
+@2 | | > 0.3
+The `m` suffix makes them `decimal`. They're stored in base 10, so 0.1m is exact and the sum is exactly 0.3.
+@4 | big = 300
+An `int` holding 300.
+@5 | big = 300 ; b = 44
+Squeeze it into a `byte`, which holds only 0 to 255. The cast keeps the lowest 8 bits and throws the rest away. 300 − 256 = **44**. No error, no warning.
+@6 | | > 44
+That's a quantity of 300 that became 44 without anyone noticing.
+@7-8 | | > checked: overflow caught
+Wrap the same cast in `checked` and C# throws an `OverflowException` instead of wrapping. Use it wherever overflow would be a bug.
+@10 | o = → "not an order" (a string, typed as object)
+A variable typed `object` can hold anything. Here it holds a string.
+@11 | o = → "not an order" ; text = "not an order" | > pattern match gave a typed variable: not an order
+`is string text` asks "is it a string?" and, if so, gives you a new variable `text` already typed as `string`. That's the safe way to test a type.
+@12 | o = → "not an order" ; text = "not an order" ; maybeUri = null
+`as Uri` means "give me it as a `Uri`, or `null` if it isn't one". It isn't, so you get `null`. No exception.
+@13 | | > True
+Confirmed. A plain cast, `(Uri)o`, would have thrown `InvalidCastException` here.
+:::
 
 The same idea in a few rules:
 
@@ -472,10 +608,11 @@ The same idea in a few rules:
 
 ## "Not set yet": nullable value types {b}
 
-An order has a `ShippedAt` date, but only once it ships. A `DateTime` can't be `null`, because a value type always holds *some* value. Using `DateTime.MinValue` to mean "not yet" is a lie that leaks into reports.
+An order has a `ShippedAt` date, but only once it ships. A `DateTime` can't be `null`, because a value type always holds *some* value. Kettle's first version used `DateTime.MinValue` to mean "not shipped yet". A month later the delivery report said the average order took **2,024 years** to ship, because it averaged in every "0001-01-01".
 
 Add `?`: **`DateTime?`** is a nullable value type, short for `Nullable<DateTime>`. It's just a small struct holding a flag (`HasValue`) plus the value.
 
+:::walk "Not shipped yet" without lying
 ```csharp
 DateTime? shippedAt = null;
 Console.WriteLine(shippedAt.HasValue);               // False
@@ -485,13 +622,27 @@ int? discount = null;
 int effective = discount ?? 0;                       // ?? = "use this if null"
 Console.WriteLine(effective);
 ```
+@1 | shippedAt = null (HasValue = false)
+`DateTime?` is a tiny struct: a `bool` flag plus a `DateTime`. Assigning `null` just sets the flag to false. Nothing is on the heap.
+@2 | | > False
+`HasValue` reads the flag.
+@3 | | > not shipped yet
+`?.` means "only call `ToString` if there's a value", so it produces `null` here. Then `??` means "if the left side is null, use the right side instead".
+@5 | discount = null
+The same works for any value type, here an `int?`.
+@6 | discount = null ; effective = 0
+`discount ?? 0` gives 0, because `discount` has no value. Now the code says exactly what it means: no discount counts as zero.
+@7 | | > 0
+And reports can now *skip* unshipped orders instead of averaging in the year 1.
+:::
 
 Don't confuse it with `string?`. Strings can already be null, and `string?` is a compile-time *warning* system covered in [Modern C#](ch:modern-csharp#nullable-reference-types-the-compiler-tracks-maybe-null).
 
 ## Enums: named numbers with a sharp edge {b}
 
-An `enum` gives names to integers: `OrderStatus.Paid` is really just `2`.
+An `enum` gives names to integers: `OrderStatus.Paid` is really just `2`. That's useful, because a database column or a JSON field can store the small number. It's also dangerous, as Kettle found when a partner's app sent `"status": 42` and an order was saved in a state that doesn't exist.
 
+:::walk Names for numbers, and a number with no name
 ```csharp
 var s = OrderStatus.Paid;
 Console.WriteLine($"{s} = {(int)s}");               // Paid = 2
@@ -506,6 +657,23 @@ enum OrderStatus { Draft = 0, Placed = 1, Paid = 2, Shipped = 3, Cancelled = 9 }
 
 [Flags] enum Permissions { None = 0, Read = 1, Write = 2, Delete = 4 }
 ```
+@10 | -
+The enum. Each name is given an explicit number. `Cancelled = 9` shows the numbers don't have to be consecutive.
+@1 | s = Paid (stored as 2)
+`s` holds `OrderStatus.Paid`. In memory it's just the `int` 2.
+@2 | | > Paid = 2
+Printing an enum gives its name. Casting to `int` gives the number underneath.
+@4 | s = Paid (stored as 2) ; bogus = 42 (no name!)
+Cast 42 to `OrderStatus`. There's no member with that number, but **it compiles and runs**. An enum is only a label on an `int`, and C# doesn't check the value. This is exactly what the partner's `"status": 42` did.
+@5 | | > 42, defined? False
+`Enum.IsDefined` is the check you have to add yourself, at the edge where outside data comes in.
+@12 | -
+`[Flags]` is a different use: each member is a separate bit (1, 2, 4), so members can be combined.
+@7 | p = Read, Write (bits 1 + 2 = 3)
+`|` combines the bits: Read (1) and Write (2) make 3.
+@8 | | > Read, Write, can write: True
+`HasFlag` tests one bit.
+:::
 
 :::gotcha Enums aren't checked
 `(OrderStatus)42` is perfectly legal, so a bad value from JSON or the database slips straight in. Check outside input with `Enum.IsDefined` or a `switch` with a `default` arm. If you store enums as numbers, give every member an **explicit** number, or reordering the declaration silently changes the meaning of stored data. In public APIs, prefer sending enums as strings.
@@ -535,6 +703,7 @@ Two `Money` values of £5 are the same money. Two `Customer` objects that happen
 5. The two rules: **equal objects must give equal hash codes**, so override `Equals` and `GetHashCode` together. And **never change a key** while it's inside a set or dictionary. A record follows the first rule for you.
 :::
 
+:::walk Two different objects, one value
 ```csharp
 var a = new Sku("tea-01");
 var b = new Sku("TEA-01");
@@ -550,6 +719,54 @@ public sealed record Sku
     public Sku(string code) => Code = code.ToUpperInvariant();
 }
 ```
+@8-13 | -
+`Sku` is a **record**. It's still a class (shared, on the heap), but the compiler writes value-based `Equals`, `GetHashCode` and `==` for it. The constructor upper-cases the code, so `tea-01` and `TEA-01` mean the same product.
+@1 | a = → Sku #1 { Code = TEA-01 }
+One object.
+@2 | a = → Sku #1 { Code = TEA-01 } ; b = → Sku #2 { Code = TEA-01 }
+A **second** object. Two separate allocations, two different arrows.
+@3 | | > True
+For a plain class `==` would ask "same object?" and say False. The record compares the **values** instead, and they match.
+@5 | set = { Sku #1 } (filed under hash of "TEA-01")
+Put `a` in a `HashSet`. The set calls `a.GetHashCode()` and files it in that bucket. The record's hash code is computed from `Code`.
+@6 | | > True
+Look up `b`. Its hash code is computed from the same `Code`, so it's the **same number**, and the set checks the right bucket. Then `Equals` confirms. Found, even though `b` was never added.
+:::
+
+Now the bug Kettle actually shipped. Before records, someone wrote a `Tea` class and overrode `Equals` so two teas with the same code count as equal. They didn't override `GetHashCode`. Every test of `Equals` passed. Then the "already in your basket?" check stopped working:
+
+:::walk The lost item: Equals without GetHashCode
+```csharp
+var a = new Tea("tea-01");
+var b = new Tea("tea-01");
+Console.WriteLine(a.Equals(b));
+
+var basket = new HashSet<Tea> { a };
+Console.WriteLine(basket.Contains(b));
+
+class Tea
+{
+    public string Code { get; }
+    public Tea(string code) => Code = code;
+    public override bool Equals(object? o) => o is Tea t && t.Code == Code;
+    // GetHashCode not overridden: it still comes from the object's identity
+}
+```
+@12 | -
+`Equals` is overridden: two teas are equal if their codes match.
+@13
+But `GetHashCode` is not. The default hash code is based on **which object** it is, not on its contents. Two different objects almost always get two different numbers.
+@1-2 | a = → tea #1 { tea-01 } ; b = → tea #2 { tea-01 }
+Two separate objects with the same code.
+@3 | | > True
+`Equals` says they're equal. So far so good, and this is where the tests stopped.
+@5 | a = → tea #1 { tea-01 } ; b = → tea #2 { tea-01 } ; basket = { tea #1 } in the bucket for a's hash code
+Add `a` to a `HashSet`. The set asks for `a`'s hash code and files it in that bucket.
+@6 | | > False
+Look up `b`. The set asks for `b`'s hash code: a **different number**, because `b` is a different object. So it searches a different bucket, finds nothing there, and never even calls `Equals`. "Not in your basket", and the shopper gets a duplicate line.
+:::
+
+The fix is to override `GetHashCode` from the same fields as `Equals`, for example `public override int GetHashCode() => Code.GetHashCode();`. Or make `Tea` a `record`, which writes both correctly for you. The compiler even warns you (CS0659) when you override one without the other.
 
 :::qa If you override Equals, what else must you do?
 Override `GetHashCode` consistently, so equal objects give equal hash codes. Ideally also implement `IEquatable<T>`, and overload `==` and `!=` so they agree. Or use a record, which generates all of this.
@@ -571,6 +788,7 @@ Here's the rule that untangles every parameter question: **C# passes every argum
 5. Unless you write **`ref`**. Then there's no copy: `b` *is* the caller's variable, and reassigning it moves the caller's arrow too.
 :::
 
+:::walk What a method can and can't change
 ```csharp
 var c = new Customer { Name = "Ada" };
 Rename(c);      Console.WriteLine(c.Name);   // "Renamed": same object
@@ -583,6 +801,17 @@ static void ReplaceRef(ref Customer x)  => x = new Customer { Name = "Brand new"
 
 class Customer { public string Name = ""; }
 ```
+@1 | c = → customer #1 { Name = Ada }
+One customer object, and the caller's variable `c` points at it.
+@2 | c = → customer #1 { Name = Renamed } | > Renamed
+`Rename(c)` gets a copy of the arrow, follows it, and changes the name. Same object, so the caller sees "Renamed".
+@3 | c = → customer #1 { Name = Renamed } | > Renamed
+`Replace(c)` points **its own copy** of the arrow at a new customer called "Lost". The caller's `c` never moved, so it still says "Renamed". The "Lost" customer becomes garbage when the method returns.
+@4 | c = → customer #3 { Name = Brand new } | > Brand new
+With `ref`, the method gets the caller's **variable itself**, not a copy. Reassigning it moves the caller's arrow.
+@6-8
+The three methods. They differ by one word, and the word is `ref`.
+:::
 
 The modifiers:
 
@@ -628,6 +857,41 @@ Every object on the heap carries a small hidden label before its data, so tiny o
 2. On the heap, every object starts with a **16-byte header**, before any of your fields. 8 bytes are used by the runtime for locks and hashing. The other 8 point at the object's type ("I'm an `Order`").
 3. Then your fields: `Quantity` (4 bytes, plus 4 bytes of padding so the next field lines up) and `Total` (a 16-byte `decimal`). That's **40 bytes**, and 16 of them are overhead.
 4. Even an empty object costs about 24 bytes. A million tiny objects means about 24 MB of headers alone. An **array of structs** has one header for the whole array, then pure data side by side.
+:::
+
+Measure it. Here are a thousand orders stored as objects, and a thousand stored as structs:
+
+:::walk Measure it: 1,000 orders as classes vs structs
+```csharp
+long before = GC.GetAllocatedBytesForCurrentThread();
+var classes = new OrderC[1000];
+for (int i = 0; i < 1000; i++) classes[i] = new OrderC();
+long classBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+before = GC.GetAllocatedBytesForCurrentThread();
+var structs = new OrderS[1000];
+long structBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+Console.WriteLine($"1,000 class orders:  {classBytes:N0} bytes");
+Console.WriteLine($"1,000 struct orders: {structBytes:N0} bytes");
+
+class OrderC { public int Quantity; public decimal Total; }
+struct OrderS { public int Quantity; public decimal Total; }
+```
+@13-14 | -
+The same two fields, once as a class and once as a struct.
+@2 | classes = array of 1,000 arrows, all null
+An array of a class type holds **arrows**. Right now they all point nowhere.
+@3 | classes = array of 1,000 arrows → 1,000 separate objects
+Fill it: 1,000 `new OrderC()`, each a separate heap object with its own header.
+@4 | classBytes = 36,720
+About 36 bytes per order: each object (header plus fields) and its arrow in the array.
+@7 | classBytes = 36,720 ; structs = array of 1,000 orders, stored side by side
+An array of a struct type holds **the data itself**, one order after another, with one header for the whole array. There's nothing to fill in, because each slot is already an order (with zeros).
+@8 | classBytes = 36,720 ; structBytes = 24,016
+About 24 bytes per order. That's just the fields: no header per order and no arrow per order.
+@10-11 | | > 1,000 class orders:  36,720 bytes | > 1,000 struct orders: 24,016 bytes
+A third less memory, and one object for the GC instead of 1,001. These figures are from the 32-bit runtime in your browser. On a 64-bit server the class version costs about 48 bytes per order, so the struct version is half the size.
 :::
 
 - These numbers are CLR implementation details, documented in *Pro .NET Memory Management* and *CLR via C#*, not promises in the C# language.
