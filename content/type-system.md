@@ -221,11 +221,130 @@ Two keywords are doing work there:
 - **`readonly`** promises nothing in it can ever change. The compiler enforces this, and it can skip making safety copies when you pass the struct around.
 - **`record`** writes three things for you. Value equality: two `Money`s with the same fields are `==`. A readable `ToString()`. And `with`, for making a changed copy: `price with { Amount = 10m }`.
 
-A related trick is the **strongly typed ID**. Wrap a `Guid` in a tiny struct like `OrderId`, and passing an `OrderId` where a `CustomerId` is expected becomes a compile error instead of a production bug.
+### Strongly typed IDs: the bug a struct can make impossible
 
-:::gotcha Mutable structs bite
-`list[0].X = 5` on a `List<SomeStruct>` is a **compile error**. The list's indexer is a method that returns a *copy* of the struct, so changing it would change a temporary copy that's thrown away at once. On a plain array the same line works, because an array element is a real variable. Same syntax, different behaviour. That's why the rule is: **keep structs immutable**.
+Here's a real Kettle bug from launch week. A customer asked for a refund, and the refund vanished. No crash and no error, just money that never came back. The cause was one line where two arguments were the wrong way round.
+
+Every ID in the system was a `Guid`. To the compiler, an order's ID and a customer's ID are both "a Guid", so it can't tell when you swap them. Step through it:
+
+:::walk The bug: two Guids, swapped, and nobody notices
+```csharp
+var orderId    = Guid.NewGuid();
+var customerId = Guid.NewGuid();
+var orders = new Dictionary<Guid, decimal>();
+orders[orderId] = 12.50m;
+Refund(customerId, orderId);   // oops: swapped
+
+void Refund(Guid order, Guid customer)
+{
+    if (orders.TryGetValue(order, out var amount))
+        Console.WriteLine($"Refunded £{amount}");
+    else
+        Console.WriteLine("No such order. Refund lost.");
+}
+```
+@1 | orderId = `7f3a…` (a Guid)
+Make the order's ID. A `Guid` is a 16-byte random number, so in practice it's unique.
+@2 | orderId = `7f3a…` (a Guid) ; customerId = `c91e…` (a Guid)
+Make the customer's ID. It's **the same type**: also a `Guid`. Remember that, because it's the whole bug.
+@3-4 | orderId = `7f3a…` (a Guid) ; customerId = `c91e…` (a Guid) ; orders = { `7f3a…` → £12.50 }
+Store the order, keyed by its ID.
+@5
+Call `Refund` with the arguments **swapped**. The method wants `(Guid, Guid)`, and we gave it `(Guid, Guid)`. The compiler is satisfied. It compiles cleanly.
+@7 | order = `c91e…` ← really the customer! ; customer = `7f3a…` ← really the order!
+Inside `Refund`, the parameter called `order` holds the customer's ID. The names say one thing, the values say another, and nothing checks.
+@9
+Look up `c91e…` in the orders. There is no order with that ID, because it's a customer ID.
+@12 | order = `c91e…` ← really the customer! ; customer = `7f3a…` ← really the order! | > No such order. Refund lost.
+The refund silently fails. In production this was a support ticket, an angry customer and an hour of debugging to find **one swapped pair**.
 :::
+
+The fix is to give each kind of ID **its own type**. Wrap the `Guid` in a tiny struct, one per meaning. Now an `OrderId` and a `CustomerId` are as different to the compiler as an `int` and a `string`:
+
+:::walk The fix: one tiny struct per kind of ID
+```csharp
+var orderId    = new OrderId(Guid.NewGuid());
+var customerId = new CustomerId(Guid.NewGuid());
+
+// Refund(customerId, orderId);  // won't compile
+Refund(orderId, customerId);
+
+void Refund(OrderId order, CustomerId customer) =>
+    Console.WriteLine($"Refunding order {order.Value}");
+
+readonly record struct OrderId(Guid Value);
+readonly record struct CustomerId(Guid Value);
+```
+@10-11 | -
+First, the two new types. Each is one line: a `readonly record struct` holding a single `Guid`. Different names make them **different types**, even though they hold the same thing inside.
+@1 | orderId = OrderId(`7f3a…`)
+Wrap the order's Guid in an `OrderId`.
+@2 | orderId = OrderId(`7f3a…`) ; customerId = CustomerId(`c91e…`)
+Wrap the customer's Guid in a `CustomerId`. Same 16 bytes inside, but now the *type* records what the value means.
+@4 | ! CS1503: Argument 1: cannot convert from 'CustomerId' to 'OrderId'
+Make last week's mistake again. (It's commented out here so the rest of the program can run.) It's now a **compile error**, and the build stops. The bug is caught on your machine, in red, before any customer can meet it.
+@5
+The right way round compiles, because each argument has exactly the type the method asks for.
+@7-8 | order = OrderId(`7f3a…`) ; customer = CustomerId(`c91e…`) | > Refunding order 7f3a…
+`Refund` runs with the right values.
+:::
+
+Why a **struct** and not a class? Look at the checklist above. An ID is one value. It's 16 bytes, the same as the `Guid` it wraps. It never changes. So it's a perfect struct: the safety costs nothing at run time. There's no heap allocation and no extra memory, just a check the compiler does for free. A class would work too, but every ID would then be a separate heap object for the garbage collector to track.
+
+### Why structs should never change
+
+Kettle's first struct wasn't `Money`. It was a `Point` for drawing the shop's seating map, and it had settable fields. It caused a bug that looked like the computer ignoring an assignment.
+
+The key fact is from the start of this episode: **reading a struct gives you a copy**. That's harmless when the struct can't change. When it *can* change, you can easily change a copy and think you changed the original.
+
+:::walk Same line, two containers, two different results
+```csharp
+var arr  = new Point[]     { new Point(1, 1) };
+var list = new List<Point> { new Point(1, 1) };
+
+arr[0].X = 5;       // works
+// list[0].X = 5;   // CS1612
+var p = list[0];    // a copy
+p.X = 5;            // copy only
+Console.WriteLine($"{arr[0].X} {p.X} {list[0].X}");
+list[0] = p;        // put it back
+Console.WriteLine(list[0].X);
+
+struct Point
+{
+    public int X, Y;
+    public Point(int x, int y) { X = x; Y = y; }
+}
+```
+@1-2 | arr[0] = (1, 1) ; list[0] = (1, 1)
+Make one `Point` in an array and one in a `List`. Both start at (1, 1).
+@4 | arr[0] = (5, 1) ; list[0] = (1, 1)
+`arr[0].X = 5` works. An array element is **a real slot in memory**, so `arr[0]` names the struct itself, and you change it in place.
+@5 | ! CS1612: Cannot modify the return value of 'List<Point>.this[int]' because it is not a variable
+The same line on a list is refused (it's commented out so the rest can run). Why? `list[0]` looks like an array access, but it's really a **method call**: the list's indexer, `get_Item(0)`. A method returns its result as a **copy**. Setting `X` on a copy that's thrown away straight after would do nothing, so the compiler stops you.
+@6 | arr[0] = (5, 1) ; list[0] = (1, 1) ; p = (1, 1) (a copy)
+Here's what that indexer really does, written out by hand: `p` gets a **copy** of the list's point.
+@7 | arr[0] = (5, 1) ; list[0] = (1, 1) ; p = (5, 1) (a copy)
+Change the copy. `p.X` is now 5, but the point inside the list is untouched. The compiler can't save you here, because this code is legal.
+@8 | > 5 5 1
+Print `arr[0].X`, `p.X` and `list[0].X`. The proof: the array changed, the copy changed, and **the list did not**. This is the bug that looks like an ignored assignment.
+@9 | arr[0] = (5, 1) ; list[0] = (5, 1) ; p = (5, 1)
+The fix for a mutable struct: copy out, change, **copy the whole thing back in**.
+@10 | > 5
+Now the list has it. That works, but you have to remember it every time.
+:::
+
+The lasting fix is to make the trap impossible. Declare the struct `readonly`, so nothing *can* change in place. Then the only way to "change" a point is to make a new one, and you can't forget to store it:
+
+```csharp
+var list = new List<Point> { new Point(1, 1) };
+list[0] = list[0] with { X = 5 };   // make a changed copy, store it
+Console.WriteLine(list[0]);          // Point { X = 5, Y = 1 }
+
+readonly record struct Point(int X, int Y);
+```
+
+That's the reason behind the rule **keep structs immutable**. A mutable struct behaves differently depending on where it's stored (an array, a list, a field, a `foreach` variable). An immutable one behaves the same everywhere, just like an `int`.
 
 :::qa When would you use a struct instead of a class?
 For a small (about 16 bytes or less), immutable value that represents a single thing and isn't boxed often, like Money, coordinates or strongly typed IDs. Declare it `readonly struct` or `readonly record struct`. Use a class for anything with identity, behaviour, inheritance or a larger size.

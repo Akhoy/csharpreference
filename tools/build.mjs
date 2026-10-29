@@ -159,6 +159,8 @@ function buildChapter(id, meta, body, ctx) {
     const content = renderInner(b.lines.join('\n'));
     if (b.type === 'scene') {
       html += renderScene(b);
+    } else if (b.type === 'walk') {
+      html += renderWalk(b);
     } else if (b.type === 'qa') {
       qa.push({ q: b.title, a: content, chapter: id, section: currentSection });
       html += `<details class="qa"><summary><span class="qa-mark">Q</span><span>${renderInlineTitle(b.title)}</span></summary><div class="qa-body">${content}</div></details>\n`;
@@ -195,6 +197,73 @@ function buildChapter(id, meta, body, ctx) {
   // The SVG is inlined (so it follows the book's theme and can be stepped through). Inside it,
   // data-s="2" shows an element from step 2 on, data-s="2-3" only on steps 2–3,
   // data-hl="3" highlights it on step 3, data-mv="3:120,0" slides it by (120,0) from step 3.
+  // :::walk Title
+  // ```csharp            ← the program (runnable unless the fence says norun)
+  // ...
+  // ```
+  // @3-4 | price = £12.50 ; total = 0 | > text printed | ! compile error
+  // Narration for this step (markdown, may span lines)
+  // @5 | ...
+  // :::
+  // A step header is "@lines" then optional "| vars | > output | ! error" fields.
+  // vars: "name = value" pairs separated by " ; ". Omit to keep the previous step's vars, "-" to clear.
+  // output lines accumulate. A step with "!" marks its line as a compile error instead of running.
+  function renderWalk(b) {
+    const title = b.title;
+    const lines = b.lines;
+    const fs0 = lines.findIndex(l => /^\s*```/.test(l));
+    const fs1 = lines.findIndex((l, i) => i > fs0 && /^\s*```/.test(l));
+    if (fs0 < 0 || fs1 < 0) throw new Error(`${id}: walk "${title}" needs a code fence`);
+    const info = lines[fs0].replace(/^\s*```/, '').trim();
+    const lang = info.split(/\s+/)[0] || 'csharp';
+    const src = lines.slice(fs0 + 1, fs1).join('\n').replace(/\s+$/, '');
+    const runnable = ['cs', 'csharp', 'c#'].includes(lang.toLowerCase()) && !/\bnorun\b/.test(info);
+    const codeLines = highlight(src, lang).split('\n');
+    const steps = [];
+    for (const l of lines.slice(fs1 + 1)) {
+      const m = l.match(/^@([\d,\-]+)(.*)$/);
+      if (m) {
+        const f = m[2].split('|').slice(1).map(x => x.trim());
+        const st = { lines: new Set(), vars: undefined, out: [], err: '', say: '' };
+        for (const part of m[1].split(',')) { const [a, z] = part.trim().split('-').map(Number); for (let k = a; k <= (z || a); k++) st.lines.add(k); }
+        for (const x of f) {
+          if (x.startsWith('>')) st.out.push(x.slice(1).trim());
+          else if (x.startsWith('!')) st.err = x.slice(1).trim();
+          else if (x === '-') st.vars = [];
+          else if (x) st.vars = x.split(/\s;\s/).map(v => { const i = v.indexOf('='); return [v.slice(0, i).trim(), v.slice(i + 1).trim()]; });
+        }
+        steps.push(st);
+      } else if (steps.length && l.trim()) steps[steps.length - 1].say += (steps[steps.length - 1].say ? ' ' : '') + l.trim();
+    }
+    if (!steps.length) throw new Error(`${id}: walk "${title}" has no @steps`);
+    const rawLines = src.split('\n');
+    steps.forEach((st, i) => { for (const k of st.lines) if (!rawLines[k - 1] || !rawLines[k - 1].trim()) throw new Error(`${id}: walk "${title}" step ${i + 1} points at blank or missing line ${k}`); if (!st.say) throw new Error(`${id}: walk "${title}" step ${i + 1} has no narration`); });
+    let prevVars = [], outSoFar = [];
+    const states = steps.map((st, i) => {
+      const vars = st.vars === undefined ? prevVars : st.vars;
+      const prev = Object.fromEntries(prevVars);
+      const rows = vars.map(([k, v]) => `<tr class="${prev[k] !== v ? 'chg' : ''}"><td>${esc(k)}</td><td>${renderInlineTitle(v)}</td></tr>`).join('');
+      const newOut = st.out.map(o => `<div class="new">${esc(o)}</div>`).join('');
+      const html = `<div class="walk-state" data-step="${i + 1}"${i ? ' hidden' : ''}>`
+        + `<div class="walk-h">Variables</div>${rows ? `<table class="walk-vars">${rows}</table>` : '<div class="walk-none">none yet</div>'}`
+        + `<div class="walk-h">Output</div><div class="walk-out">${outSoFar.map(o => `<div>${esc(o)}</div>`).join('')}${newOut}${outSoFar.length || newOut ? '' : '<span class="walk-none">nothing printed yet</span>'}</div></div>`;
+      prevVars = vars; outSoFar = outSoFar.concat(st.out);
+      return html;
+    }).join('');
+    const code = codeLines.map((ln, i) => `<div class="wl" data-ln="${i + 1}"><span class="wn">${i + 1}</span><span class="wc">${ln || ' '}</span></div>`).join('');
+    const says = steps.map((st, i) => `<li data-step="${i + 1}" data-lines="${[...st.lines].join(',')}"${st.err ? ` data-err="${esc(st.err)}"` : ''}${i ? ' hidden' : ''}>${renderInlineTitle(st.say)}</li>`).join('');
+    const dots = steps.map((_, i) => `<button type="button" class="scene-dot${i ? '' : ' on'}" data-sc="${i + 1}" aria-label="Step ${i + 1}"></button>`).join('');
+    const dataSrc = runnable ? ` data-src="${Buffer.from(src, 'utf8').toString('base64')}"` : '';
+    const runBtn = runnable ? `<button class="run" type="button">Run <span class="run-arrow">▶</span></button>` : '';
+    return `<figure class="walk" data-steps="${steps.length}" data-at="1">
+<div class="scene-head"><span class="scene-title">${renderInlineTitle(title)}</span><span class="fig-btns">${runBtn}<span class="scene-count">Step 1 of ${steps.length}</span></span></div>
+<div class="walk-body"><pre class="walk-code"${dataSrc}><code>${code}</code></pre><div class="walk-side">${states}</div></div>
+<div class="run-output" hidden></div>
+<ol class="scene-says">${says}</ol>
+<div class="scene-ctrl"><button type="button" class="scene-btn" data-sc="prev" disabled>◀ Back</button><span class="scene-dots">${dots}</span><button type="button" class="scene-btn" data-sc="play" aria-label="Play all steps">▶ Play</button><button type="button" class="scene-btn primary" data-sc="next">Next ▶</button></div>
+</figure>\n`;
+  }
+
   function renderScene(b) {
     const [file, title = ''] = b.title.split('|').map(s => s.trim());
     const svgPath = path.join(ROOT, file);
