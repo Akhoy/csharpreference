@@ -18,6 +18,21 @@ next: errors-logging, async-await, cqrs-mediator-result
 - Exceptions are for the *unexpected*. For normal "no" answers (bad input, out of stock), use `TryParse`-style methods or a `Result`.
 - The GC frees **memory**, but not connections, files or locks. **`IDisposable`** + **`using`** releases them **now**, even when an exception is thrown, because `using` is a hidden `try/finally`.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **exception** | An object describing something that went wrong. *Throwing* it stops normal execution. |
+| **catch** | A block that says "I'll handle this kind of exception". |
+| **finally** | A block that always runs on the way out, whether things worked or not. |
+| **unwinding** | The runtime walking back through the callers, looking for a matching `catch`. |
+| **stack trace** | The record of which methods the exception passed through: your best clue for debugging. |
+| **inner exception** | The original exception, kept inside a new one that adds context. |
+| **`IDisposable` / `Dispose()`** | The standard "release this right now" method, for files, connections and locks. |
+| **`using`** | Makes sure `Dispose()` is called, even if an exception is thrown. |
+| **finalizer** | A last-resort cleanup the GC runs if someone forgot to dispose. Slow; rarely needed. |
+| **connection pool** | A fixed set of open database connections that requests borrow and must give back. |
+
 ## Previously, and the bug {b}
 
 In [Episode 6](ch:linq) Kettle got readable reports. Then the payment provider had a bad afternoon, and checkout looked like this:
@@ -132,7 +147,18 @@ static void PlaceOrder(string sku, int qty)
 
 ## `throw;` vs `throw ex;` {i}
 
+:::plain
+When you catch an exception just to log it, pass it on with plain `throw;`. Writing `throw ex;` erases the record of where the error really happened.
+:::
+
 Inside a `catch` you often log and then pass the exception on. *How* you rethrow decides whether you can still find the bug afterwards:
+
+:::scene visuals/scenes/ex-rethrow.svg | What happens to the stack trace
+1. `ChargeCard` throws. The exception records the path it took, the **stack trace**, which points at line 31. `Checkout` catches it to log it and then needs to pass it on.
+2. **`throw;`** passes on the *same* exception, untouched. The trace still points at line 31, where it really failed.
+3. **`throw ex;`** is treated as a *new* throw from inside the `catch`. The trace now starts at the catch block (line 14), and the real origin is gone.
+4. **Wrapping**: `throw new PaymentException("Checkout of order 42 failed", ex)` gives a clearer message *and* keeps the original exception inside as `InnerException`. Nothing is lost.
+:::
 
 ```csharp
 try { Checkout(properRethrow: true); }
@@ -170,6 +196,10 @@ static void ChargeCard() => throw new InvalidOperationException("card declined")
 
 ### Exception filters: decide before unwinding
 
+:::plain
+A `when` clause lets a `catch` say "only if this condition is true". The condition is checked before anything is torn down, so exceptions you don't want pass straight through.
+:::
+
 ```csharp
 foreach (var status in new[] { 503, 404 })
 {
@@ -200,6 +230,10 @@ A `when` clause runs **before** the stack unwinds, so a non-matching filter leav
 
 ## Your own exception types {i}
 
+:::plain
+Make your own exception type when callers need to recognise *this* problem and act on it, and give it properties for the facts they'll need.
+:::
+
 ```csharp
 try { Reserve("TEA-01", requested: 5, available: 2); }
 catch (InsufficientStockException ex) { Console.WriteLine($"[{ex.Code}] {ex.Message} (sku {ex.Sku})"); }
@@ -221,9 +255,13 @@ sealed class InsufficientStockException(string sku, int requested, int available
 }
 ```
 
-A short checklist: end the name with `Exception`, derive from `Exception` (not the old `ApplicationException`), and put anything a caller might act on in **typed properties** (`Sku`), not hidden in the message. Map exceptions to HTTP status codes in **one central place** ([Errors & logging](ch:errors-logging)).
+A short checklist. End the name with `Exception`. Derive from `Exception`, not the old `ApplicationException`. And put anything a caller might act on in **typed properties** (`Sku`), not hidden in the message. Map exceptions to HTTP status codes in **one central place** ([Errors & logging](ch:errors-logging)).
 
 ## When *not* to throw {i}
+
+:::plain
+Exceptions are for surprises. If "no" is a normal answer, like bad input or an empty shelf, return it as an ordinary value instead.
+:::
 
 Exceptions are for situations the caller couldn't reasonably expect. They're also **slow** (the stack trace has to be captured) and **invisible** in a method's signature. For outcomes that are *normal*, return them instead:
 
@@ -254,7 +292,20 @@ For expected, frequent outcomes: invalid user input, lookups that miss, validati
 
 ## Exceptions in async code {i}
 
-[Episode 8](ch:async-await) covers `async`, but four exception rules are worth knowing now:
+:::plain
+In async code an exception doesn't fly out straight away. It's stored inside the `Task` and only comes out when someone `await`s that task. If nobody does, nobody ever sees it.
+:::
+
+[Episode 8](ch:async-await) covers `async` properly, but these exception rules are worth seeing now:
+
+:::scene visuals/scenes/ex-async.svg | Where an async exception goes
+1. An `async Task` method throws. The exception doesn't fly out. It's caught and **stored inside the returned `Task`**, like a note in an envelope, and the task's status becomes *Faulted*.
+2. **`await`** opens the envelope and rethrows the exception right there, with its original stack trace. So a `try/catch` around the `await` works normally.
+3. If nobody awaits the task (`_ = ChargeAsync();`), nobody ever opens the envelope. The payment failed silently. That's the fire-and-forget bug.
+4. **`async void`** has no `Task`, so there's no envelope. The exception has nowhere to go, and it **crashes the whole process**.
+:::
+
+The rules, in short:
 
 - An exception inside an `async Task` method is **stored inside the returned `Task`**. It's rethrown, with its original stack trace, only when someone **`await`s** that task.
 - So if nobody awaits the task, the exception is **never seen**. That's the "fire-and-forget" bug.
@@ -376,6 +427,10 @@ The container does. Scoped and transient disposables are disposed when their sco
 
 ## Implementing IDisposable yourself {i}
 
+:::plain
+If your class holds things that need disposing, it must be disposable too, and its `Dispose` passes the call on to each of them. Make it safe to call twice.
+:::
+
 If your class *holds* other disposables (a file, a timer), it should be disposable too, and pass the `Dispose` on:
 
 ```csharp
@@ -436,7 +491,16 @@ public class NativeBuffer : IDisposable
 }
 ```
 
-The `disposing` flag says *who called*. `true` means your code called `Dispose()`, so it's safe to touch other objects. `false` means the GC's finalizer called it, and other managed objects may already be gone. `SuppressFinalize` matters because objects with pending finalizers survive an extra GC cycle ([Memory & GC](ch:memory-gc#finalizers-the-gcs-last-resort-and-why-its-slow)).
+The `disposing` flag is the confusing part, so here it is as a picture:
+
+:::scene visuals/scenes/ex-dispose-pattern.svg | One cleanup method, two ways in
+1. There's one cleanup method, `Dispose(bool disposing)`, and two ways to reach it. The `bool` says which way you came.
+2. **Path 1, the normal one:** your code calls `Dispose()` (or `using` does), which calls `Dispose(true)`. Everything is still alive, so it's safe to dispose the other objects you hold too. Then `GC.SuppressFinalize(this)` tells the GC that path 2 isn't needed.
+3. **Path 2, the safety net:** nobody disposed, so eventually the GC's **finalizer** calls `Dispose(false)`. Other managed objects may already have been collected, so *only* free the raw native resource.
+4. You only need any of this if you hold a **raw** native handle. Better still, wrap it in a `SafeHandle`, which already does it correctly.
+:::
+
+`SuppressFinalize` matters for speed too: objects waiting to be finalized survive an extra garbage collection ([Memory & GC](ch:memory-gc#finalizers-the-gcs-last-resort-and-why-its-slow)).
 
 :::qa Explain the Dispose pattern. When do you need a finalizer?
 A public `Dispose()` calls `Dispose(true)` and `GC.SuppressFinalize(this)`. A protected virtual `Dispose(bool disposing)` frees managed resources only when `disposing` is true, and unmanaged ones on both paths. You only need a finalizer if the class directly owns an unmanaged resource, and usually a `SafeHandle` is better. Classes that only wrap managed disposables need just a simple `Dispose()`.
@@ -455,6 +519,10 @@ await using var writer = new BlobBatchWriter();
 ```
 
 ## Common disposal mistakes {i}
+
+:::plain
+Almost every disposal bug is one of two things: something you created was never disposed, or something you *didn't* create was disposed by you.
+:::
 
 | Mistake | What happens | Fix |
 |---|---|---|

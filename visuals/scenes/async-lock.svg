@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="A lock belongs to the thread that took it; after await the method may resume on another thread that doesn't own it, so await inside lock is forbidden; SemaphoreSlim isn't tied to a thread">
+<rect x="24" y="44" width="200" height="56" rx="10" class="b-info" data-hl="1"/><text class="t-s" x="36" y="66">thread 7</text><text class="t-c" x="36" y="88" style="font-size:11.5px">lock (_gate) {</text>
+<g data-s="1"><text class="t-h" x="232" y="76">🔑</text><text class="t-s" x="260" y="76">thread 7 holds the key</text></g>
+<g data-s="2"><rect x="24" y="110" width="200" height="40" rx="8" class="b-sunk"/><text class="t-c" x="36" y="134" style="font-size:11.5px">  await FetchTokenAsync();</text><text class="t-s" x="240" y="134">thread 7 goes off to serve someone else…</text></g>
+<g data-s="3"><rect x="24" y="160" width="200" height="56" rx="10" class="b-warn"/><text class="t-s" x="36" y="182">thread 3 resumes</text><text class="t-c" x="36" y="204" style="font-size:11.5px">} // release the lock?</text>
+<text class="t-s t-bad" x="240" y="182">Thread 3 never took the key, so it can't release it.</text><text class="t-s t-bad" x="240" y="202">That's why the compiler forbids await inside lock.</text></g>
+<g data-s="4"><rect x="24" y="226" width="672" height="46" rx="10" class="b-good"/><text class="t-c" x="36" y="246" style="font-size:11.5px">await _gate.WaitAsync(); try { … await … } finally { _gate.Release(); }</text><text class="t-s t-good" x="36" y="264">SemaphoreSlim counts permits instead of remembering a thread, so any thread may release it.</text></g>
+</svg>

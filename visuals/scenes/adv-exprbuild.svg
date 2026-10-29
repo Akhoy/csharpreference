@@ -11,7 +11,7 @@
 <text class="t-m" x="312" y="136">each row becomes a few nodes</text></g>
 <g data-s="3" class="fly"><rect x="312" y="150" width="384" height="40" rx="8" class="b-acc" style="stroke-width:2.5"/><text class="t-c" x="324" y="175" style="font-size:12px">o =&gt; o.Total &gt; 50 &amp;&amp; o.Country == "GB"</text>
 <text class="t-m" x="312" y="208">rows joined with AndAlso: ONE Expression&lt;Func&lt;Order,bool&gt;&gt;</text></g>
-<g data-s="4"><rect x="24" y="226" width="320" height="70" rx="8" class="b-good"/><text class="t-cap" x="36" y="246">.Compile() → A DELEGATE</text><text class="t-s" x="36" y="268">filter in-memory lists</text>
+<g data-s="4-4"><rect x="24" y="226" width="320" height="70" rx="8" class="b-good"/><text class="t-cap" x="36" y="246">.Compile() → A DELEGATE</text><text class="t-s" x="36" y="268">filter in-memory lists</text>
 <rect x="376" y="226" width="320" height="70" rx="8" class="b-good"/><text class="t-cap" x="388" y="246">db.Orders.Where(tree) → EF CORE</text><text class="t-c" x="388" y="270" style="font-size:11px">WHERE Total &gt; @p0 AND Country = @p1</text></g>
 <g data-s="5"><rect x="24" y="226" width="672" height="70" rx="8" class="b-bad"/><text class="t-s t-bad" x="36" y="250">The alternative, "WHERE " + userInput, is SQL injection waiting to happen.</text><text class="t-s" x="36" y="274">In a tree, whatever the user typed is only ever a Constant node, sent as a parameter.</text></g>
 </svg>

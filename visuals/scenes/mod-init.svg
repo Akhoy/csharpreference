@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="An object's life: the constructor runs, then the object initialiser window where init properties may be set and required ones must be, then the object is locked">
+<text class="t-cap" x="24" y="28">new CreateOrderRequest { CustomerId = 42, Teas = ["Sencha"] }</text>
+<rect x="24" y="44" width="200" height="70" rx="10" class="b" data-hl="1"/><text class="t-cap" x="36" y="64">1 · CONSTRUCTOR</text><text class="t-s" x="36" y="88">runs first</text>
+<rect x="240" y="44" width="250" height="70" rx="10" class="b-acc" data-hl="2,3"/><text class="t-cap" x="252" y="64">2 · THE { … } WINDOW</text><text class="t-s" x="252" y="88">init properties may be set</text><text class="t-s" x="252" y="106">required ones MUST be</text>
+<rect x="506" y="44" width="190" height="70" rx="10" class="b-good" data-hl="4"/><text class="t-cap" x="518" y="64">3 · LOCKED</text><text class="t-s" x="518" y="88">init properties can't</text><text class="t-s" x="518" y="106">change any more</text>
+<g data-s="2-2"><text class="t-c" x="24" y="152" style="font-size:12px">CustomerId = 42, Teas = ["Sencha"]   ✓ both required members set</text></g>
+<g data-s="3-3"><text class="t-c t-bad" x="24" y="152" style="font-size:12px">new CreateOrderRequest { CustomerId = 42 }</text><text class="t-s t-bad" x="24" y="176">✗ CS9035: required member 'Teas' must be set. Caught when you compile, not at 3 a.m.</text></g>
+<g data-s="4"><text class="t-c t-bad" x="24" y="152" style="font-size:12px">req.CustomerId = 7;</text><text class="t-s t-bad" x="24" y="176">✗ compile error: init-only properties are locked once the object is built.</text></g>
+<text class="t-s" x="24" y="152" data-s="1-1">The constructor runs first, as always.</text>
+<g data-s="5"><rect x="24" y="200" width="672" height="64" rx="10" class="b-info"/><text class="t-s" x="36" y="224"><tspan font-weight="700">init</tspan> answers "WHEN may this be set?": only during creation.</text><text class="t-s" x="36" y="246"><tspan font-weight="700">required</tspan> answers "MUST it be set?": yes, or the code won't compile. Together: set once, never forgotten.</text></g>
+</svg>

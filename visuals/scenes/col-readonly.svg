@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 310" role="img" aria-label="A read-only view can still change underneath you; an immutable collection never changes, and modifications return a new version; a frozen collection is built once for the fastest reads">
+<defs><marker id="cr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<g data-s="1-2"><text class="t-cap" x="24" y="28">IReadOnlyList&lt;T&gt;: A WINDOW, NOT A WALL</text>
+<rect x="24" y="44" width="150" height="40" rx="6" class="b-info"/><text class="t-c" x="36" y="69" style="font-size:12px">you: view ●</text>
+<rect x="24" y="96" width="150" height="40" rx="6" class="b-warn"/><text class="t-c" x="36" y="121" style="font-size:12px">owner: list ●</text>
+<path d="M166,64 C220,64 230,86 284,86" class="ln" marker-end="url(#cr-a)"/><path d="M166,116 C220,116 230,96 284,96" class="ln" marker-end="url(#cr-a)"/>
+<rect x="290" y="66" width="250" height="50" rx="8" class="b"/><text class="t-c" x="302" y="96" style="font-size:12px" data-s="1-1">[Sencha, Assam]</text><text class="t-c" x="302" y="96" style="font-size:12px" data-s="2-2">[Sencha, Assam, <tspan class="t-bad">Chai</tspan>]</text>
+<text class="t-s" x="24" y="166" data-s="1-1">You can't Add through your view. But it's a window onto someone else's list.</text>
+<text class="t-s t-bad" x="24" y="166" data-s="2-2">The owner calls list.Add("Chai"), and your "read-only" view now shows 3 items.</text></g>
+<g data-s="3-4"><text class="t-cap" x="24" y="28">ImmutableList&lt;T&gt;: NOBODY CAN CHANGE IT</text>
+<rect x="24" y="44" width="250" height="44" rx="8" class="b-good"/><text class="t-c" x="36" y="71" style="font-size:12px">v1: [Sencha, Assam]</text>
+<g data-s="4"><path d="M274,66 L374,66" class="ln" marker-end="url(#cr-a)"/><text class="t-c" x="280" y="56" style="font-size:10.5px">.Add("Chai")</text>
+<rect x="380" y="44" width="300" height="44" rx="8" class="b-good"/><text class="t-c" x="392" y="71" style="font-size:12px">v2: [Sencha, Assam, Chai]</text>
+<text class="t-s" x="24" y="166">"Adding" returns a NEW list. v1 is still exactly what it was. Anyone holding v1 is safe,</text><text class="t-s" x="24" y="186">even on another thread. (The new list shares most of the old one's insides, so it's cheap.)</text></g>
+<text class="t-s" x="24" y="120" data-s="3-3">An immutable list can't change, through any reference, ever.</text></g>
+<g data-s="5"><rect x="24" y="210" width="672" height="84" rx="10" class="b-deep"/><text class="t-cap" x="40" y="232">FrozenDictionary / FrozenSet (.NET 8)</text>
+<text class="t-s" x="40" y="256">Also unchangeable, but built for one job: being read millions of times. Building it is slow,</text><text class="t-s" x="40" y="276">because it studies your exact keys to pick the fastest layout. Perfect for lookup tables made at startup.</text></g>
+</svg>

@@ -55,7 +55,7 @@ const slugify = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g
   .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 const stripHtml = s => s.replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 const LEVELS = { b: 'Beginner', i: 'Intermediate', a: 'Advanced' };
-const BLOCK_TITLES = { why: 'Why this exists', tip: 'Tip', gotcha: 'Trap', note: 'Note', deep: 'Under the hood', fits: 'Where this fits', analogy: 'Mental model', interview: 'Interview angle' };
+const BLOCK_TITLES = { why: 'Why this exists', tip: 'Tip', gotcha: 'Trap', note: 'Note', deep: 'Under the hood', fits: 'Where this fits', analogy: 'Mental model', interview: 'Interview angle', plain: 'In plain words' };
 
 function parseFront(raw) {
   const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
@@ -63,7 +63,11 @@ function parseFront(raw) {
   const meta = {};
   for (const line of m[1].split('\n')) {
     const i = line.indexOf(':');
-    if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    if (i > 0) {
+      let v = line.slice(i + 1).trim();
+      if (v.length > 1 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1).replace(/\\"/g, '"');   // YAML-style quoted value
+      meta[line.slice(0, i).trim()] = v;
+    }
   }
   return [meta, raw.slice(m[0].length)];
 }

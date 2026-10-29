@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 270" role="img" aria-label="Select gives one result per order, here a list of teas per order; SelectMany flattens all those lists into one">
+<text class="t-cap" x="24" y="28">3 ORDERS, EACH WITH SOME TEAS</text>
+<g><rect x="24" y="40" width="150" height="36" rx="6" class="b"/><text class="t-c" x="36" y="63" style="font-size:11.5px">#1 Sencha, Assam</text><rect x="184" y="40" width="120" height="36" rx="6" class="b"/><text class="t-c" x="196" y="63" style="font-size:11.5px">#2 Rooibos</text><rect x="314" y="40" width="110" height="36" rx="6" class="b"/><text class="t-c" x="326" y="63" style="font-size:11.5px">#3 Sencha</text></g>
+<g data-s="1-1"><text class="t-c" x="24" y="110" style="font-size:12px">orders.Select(o =&gt; o.Teas)</text>
+<rect x="24" y="122" width="150" height="40" rx="8" class="b-warn"/><text class="t-c" x="34" y="146" style="font-size:11px">[Sencha, Assam]</text><rect x="184" y="122" width="120" height="40" rx="8" class="b-warn"/><text class="t-c" x="194" y="146" style="font-size:11px">[Rooibos]</text><rect x="314" y="122" width="110" height="40" rx="8" class="b-warn"/><text class="t-c" x="324" y="146" style="font-size:11px">[Sencha]</text>
+<text class="t-s t-warn" x="24" y="190">A list OF lists: one inner list per order. Hard to count or group.</text></g>
+<g data-s="2"><text class="t-c" x="24" y="110" style="font-size:12px">orders.SelectMany(o =&gt; o.Teas)</text>
+<g data-mv="2:0,0"><rect x="24" y="122" width="80" height="36" rx="6" class="b-good"/><text class="t-c" x="34" y="145" style="font-size:11px">Sencha</text><rect x="110" y="122" width="80" height="36" rx="6" class="b-good"/><text class="t-c" x="120" y="145" style="font-size:11px">Assam</text><rect x="196" y="122" width="80" height="36" rx="6" class="b-good"/><text class="t-c" x="206" y="145" style="font-size:11px">Rooibos</text><rect x="282" y="122" width="80" height="36" rx="6" class="b-good"/><text class="t-c" x="292" y="145" style="font-size:11px">Sencha</text></g>
+<text class="t-s t-good" x="24" y="190">One flat list of every tea from every order. "Many" lists become one.</text></g>
+<g data-s="3"><text class="t-s" x="24" y="226">Now it's easy to count, group or de-duplicate: .GroupBy(t =&gt; t), .Distinct(), .Count().</text>
+<text class="t-m" x="24" y="246">An overload keeps the parent too: SelectMany(o =&gt; o.Teas, (o, t) =&gt; (o.Id, t)).</text></g>
+</svg>

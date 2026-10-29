@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A bare T only offers object's members; adding where T : IEntity unlocks Id and blocks types that don't qualify">
+<text class="t-cap" x="24" y="28">INSIDE class Cache&lt;T&gt;</text><text class="t-cap" x="420" y="28">WHAT THE COMPILER LETS YOU CALL ON item</text>
+<rect x="24" y="44" width="370" height="40" rx="6" class="b" data-hl="1,2"/><text class="t-c" x="36" y="69" style="font-size:12.5px">class Cache&lt;T&gt;<tspan data-s="2" class="t-acc" font-weight="700"> where T : IEntity</tspan></text>
+<rect x="24" y="92" width="370" height="40" rx="6" class="b"/><text class="t-c" x="36" y="117" style="font-size:12.5px">_items[item.Id] = item;</text>
+<g data-s="1-1"><rect x="420" y="44" width="276" height="120" rx="8" class="b-sunk"/><text class="t-c" x="432" y="68" style="font-size:12px">ToString()</text><text class="t-c" x="432" y="88" style="font-size:12px">Equals(…)</text><text class="t-c" x="432" y="108" style="font-size:12px">GetHashCode()</text><text class="t-c" x="432" y="128" style="font-size:12px">GetType()</text><text class="t-m" x="432" y="152">that's all: T could be ANYTHING</text>
+<text class="t-s t-bad" x="24" y="160">✗ error: 'T' does not contain a definition for 'Id'</text></g>
+<g data-s="2"><rect x="420" y="44" width="276" height="120" rx="8" class="b-sunk"/><text class="t-c" x="432" y="68" style="font-size:12px">ToString(), Equals(…), …</text><text class="t-c t-good" x="432" y="92" style="font-size:12px" font-weight="700">Id   ← from IEntity</text><text class="t-m" x="432" y="152">T is now promised to be an IEntity</text>
+<text class="t-s t-good" x="24" y="160">✓ compiles: every T is guaranteed to have Id</text></g>
+<g data-s="3"><rect x="24" y="184" width="330" height="40" rx="6" class="b-good"/><text class="t-c" x="36" y="209" style="font-size:12px">new Cache&lt;Order&gt;()   ✓ Order : IEntity</text>
+<rect x="366" y="184" width="330" height="40" rx="6" class="b-bad"/><text class="t-c" x="378" y="209" style="font-size:12px">new Cache&lt;string&gt;()  ✗ not an IEntity</text></g>
+<g data-s="4"><rect x="24" y="236" width="672" height="50" rx="8" class="b-acc"/><text class="t-s" x="36" y="258">A constraint is a deal: you accept fewer types for T, and in return you get to use</text><text class="t-s" x="36" y="276">their members. The compiler checks both sides of the deal.</text></g>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 310" role="img" aria-label="The JIT builds a separate copy of List code for each value type, storing values inline, and one shared copy for all reference types, storing pointers">
+<defs><marker id="gr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<rect x="250" y="30" width="220" height="40" rx="8" class="b-acc"/><text class="t-c" x="360" y="55" text-anchor="middle" style="font-size:12.5px">List&lt;T&gt;: written once</text>
+<g data-s="1"><path d="M300,70 C250,100 160,96 130,110" class="ln" marker-end="url(#gr-a)"/>
+<rect x="24" y="114" width="210" height="88" rx="8" class="b-good"/><text class="t-cap" x="36" y="134">List&lt;int&gt;: ITS OWN CODE</text>
+<rect x="36" y="146" width="40" height="30" rx="3" class="b"/><text class="t-c" x="56" y="166" text-anchor="middle" style="font-size:12px">5</text><rect x="78" y="146" width="40" height="30" rx="3" class="b"/><text class="t-c" x="98" y="166" text-anchor="middle" style="font-size:12px">12</text><rect x="120" y="146" width="40" height="30" rx="3" class="b"/><text class="t-c" x="140" y="166" text-anchor="middle" style="font-size:12px">7</text>
+<text class="t-m" x="36" y="194">ints stored inline, no boxes</text></g>
+<g data-s="2"><path d="M360,70 L360,110" class="ln" marker-end="url(#gr-a)"/>
+<rect x="255" y="114" width="210" height="88" rx="8" class="b-good"/><text class="t-cap" x="267" y="134">List&lt;Money&gt;: ANOTHER COPY</text>
+<rect x="267" y="146" width="90" height="30" rx="3" class="b"/><text class="t-c" x="275" y="166" style="font-size:11px">£6.50 GBP</text><rect x="359" y="146" width="90" height="30" rx="3" class="b"/><text class="t-c" x="367" y="166" style="font-size:11px">£4.25 GBP</text>
+<text class="t-m" x="267" y="194">sized exactly for Money</text></g>
+<g data-s="3"><path d="M420,70 C470,100 560,96 590,110" class="ln" marker-end="url(#gr-a)"/>
+<rect x="486" y="114" width="210" height="88" rx="8" class="b-info"/><text class="t-cap" x="498" y="134">REF TYPES: ONE SHARED</text>
+<rect x="498" y="146" width="40" height="30" rx="3" class="b"/><text class="t-c" x="518" y="166" text-anchor="middle" style="font-size:12px">●</text><rect x="540" y="146" width="40" height="30" rx="3" class="b"/><text class="t-c" x="560" y="166" text-anchor="middle" style="font-size:12px">●</text><rect x="582" y="146" width="40" height="30" rx="3" class="b"/><text class="t-c" x="602" y="166" text-anchor="middle" style="font-size:12px">●</text>
+<text class="t-m" x="498" y="194">every slot is one 8-byte pointer</text></g>
+<text class="t-s" x="24" y="236" data-s="1-1">For a value type, the JIT writes machine code made just for int. That's why List&lt;int&gt; never boxes.</text>
+<text class="t-s" x="24" y="236" data-s="2-2">Each different value type gets its own copy, sized for exactly that type.</text>
+<text class="t-s" x="24" y="236" data-s="3-3">Every reference is the same size (a pointer), so all reference types can share one copy.</text>
+<g data-s="4"><rect x="24" y="218" width="672" height="72" rx="8" class="b-deep"/><text class="t-s" x="36" y="242">And the types stay real while the app runs: typeof(T) inside the code gives the actual type.</text>
+<text class="t-s" x="36" y="264">That's called reification. Java does the opposite (erasure): at runtime every List is the same,</text><text class="t-s" x="36" y="282">and an int has to be boxed to go in one.</text></g>
+</svg>

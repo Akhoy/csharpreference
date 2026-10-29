@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Where code resumes after await: in a UI app the continuation is posted back to the UI thread's queue; with ConfigureAwait(false) or in ASP.NET Core it runs on any pool thread">
+<text class="t-cap" x="24" y="28">AFTER await FINISHES, WHO RUNS THE REST OF THE METHOD?</text>
+<g data-s="1"><rect x="24" y="44" width="330" height="150" rx="12" class="b-sunk"/><text class="t-h" x="40" y="70">A UI app (WPF, MAUI…)</text>
+<rect x="40" y="86" width="140" height="40" rx="8" class="b-info"/><text class="t-s" x="52" y="111">UI thread</text>
+<rect x="196" y="86" width="142" height="92" rx="8" class="b"/><text class="t-cap" x="206" y="104">ITS MAILBOX</text><text class="t-c" x="206" y="126" style="font-size:11px">click handler</text><text class="t-c" x="206" y="144" style="font-size:11px">repaint</text><text class="t-c t-acc" x="206" y="162" style="font-size:11px" data-s="2">rest of method ←</text>
+<text class="t-m" x="40" y="146">only it may touch</text><text class="t-m" x="40" y="162">buttons and labels</text></g>
+<g data-s="3-4"><rect x="366" y="44" width="330" height="150" rx="12" class="b-sunk"/><text class="t-h" x="382" y="70">ASP.NET Core, or ConfigureAwait(false)</text>
+<rect x="382" y="86" width="90" height="36" rx="8" class="b-good"/><text class="t-s" x="392" y="109">thread 3</text><rect x="482" y="86" width="90" height="36" rx="8" class="b-good"/><text class="t-s" x="492" y="109">thread 7</text><rect x="582" y="86" width="90" height="36" rx="8" class="b-good"/><text class="t-s" x="592" y="109">thread 9</text>
+<text class="t-s" x="382" y="146">No mailbox. Whichever pool thread</text><text class="t-s" x="382" y="164">is free runs the rest of the method.</text></g>
+<text class="t-s" x="24" y="226" data-s="1-1">A UI app has a special thread, and only that thread may update the screen. It works through a mailbox.</text>
+<text class="t-s t-acc" x="24" y="226" data-s="2-2">So by default, await posts "the rest of the method" into that mailbox. That's the SynchronizationContext.</text>
+<text class="t-s" x="24" y="226" data-s="3-3">ASP.NET Core has no such context. The rest of the method runs on any free pool thread.</text>
+<g data-s="4"><text class="t-s" x="24" y="222">await x.ConfigureAwait(false) means "don't use the mailbox, any thread will do".</text>
+<text class="t-s" x="24" y="242">Library code should use it (it might be called from a UI app). In ASP.NET Core app code</text><text class="t-s" x="24" y="262">it changes nothing, so you can leave it out. It also prevents the deadlock in the next section.</text></g>
+</svg>

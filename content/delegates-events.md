@@ -19,6 +19,20 @@ next: linq, middleware, async-await
 - An **event** is a delegate with a safety lock. Outsiders can only subscribe (`+=`) and unsubscribe (`-=`), and only the owner can raise it.
 - ASP.NET Core is built out of delegates: middleware, endpoints and configuration callbacks are all methods passed as values.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **delegate** | A variable that holds a method instead of a number or text. |
+| **`Func` / `Action`** | Ready-made delegate types. `Func` returns something, `Action` returns nothing. |
+| **lambda** | A small method written inline: `s => s * 0.9m` means "given `s`, return `s * 0.9`". |
+| **method group** | A method's name with no brackets, like `Console.WriteLine`, used as a value. |
+| **capture** | When a lambda uses a local variable from the method around it. |
+| **closure** | A lambda plus the variables it captured, kept alive together. |
+| **multicast** | One delegate holding a list of methods, all called in order. |
+| **event** | A delegate others can subscribe to (`+=`) but only its owner can trigger. |
+| **expression tree** | A lambda stored as a description (data) instead of as runnable code. |
+
 ## Previously, and the problem {b}
 
 In [Episode 3](ch:generics), generics let you write `Cache<T>` once. Now the shop owner keeps changing the discount:
@@ -108,6 +122,10 @@ log(string.Join(", ", prices.Where(p => p > 10)));   // LINQ's Where takes a Fun
 
 ## Closures: a lambda packs a backpack {i}
 
+:::plain
+A lambda can keep using the local variables around it, even after the method that created them has finished. To make that work, C# moves those variables off the stack into a small hidden object that the lambda carries with it.
+:::
+
 Here's something that looks impossible. This lambda keeps using `count` **after** `MakeCounter` has returned, even though `count` was a local variable that should have vanished with the stack frame:
 
 ```csharp
@@ -147,7 +165,14 @@ Three consequences follow. Capturing **allocates** (the backpack plus the delega
 
 ### The loop trap
 
-Because closures share the *variable*, not a snapshot of its value, this classic bug happens:
+Because closures capture the *variable* itself, not a snapshot of its value, this classic bug happens:
+
+:::scene visuals/scenes/del-looptrap.svg | Three lambdas, one variable
+1. A `for` loop has **one** variable `i` for the whole loop. The first lambda captures that variable: the variable itself, not the number 0.
+2. The second and third lambdas capture the **very same** variable. That's three arrows into one backpack.
+3. The lambdas only run after the loop has finished, and by then `i` is 3. So all three print 3: `333`.
+4. Fix: `var copy = i;` inside the loop body declares a **new** variable on every pass, so each lambda gets its own backpack and you get `012`. A `foreach` loop does this for you automatically.
+:::
 
 ```csharp
 var actions = new List<Action>();
@@ -165,10 +190,8 @@ for (int i = 0; i < 3; i++)
 actions.ForEach(a => a());                    // 012
 ```
 
-A `for` loop has **one** `i` for the whole loop, so there's one backpack, and by the time the lambdas run it says 3. A `foreach` loop gets a fresh variable on every iteration (since C# 5), so it doesn't have this problem.
-
 :::gotcha Capturing something that gets disposed
-If a lambda captures a per-request object (a `DbContext`, an `HttpContext`) and outlives the request, for example in a background task or a cached delegate, it ends up holding a **disposed** object. You get `ObjectDisposedException`, or a memory leak. Pass the *data* you need into background work, not the request's objects.
+Suppose a lambda captures a per-request object, such as a `DbContext` or an `HttpContext`. If the lambda outlives the request (in a background task, say, or a cached delegate), it ends up holding a **disposed** object. You get `ObjectDisposedException`, or a memory leak. Pass the *data* you need into background work, not the request's objects.
 :::
 
 :::qa What is a closure and what does it cost?
@@ -180,6 +203,10 @@ Closures capture variables, not values. A `for` loop declares a single variable 
 :::
 
 ## Multicast delegates: one call, several methods {i}
+
+:::plain
+A delegate can hold a whole list of methods instead of just one. Calling it calls every method on the list, in the order they were added.
+:::
 
 A delegate can hold a **list** of methods. `+=` adds one, `-=` removes one, and calling the delegate calls them all, in order:
 
@@ -198,6 +225,10 @@ Console.WriteLine(answer());   // 2: only the LAST return value survives
 Two sharp edges. With a return value, you only get the **last** method's result. And if one method throws, the rest **never run**. Delegates are also **immutable**: `+=` builds a *new* delegate and reassigns the variable, which is why `handler?.Invoke(...)` is safe even while another thread is subscribing.
 
 ## Events: a delegate with a safety lock {i}
+
+:::plain
+An event lets one piece of code announce "this happened" without knowing who's listening. Listeners add themselves to its list, and only the owner can make the announcement.
+:::
 
 When an order is placed, three things should happen: send an email, reduce stock, record analytics. Checkout shouldn't call all three directly, or every new feature would mean editing checkout again. It should just *announce* "an order was placed", and whoever cares can listen.
 
@@ -246,8 +277,15 @@ class Checkout
 | Outsiders can `=` (replace everything) | Yes | **No** |
 | Outsiders can raise it | Yes | **No** |
 
-:::gotcha Events are a classic memory leak
-The publisher holds a reference to every subscriber, because that's what `+=` stores. If a long-lived publisher (a singleton, a `static` event) collects subscribers from short-lived objects that never `-=`, those objects can never be garbage-collected. Unsubscribe in `Dispose`.
+### The classic leak
+
+Subscribing has a side effect people forget. When you `+=`, the publisher stores a reference to *you*. The garbage collector only frees objects that nothing points at, so as long as the publisher is alive, every subscriber it holds is kept alive too:
+
+:::scene visuals/scenes/del-leak.svg | How an event keeps dead pages alive
+1. A long-lived `PriceFeed` (a singleton, alive as long as the app) has a `PriceChanged` event. A page subscribes: `feed.PriceChanged += OnPrice`. The feed now holds a reference to the page.
+2. Every page that opens subscribes too, and none of them ever unsubscribes.
+3. The user closes the pages, but the GC **can't free them**: the feed still points at every one. Memory creeps up for as long as the app runs. That's a leak.
+4. The fix: unsubscribe when the subscriber's life ends, usually in `Dispose`. Then nothing points at the page, and the GC can free it.
 :::
 
 C# events are **in-process and synchronous**: the publisher calls each subscriber directly and waits. The word "event" also appears later in this book for different things: **domain events** ([DDD](ch:ddd)) and **integration events** sent through a message broker ([Messaging](ch:messaging-events)). It's the same idea ("something happened"), but the machinery is different.
@@ -262,6 +300,10 @@ The publisher's delegate holds strong references to its subscribers. A long-live
 
 ## The payoff: ASP.NET Core is built from delegates {i}
 
+:::plain
+Almost everything you write in an ASP.NET Core `Program.cs` is a method handed to the framework to call later. A web request is passed from one of those methods to the next, like a parcel through a chain of people.
+:::
+
 Look at a typical `Program.cs` again. Every lambda in it is exactly what this chapter is about, a method handed to someone else to call later:
 
 ```csharp norun
@@ -274,10 +316,20 @@ app.MapGet("/orders/{id}", (int id, IOrderService s) => s.Get(id));           //
 The core type of the whole web pipeline is a delegate:
 
 ```csharp norun
-public delegate Task RequestDelegate(HttpContext context);
+public delegate Task RequestDelegate(HttpContext context);   // "a method that handles a request"
 ```
 
-A **middleware** is a method that takes the *next* `RequestDelegate` and returns a new one that wraps it. The pipeline is just those wrappers stacked together, much like `Retry(Logging(Email))` in [Episode 2](ch:oop#inheritance-and-when-it-goes-wrong). [Middleware](ch:middleware) covers it in full.
+A **middleware** is a delegate that receives the *next* `RequestDelegate` and wraps it with its own code before and after. Stack several and you get layers, like an onion:
+
+:::scene visuals/scenes/del-pipeline.svg | A request travelling through the middleware pipeline
+1. Each `app.Use(...)` adds a delegate that **wraps the next one**. Logging wraps Auth, which wraps Errors, which wraps your endpoint.
+2. The request (R) enters the outer layer. Logging notes the start time, then calls `next(ctx)`.
+3. `next` is simply the following delegate. Auth checks the user, then calls *its* `next`.
+4. Errors wraps the rest in a `try/catch`, then calls the endpoint, which is one more delegate.
+5. The response travels back out through the same layers in reverse, so Logging can write "done in 12 ms". It's the same wrapping trick as `Retry(Logging(Email))` in [Episode 2](ch:oop#inheritance-and-when-it-goes-wrong).
+:::
+
+[Middleware](ch:middleware) covers the real pipeline in full.
 
 :::qa How does ASP.NET Core use delegates?
 `RequestDelegate` is the core type of the pipeline. Each middleware wraps the next `RequestDelegate`. Endpoints are delegates, configuration uses `Action<TOptions>` lambdas, and DI factories are `Func<IServiceProvider, T>`.
@@ -285,7 +337,18 @@ A **middleware** is a method that takes the *next* `RequestDelegate` and returns
 
 ## The same lambda, compiled two ways: expression trees {a}
 
-One last twist. A lambda doesn't *always* become runnable code. Its type decides what it becomes:
+:::plain
+The same lambda can become either runnable code or a *description* of that code. The description can be read by another program, which is how EF Core turns your C# into SQL.
+:::
+
+One last twist. A lambda doesn't *always* become runnable code. The type you assign it to decides what it becomes:
+
+:::scene visuals/scenes/del-two-ways.svg | One lambda, two very different results
+1. You write one lambda: `total => total > 100`. What the compiler produces depends on the variable's type.
+2. Assign it to a **`Func<decimal, bool>`** and you get ordinary compiled code (IL). You can run it, but no program can look inside it and see "greater than 100".
+3. Assign it to an **`Expression<Func<decimal, bool>>`** and you get a **tree of objects** describing the code. At the top is a `GreaterThan` node, with the parameter on one side and the constant 100 on the other.
+4. EF Core asks for the second kind. It walks the tree and writes SQL from it: `WHERE Total > @p0`.
+:::
 
 ```csharp
 using System.Linq.Expressions;

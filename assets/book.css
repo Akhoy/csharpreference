@@ -231,6 +231,8 @@ figure.code code { background: none; padding: 0; font-size: inherit; border-radi
 .c-note, .c-analogy { background: var(--c-note-soft); } .c-note .callout-title, .c-analogy .callout-title { color: var(--c-note); }
 .c-fits { background: var(--accent-soft); } .c-fits .callout-title { color: var(--accent); }
 .c-interview { background: var(--paper); border-color: var(--accent); } .c-interview .callout-title { color: var(--accent); }
+.c-plain { background: var(--paper); border-color: var(--line); padding-bottom: 6px; } .c-plain .callout-title { color: var(--accent); }
+.c-plain p { font-size: 17px; line-height: 1.6; }
 
 details.qa { border: 1px solid var(--line); border-radius: 10px; background: var(--paper); margin: 0 0 10px; }
 details.qa summary { list-style: none; cursor: pointer; display: flex; gap: 12px; padding: 13px 16px; font-weight: 600; line-height: 1.45; }
@@ -370,7 +372,7 @@ details.qa[open] summary { border-bottom: 1px solid var(--line); }
 .scene svg .t-h { font-weight: 700; font-size: 15px; }
 .scene svg .t-s { font-size: 12.5px; fill: var(--ink-2); }
 .scene svg .t-m { font-size: 12px; fill: var(--muted); }
-.scene svg .t-c { font-family: var(--f-mono); font-size: 13px; font-variant-ligatures: none; }
+.scene svg .t-c { font-family: var(--f-mono); font-size: 13px; font-variant-ligatures: none; white-space: pre; }
 .scene svg .t-cap { font-family: var(--f-mono); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; fill: var(--muted); }
 .scene svg .t-acc { fill: var(--accent); } .scene svg .t-good { fill: var(--c-tip); } .scene svg .t-bad { fill: var(--lv-a); } .scene svg .t-warn { fill: var(--c-gotcha); } .scene svg .t-info { fill: var(--c-why); }
 .scene svg .t-w { fill: var(--accent-ink); font-weight: 600; }

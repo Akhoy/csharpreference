@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="Why 0.1 plus 0.2 is not 0.3 in double: 0.1 never ends in binary, so it is cut off; decimal stores base-10 digits exactly">
+<text class="t-cap" x="24" y="28">WHY 0.1 + 0.2 ≠ 0.3 IN double</text>
+<g data-s="1"><rect x="24" y="40" width="672" height="44" rx="8" class="b"/><text class="t-s" x="36" y="67">In base 10, ⅓ = 0.3333333… never ends. Write it on paper and you must stop somewhere.</text></g>
+<g data-s="2"><rect x="24" y="92" width="672" height="44" rx="8" class="b-warn"/><text class="t-s" x="36" y="112">In base 2 (binary), 0.1 = 0.0001100110011001100… never ends either.</text><text class="t-s t-warn" x="36" y="128">double keeps 52 bits and cuts the rest: it really stores 0.1000000000000000055…</text></g>
+<g data-s="3"><rect x="24" y="144" width="672" height="44" rx="8" class="b-bad"/><text class="t-c" x="36" y="171" style="font-size:12.5px">0.1 + 0.2  →  two slightly-wrong numbers  →  0.30000000000000004</text></g>
+<g data-s="4"><rect x="24" y="196" width="672" height="60" rx="8" class="b-good"/><text class="t-s" x="36" y="218">decimal stores base-10 digits: 0.1m is exactly "1 × 10⁻¹". Nothing is cut off.</text>
+<text class="t-c t-good" x="36" y="242" style="font-size:12.5px">0.1m + 0.2m  →  0.3  ✓   Money is always decimal.</text></g>
+</svg>

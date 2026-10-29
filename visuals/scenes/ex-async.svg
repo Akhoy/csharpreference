@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="An exception in an async Task method is stored inside the Task and rethrown at await; with no await it is never seen; in async void there is no Task so it crashes the process">
+<defs><marker id="xa-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker></defs>
+<text class="t-cap" x="24" y="28">async Task ChargeAsync() THROWS…</text>
+<g data-s="1"><rect x="24" y="44" width="260" height="90" rx="12" class="b-warn"/><text class="t-cap" x="40" y="66">THE RETURNED Task</text><text class="t-s" x="40" y="90">Status: Faulted</text>
+<rect x="160" y="80" width="110" height="40" rx="20" class="b-bad"/><text class="t-c" x="215" y="104" text-anchor="middle" style="font-size:10.5px">Timeout…</text>
+<text class="t-s" x="24" y="160">The exception doesn't fly out. It's caught and stored INSIDE the Task, like a note in an envelope.</text></g>
+<g data-s="2-2"><path d="M284,100 L414,100" class="ln-bad" marker-end="url(#xa-a)"/><rect x="420" y="70" width="276" height="60" rx="10" class="b-good"/><text class="t-c" x="432" y="96" style="font-size:12px">await ChargeAsync();</text><text class="t-s t-good" x="432" y="118">opens the envelope: rethrows here ✓</text>
+<text class="t-s t-good" x="24" y="190">await rethrows it, with its original stack trace, so your try/catch around the await works.</text></g>
+<g data-s="3-3"><rect x="420" y="70" width="276" height="60" rx="10" class="b-dash"/><text class="t-c" x="432" y="96" style="font-size:12px">_ = ChargeAsync();</text><text class="t-s t-warn" x="432" y="118">nobody opens it…</text>
+<text class="t-s t-warn" x="24" y="190">Nobody awaits the Task, so nobody ever sees the exception. The payment failed silently.</text><text class="t-s t-warn" x="24" y="210">That's the fire-and-forget bug.</text></g>
+<g data-s="4"><rect x="24" y="226" width="672" height="60" rx="10" class="b-bad"/><text class="t-c" x="36" y="250" style="font-size:12px">async void Charge() { … throw … }</text><text class="t-s t-bad" x="36" y="272">async void has no Task, so no envelope. The exception has nowhere to go and crashes the whole process.</text></g>
+</svg>

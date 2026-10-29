@@ -19,6 +19,22 @@ next: generics, design-principles, dependency-injection
 - `override` replaces a method for everyone. `new` only hides it, depending on the variable's declared type, and is almost always a mistake.
 - Prefer **composition** (small pieces wrapping each other) over deep inheritance trees.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **class** | A blueprint. It says what data an object holds and what it can do. |
+| **object** (or **instance**) | One thing built from that blueprint, with `new`. |
+| **field** | A variable that belongs to an object: its raw data. |
+| **property** | Looks like a field from outside, but is really a pair of small methods (`get` and `set`). |
+| **method** | Something the object can do. |
+| **constructor** | The special method that runs when you write `new`, to set the object up. |
+| **encapsulation** | Keeping data private so only the object's own methods can change it. |
+| **invariant** | A rule that must always hold, like "quantity is at least 1". |
+| **interface** | A list of methods a class promises to have, with no code of its own. |
+| **inheritance** | One class building on another and reusing its code (`class GiftCard : PaymentMethod`). |
+| **polymorphism** | One method call that runs different code depending on the object's real type. |
+
 ## Previously, and the bug {b}
 
 In [Episode 1](ch:type-system) Kettle's baskets started copying properly. Now orders are being placed, and the database has two that should be impossible:
@@ -120,6 +136,13 @@ A `public const` is pasted as a literal into every assembly that uses it, at com
 
 A property *looks* like a field to the caller (`order.Quantity`), but it's really a pair of methods (`get` and `set`). So it can run code, like rejecting a bad value at the moment someone sets it:
 
+:::scene visuals/scenes/oop-property.svg | A property is two methods in disguise
+1. `tea.Stock = -1;` looks like writing straight into a field. The compiler actually turns it into a **method call**, `set_Stock(-1)`.
+2. Reading it is a method call too: `tea.get_Stock()`.
+3. Because the setter is a real method, it can **check the value** and refuse `-1` before it ever reaches the private field.
+4. A plain field can't do that, because it's only a slot in memory. And callers can't tell a property from a field, so you can add rules later without changing their code.
+:::
+
 ```csharp
 var tea = new Product { Sku = "TEA-01", Name = "Sencha" };   // object initialiser
 tea.Stock = 10;
@@ -151,6 +174,10 @@ class Product
 
 ## What happens when you call `new` {i}
 
+:::plain
+When one class builds on another, C# finishes building the base part of the object before it runs the derived class's own constructor. That way the derived code can always rely on the base being ready.
+:::
+
 When a class has a base class, which code runs first? It's the opposite of what most people guess. Run this:
 
 ```csharp
@@ -170,9 +197,15 @@ class GiftCard : PaymentMethod
 }
 ```
 
-![Four numbered steps lighting up in order: derived field initialisers, then base field initialisers, then the base constructor body, then finally the derived constructor body](visuals/construction-order.svg)
+:::scene visuals/scenes/oop-ctor-order.svg | The real order inside `new GiftCard()`
+1. **Step 1:** `GiftCard`'s *field initialisers* run first, the `= …` parts of its field declarations. No constructor body has run yet.
+2. **Step 2:** then the base class's field initialisers.
+3. **Step 3:** then the base constructor's body. The `PaymentMethod` part of the object is now completely built.
+4. **Step 4:** only now does `GiftCard`'s own constructor body run. It can safely use anything the base set up.
+5. **The trap:** if the base constructor (step 3) calls a virtual method that `GiftCard` overrides, the override runs *before* step 4 has set `GiftCard`'s fields. It sees a half-built object. The next box shows exactly that.
+:::
 
-The reason for this order: the derived constructor's body is allowed to use the base class, so the base must be fully built *before* that body runs. (A **static constructor** runs once per type, before its first use, and is thread-safe.)
+Why this order? The derived constructor's body is allowed to use the base class, so the base must be finished *before* that body runs. (A **static constructor** is different: it runs once per type, before the type is first used, and the runtime makes that thread-safe.)
 
 :::gotcha Never call a virtual method from a constructor
 The base constructor runs **before** the derived constructor sets its fields. If the base constructor calls a method that the derived class overrides, that override runs on a half-built object:
@@ -301,6 +334,14 @@ Both describe "a kind of thing" that other classes fill in. They solve different
 - An **interface** is a pure **contract**: "anything that can `Charge`". It has no fields and (almost) no code. A class can implement **many** interfaces. Think of a power socket. Anything with the right plug fits.
 - An **abstract class** is a **half-built base class** with real shared code and fields, where some methods are left for subclasses to fill in. A class can inherit **only one**.
 
+:::scene visuals/scenes/oop-iface-abstract.svg | A contract, or a half-built base?
+1. An **interface** is only a contract: method names and shapes, with no code and no data. It says *what*, never *how*.
+2. Unrelated classes can each sign the same contract, and one class can sign **many**: `class GiftCard : IPaymentMethod, IRefundable`.
+3. An **abstract class** is a half-built base. It has real shared code, fields and a constructor, plus some blanks (`abstract` methods) left for subclasses.
+4. Subclasses inherit the shared code and fill in the blanks. But a class can extend **only one** base class.
+5. In short: an interface means "can do", and an abstract class means "is a kind of, and shares code". If you're unsure, start with an interface.
+:::
+
 ```csharp
 PaymentMethod pm = new CardPayment("4242");
 pm.LogAttempt();                          // shared code, written once in the base
@@ -346,6 +387,10 @@ An interface member with a body (C# 8). Their intended use is evolving a publish
 
 ## virtual, override and new {i}
 
+:::plain
+`override` lets the *object* decide which version of a method runs, at runtime. `new` lets the *variable's declared type* decide, when the code is compiled. Only the first one gives you polymorphism.
+:::
+
 | Keyword | Means |
 |---|---|
 | `virtual` | Subclasses **may** replace this |
@@ -366,9 +411,13 @@ class A { public virtual string Who() => "A"; public string Plain() => "A"; }
 class B : A { public override string Who() => "B"; public new string Plain() => "B"; }
 ```
 
-![Virtual dispatch looks up the real object's method table at runtime; hiding is decided at compile time from the variable's declared type](visuals/virtual-dispatch.svg)
-
-`Who` is virtual, so the call goes through the object's method table, exactly like `Charge` in the diagram above. `Plain` isn't virtual, so there's no table entry. The compiler picks `A.Plain` or `B.Plain` from the variable's declared type, and that choice is fixed when the code compiles. Hiding with `new` is almost always a mistake, and the compiler warns you if you forget the keyword.
+:::scene visuals/scenes/oop-override-new.svg | Same object, three calls, different answers
+1. One object whose real type is `B`, held in a variable whose declared type is `A`. Which method runs depends on *how* each method was declared.
+2. `x.Who()`: `Who` is `virtual` and `B` overrides it. At runtime the call follows the arrow to the object, asks "what are you really?", and runs `B.Who`. The variable's type doesn't matter.
+3. `x.Plain()`: `Plain` isn't virtual, and `B` only *hides* it with `new`. The **compiler** picked `A.Plain` when it compiled this line, from the variable's type. The object is never asked.
+4. `((B)x).Plain()`: change only the variable's type (with a cast) and you get `B.Plain`. Nothing about the object changed. That's why hiding is confusing, and why it's almost always a mistake.
+5. The rule: with **`override`**, the object decides at runtime and polymorphism works. With **`new`**, the declared type decides at compile time and polymorphism quietly doesn't.
+:::
 
 :::deep Why sealed makes calls faster
 A virtual call means: read the object's method-table pointer, read the slot, then jump. It's one extra hop, and the JIT can't inline it because it doesn't know which method will run. If the class is `sealed`, there's only one possible implementation, so the JIT can call it directly and inline it. That's why "seal classes by default" is real performance advice. Dynamic PGO can also guess the common type at runtime ([How code runs](ch:how-code-runs#dynamic-pgo-the-jit-actually-learns-from-your-programs-real-)).
@@ -379,6 +428,10 @@ A virtual call means: read the object's method-table pointer, read the slot, the
 :::
 
 ## Inheritance, and when it goes wrong {i}
+
+:::plain
+Inheritance is good for "an X *is* a kind of Y". It's bad for mixing optional features together, because every combination needs its own class. For that, build objects out of small pieces that wrap each other.
+:::
 
 Inheritance is great for **one shallow, real "is-a" relationship**. A `GiftCard` *is a* `PaymentMethod`. But use it to mix and match *features*, and the class count explodes:
 
@@ -427,7 +480,17 @@ Inheritance couples subclasses to the base class's internals (the fragile base c
 
 ## Access modifiers {b}
 
-Who is allowed to see a member:
+Who is allowed to see a member? Think of it as rings, from the tightest to the widest:
+
+:::scene visuals/scenes/oop-access.svg | Four rings of visibility
+1. **`private`**: only code inside this one class. This is the default for members, and the right starting point.
+2. **`protected`**: the class *plus* its subclasses. One quirk: a subclass in a *different* project still gets in, so this ring pokes outside `internal`. The rarer `private protected` is the version that stays inside.
+3. **`internal`**: any code in the same **assembly**, which is the same project (for example everything in `Kettle.Core.dll`). This is the default for types.
+4. **`public`**: everyone, including other projects and anyone who uses your library.
+5. Start in the smallest ring and widen only when you need to. Making something more visible later is easy. Making it less visible breaks whoever started using it.
+:::
+
+The full list, including two rarer combinations:
 
 | Modifier | Visible to |
 |---|---|
@@ -456,6 +519,10 @@ Who is allowed to see a member:
 :::
 
 ## The base of everything: System.Object {i}
+
+:::plain
+Every class you write quietly inherits from one class at the root, `object`. That's where `ToString`, `Equals` and `GetType` come from.
+:::
 
 Every type ultimately inherits from `object`, which is where these come from:
 

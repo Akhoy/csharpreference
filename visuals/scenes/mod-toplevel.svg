@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-label="Top-level statements: the compiler wraps your Program.cs lines in a generated class and Main method">
+<text class="t-cap" x="24" y="28">Program.cs: WHAT YOU WRITE</text><text class="t-cap" x="380" y="28" data-s="2">WHAT THE COMPILER GENERATES</text>
+<rect x="24" y="44" width="330" height="110" rx="8" class="b"/>
+<text class="t-c" x="36" y="68" style="font-size:11px">var builder = WebApplication.CreateBuilder(args);</text><text class="t-c" x="36" y="90" style="font-size:11px">var app = builder.Build();</text><text class="t-c" x="36" y="112" style="font-size:11px">app.MapGet("/", () =&gt; "Hi");</text><text class="t-c" x="36" y="134" style="font-size:11px">app.Run();</text>
+<g data-s="2" class="fly-r"><rect x="380" y="44" width="316" height="150" rx="8" class="b-sunk"/>
+<text class="t-c t-m" x="392" y="68" style="font-size:12px">class Program {</text><text class="t-c t-m" x="392" y="88" style="font-size:12px">  static void Main(string[] args) {</text>
+<rect x="404" y="98" width="280" height="54" rx="6" class="b-acc" style="fill-opacity:.5"/><text class="t-c" x="414" y="130" style="font-size:12px">    … your four lines …</text>
+<text class="t-c t-m" x="392" y="172" style="font-size:12px">  } }</text></g>
+<text class="t-s" x="24" y="222" data-s="1-1">No class, no Main. Old tutorials always had both.</text>
+<text class="t-s" x="24" y="222" data-s="2">They're still there. The compiler writes them for you. args still works for the same reason.</text>
+<text class="t-s t-good" x="24" y="244" data-s="3">Same idea for global usings and file-scoped namespaces: less typing, identical compiled code.</text>
+</svg>

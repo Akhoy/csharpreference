@@ -12,7 +12,7 @@
 <text class="t-c" x="24" y="142" style="font-size:12px">new OrderDto(1,"Sencha",6) == new OrderDto(1,"Sencha",6)</text><text class="t-h t-good" x="500" y="142">True ✓</text>
 <text class="t-c" x="24" y="166" style="font-size:12px">ToString() → OrderDto { Id = 1, Tea = Sencha, Total = 6 }</text></g>
 <g data-s="4" class="fly"><rect x="24" y="190" width="260" height="56" rx="8" class="b"/><text class="t-cap" x="36" y="208">a</text><text class="t-c" x="36" y="232" style="font-size:12px">Id 1 · Sencha · £6</text>
-<path d="M284,218 L392,218" class="ln" marker-end="url(#mr-ar)"/><text class="t-c" x="296" y="208" style="font-size:11px">a with { Total = 9 }</text>
+<path d="M284,218 L392,218" class="ln" marker-end="url(#mr-ar)"/><text class="t-c" x="290" y="184" style="font-size:11px">a with { Total = 9 }</text>
 <rect x="400" y="190" width="260" height="56" rx="8" class="b-acc"/><text class="t-cap" x="412" y="208">b (a NEW copy)</text><text class="t-c" x="412" y="232" style="font-size:12px">Id 1 · Sencha · <tspan class="t-acc" font-weight="700">£9</tspan></text>
 <text class="t-s" x="24" y="276">with makes a changed copy. a is untouched: safe to share, nothing changes behind your back.</text></g>
 </svg>

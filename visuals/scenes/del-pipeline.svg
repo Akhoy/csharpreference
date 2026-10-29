@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="ASP.NET Core middleware: each piece is a delegate that wraps the next; the request travels inward and the response travels back out">
+<text class="t-cap" x="24" y="28">app.Use(…) THREE TIMES, THEN app.MapGet(…)</text>
+<rect x="24" y="44" width="672" height="200" rx="14" class="b-info" style="fill-opacity:.35"/><text class="t-c" x="40" y="66" style="font-size:12px">Logging: (ctx, next) =&gt; { log; await next(ctx); log; }</text>
+<rect x="64" y="80" width="592" height="146" rx="12" class="b-warn" style="fill-opacity:.4"/><text class="t-c" x="80" y="102" style="font-size:12px">Auth: (ctx, next) =&gt; { check; await next(ctx); }</text>
+<rect x="104" y="116" width="512" height="94" rx="10" class="b-deep" style="fill-opacity:.5"/><text class="t-c" x="120" y="138" style="font-size:12px">Errors: try { await next(ctx); } catch { 500 }</text>
+<rect x="144" y="152" width="432" height="44" rx="8" class="b-good"/><text class="t-c" x="160" y="179" style="font-size:12px">endpoint: (int id) =&gt; orders.Get(id)</text>
+<defs><marker id="dp-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-good"/></marker></defs>
+<g data-s="1-4"><g data-mv="2:0,32"><g data-mv="3:0,36"><g data-mv="4:0,77"><circle cx="540" cy="30" r="11" class="b-solid"/><text class="t-c t-w" x="540" y="35" text-anchor="middle" style="font-size:11px">R</text></g></g></g></g>
+<g data-s="5"><path d="M636,200 L636,40" class="ln-good" marker-end="url(#dp-a)"/><text class="t-c t-good" x="600" y="34" style="font-size:11px">response</text></g>
+<text class="t-s" x="24" y="270" data-s="1-1">Each app.Use(...) adds a delegate that wraps the next one, like layers of an onion.</text>
+<text class="t-s" x="24" y="270" data-s="2-2">The request (R) enters the outer layer: Logging writes "start", then calls next(ctx).</text>
+<text class="t-s" x="24" y="270" data-s="3-3">next is just the following delegate: Auth checks the user, then calls ITS next.</text>
+<text class="t-s" x="24" y="270" data-s="4-4">Errors wraps the endpoint in a try/catch. The endpoint itself is one more delegate.</text>
+<text class="t-s t-good" x="24" y="270" data-s="5">The response then unwinds outward through the same layers: Auth, then Logging writes "done in 12 ms".</text>
+</svg>

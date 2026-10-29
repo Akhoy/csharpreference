@@ -9,7 +9,7 @@
 <g data-s="2-2" data-mv="2:-336,58"><g class="fly-r" data-s="2-2"><rect x="400" y="92" width="232" height="44" rx="10" class="b-good"/><text class="t-c" x="412" y="119">TenPercentOver50</text></g></g>
 <g data-s="3-3" data-mv="3:-336,-2"><rect x="400" y="152" width="232" height="44" rx="10" class="b-info"/><text class="t-c" x="412" y="179">ChristmasSpecial</text></g>
 <g data-s="4-4" data-mv="4:-336,-64"><rect x="400" y="214" width="232" height="44" rx="10" class="b-warn"/><text class="t-c" x="412" y="241" style="font-size:12px">s =&gt; s &gt;= 30 ? s - 5 : s</text></g>
-<g data-s="1"><rect x="400" y="92" width="232" height="44" rx="10" class="b-good" style="opacity:.25"/><text class="t-c" x="412" y="119" style="opacity:.4">TenPercentOver50</text>
+<g data-s="1-4"><rect x="400" y="92" width="232" height="44" rx="10" class="b-good" style="opacity:.25"/><text class="t-c" x="412" y="119" style="opacity:.4">TenPercentOver50</text>
 <rect x="400" y="152" width="232" height="44" rx="10" class="b-info" style="opacity:.25"/><text class="t-c" x="412" y="179" style="opacity:.4">ChristmasSpecial</text>
 <rect x="400" y="214" width="232" height="44" rx="10" class="b-warn" style="opacity:.25"/><text class="t-c" x="412" y="241" style="opacity:.4;font-size:12px">s =&gt; s &gt;= 30 ? s - 5 : s</text></g>
 <text class="t-s" x="24" y="270" data-s="1-1">The slot's TYPE says what shape of method fits. It's empty for now.</text>

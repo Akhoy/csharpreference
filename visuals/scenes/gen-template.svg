@@ -14,7 +14,7 @@
 <g data-s="3" class="fly-r"><path d="M354,160 C372,160 376,180 392,180" class="ln" marker-end="url(#gt-ar)"/>
 <rect x="400" y="142" width="296" height="80" rx="8" class="b-info"/><text class="t-cap" x="412" y="160">Cache&lt;Customer&gt;</text>
 <text class="t-c" x="412" y="184">void Add(<tspan class="t-info" font-weight="700">Customer</tspan> item)</text><text class="t-c" x="412" y="206"><tspan class="t-info" font-weight="700">Customer</tspan>? Get(int id)</text></g>
-<g data-s="4" class="fly"><rect x="24" y="240" width="672" height="64" rx="8" class="b-bad"/>
+<g data-s="4-4" class="fly"><rect x="24" y="240" width="672" height="64" rx="8" class="b-bad"/>
 <text class="t-c" x="40" y="264">orders.Add(new Customer());</text>
 <text class="t-s t-bad" x="40" y="288">✗ Compile error: Cache&lt;Order&gt;.Add takes an Order. Caught before the app ever runs.</text></g>
 <g data-s="5" class="fly"><rect x="24" y="240" width="672" height="64" rx="8" class="b-good"/>

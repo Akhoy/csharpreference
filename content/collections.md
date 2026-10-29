@@ -19,6 +19,20 @@ next: linq, threading-concurrency
 - Accept the **least** capable interface you need (`IEnumerable<T>`), and return an honest read-only one (`IReadOnlyList<T>`).
 - Ordinary collections aren't thread-safe. Use the `Concurrent*` types, or `Channel<T>`, when threads share data.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **Big-O** | A way to say how work grows as the data grows. |
+| **O(1)** | "Constant": the same speed with 10 items or 10 million. |
+| **O(n)** | "Linear": twice the items, twice the work, because it looks at each one. |
+| **hash code** | A number worked out from a key. It says which bucket to look in. |
+| **bucket** | One small shelf inside a `Dictionary` or `HashSet`. |
+| **amortised** | "On average, over many calls", even if a few calls are slow. |
+| **FIFO / LIFO** | First in, first out (a queue) / last in, first out (a stack). |
+| **immutable** | Can never change. "Changes" return a new version. |
+| **thread-safe** | Safe to use from several threads at the same moment. |
+
 ## Previously, and the problem {b}
 
 In [Episode 4](ch:delegates-events) Kettle learned to swap discount rules and notify subscribers about every order. Business took off. There are 200,000 orders in memory, and the order-status page is slow:
@@ -87,6 +101,14 @@ How much does it matter? For *n* = 200,000:
 | `SortedDictionary<K,V>` | lookup **and** sorted order, O(log n) | slower than `Dictionary` | a price ladder |
 | `LinkedList<T>` | insert or remove next to a node you hold, O(1) | everything else | rare (LRU caches) |
 
+Three of those are about *order*, and they're easiest to see:
+
+:::scene visuals/scenes/col-shapes.svg | Three ways to decide what comes out next
+1. **`Queue<T>`** is first in, first out. `Dequeue()` gives the order that's been waiting longest, like a till queue.
+2. **`Stack<T>`** is last in, first out. `Pop()` gives the newest item. That's exactly what "undo" needs: undo the last thing first.
+3. **`PriorityQueue<T, P>`** gives the most *urgent* item, the one with the lowest priority number, whatever order they arrived in.
+:::
+
 ```csharp
 var packing = new Queue<string>();          // FIFO: fair order
 packing.Enqueue("order 1"); packing.Enqueue("order 2");
@@ -127,11 +149,17 @@ Use a `HashSet<T>` (or LINQ `Distinct()`, which uses one internally). That's O(n
 
 ## Inside List: why Add is "amortised O(1)" {i}
 
-A `List<T>` is just an **array** plus a count, and the array is deliberately bigger than needed. Most `Add` calls drop the item into the next free slot, which is O(1). But when the array is full, `Add` has to **allocate a new array twice as big and copy everything across**. That one call is O(n).
+:::plain
+A `List` is an array with spare room at the end. When the room runs out, it moves everything into an array twice as big. That move is slow, but it happens so rarely that adding is still fast on average.
+:::
 
-![A full List<T> allocates a new array at double the capacity, copies every element across, and only then adds the new one](visuals/list-resize.svg)
-
-Because the size doubles each time, those expensive copies get rarer and rarer. Averaged over all the calls, the cost per `Add` is constant. That's what **amortised** O(1) means: some calls are expensive, but rarely enough that the average stays flat.
+:::scene visuals/scenes/col-resize.svg | What happens when a List fills up
+1. Inside, a `List<int>` is an **array** plus a count. This one has 4 slots and 4 items. It's full, so `Add(5)` has nowhere to go.
+2. So `Add` first **allocates a new array twice as big**, with 8 slots.
+3. Then it **copies every item across** and puts 5 in. That single `Add` did O(n) work. The old array becomes garbage.
+4. The next three `Add`s just drop into free slots, with no copying.
+5. The 9th `Add` doubles the array again, to 16, then 32, then 64. The copies get rarer as the list grows, so averaged over every `Add` the cost is constant. That's what **amortised O(1)** means.
+:::
 
 ```csharp
 var list = new List<int>();
@@ -150,6 +178,10 @@ Console.WriteLine(presized.Capacity);
 Related costs: `Insert(0, x)` and `RemoveAt(0)` are O(n), because every item after that position has to shift. Need fast removal from the front? That's what `Queue<T>` is for.
 
 ## Inside Dictionary: hash codes and buckets {i}
+
+:::plain
+A dictionary doesn't search. It turns your key into a number, the number picks one small shelf, and it only looks on that shelf.
+:::
 
 The lookup you stepped through above, in three steps:
 
@@ -188,13 +220,13 @@ It's a hash table. `GetHashCode` picks a bucket, and the entries that share the 
 
 Collections implement a ladder of interfaces. Each rung promises one more ability:
 
-```text
-IEnumerable<T>              you can foreach over it (that's all)
- └ IReadOnlyCollection<T>     + Count
-    └ IReadOnlyList<T>          + read by index [i]
- └ ICollection<T>             + Add, Remove, Clear, Contains
-    └ IList<T>                  + write by index, Insert, RemoveAt
-```
+:::scene visuals/scenes/col-ladder.svg | The interface ladder
+1. **`IEnumerable<T>`** is the bottom rung: you can `foreach` over it, and that's all. Lists, arrays, sets, LINQ queries and database results all qualify.
+2. Up a rung, **`IReadOnlyCollection<T>`** adds `Count`, and **`IReadOnlyList<T>`** adds reading by position (`list[3]`).
+3. Higher still, **`ICollection<T>`** adds `Add` and `Remove`, and **`IList<T>`** (which `List<T>` implements) adds writing by position and `Insert`.
+4. **Accept the lowest rung you need.** A `Sum` method only loops, so it should take `IEnumerable<Order>`. Then a list, an array or a LINQ query can all be passed in.
+5. **Return the most honest read-only rung.** Returning `IReadOnlyList<Order>` lets callers read and count, but not `Add` to your internal list.
+:::
 
 The design rule is **accept the least you need, and return what you honestly have**:
 
@@ -234,6 +266,18 @@ Exposing from a class?              → IReadOnlyList<T> / IReadOnlyDictionary<K
 
 ## Read-only, immutable and frozen are different promises {i}
 
+:::plain
+"Read-only" usually means *you* can't change it, but someone else still can. "Immutable" means *nobody* can, ever. "Frozen" is immutable and also tuned for the fastest possible lookups.
+:::
+
+:::scene visuals/scenes/col-readonly.svg | Three promises that sound the same
+1. An `IReadOnlyList<T>` is a **window** onto someone else's list. You can't `Add` through it.
+2. But the owner still can. They call `list.Add("Chai")`, and your "read-only" view now shows 3 items. Read-only only restricted *you*.
+3. An **`ImmutableList<T>`** can't change, through any reference, ever.
+4. "Adding" to it returns a **new** list (v2), and v1 stays exactly as it was. Whoever holds v1 is safe, even on another thread. The new list shares most of the old one's insides, so this is cheaper than it sounds.
+5. A **`FrozenDictionary`** (.NET 8) is also unchangeable, but it's built for one job: being read millions of times. Building it is slow, because it studies your keys to choose the fastest layout. It's ideal for lookup tables made at startup.
+:::
+
 | | Can *you* change it? | Can *anyone* change it? | Notes |
 |---|---|---|---|
 | `IReadOnlyList<T>` | No, not through this reference | **Yes**: the underlying `List` can still change | Free. It's just a view |
@@ -259,6 +303,10 @@ For lookup data that's built once (usually at startup) and then read very often,
 
 ## When several threads share a collection {i}
 
+:::plain
+Normal collections assume only one thread touches them at a time. When several threads share one, you need the special concurrent versions, and you must do "check, then change" as a single step.
+:::
+
 Ordinary collections are **not thread-safe for writes**. Two threads adding to one `Dictionary` at the same moment can corrupt it. For shared state, such as in singletons and background workers, use the types built for it:
 
 | Type | Use |
@@ -274,9 +322,17 @@ public Task<Config> GetAsync(string tenant) =>
     _cache.GetOrAdd(tenant, t => new Lazy<Task<Config>>(() => LoadConfigAsync(t))).Value;
 ```
 
-:::gotcha Thread-safe methods don't make your *combination* safe
-`if (!dict.ContainsKey(k)) dict[k] = v;` is two operations, and another thread can slip in between them ([Threading](ch:threading-concurrency#race-conditions-when-it-depends-on-timing-becomes-a-bug)). Use the single atomic methods `GetOrAdd`, `TryAdd` and `AddOrUpdate`. Also note that `GetOrAdd`'s factory **can run more than once** under contention, which is why the example above wraps the expensive work in `Lazy<T>`.
+The subtle part is the one even careful code gets wrong:
+
+:::scene visuals/scenes/col-race.svg | The gap between "check" and "act"
+1. Thread A checks the shared cache: "GB" isn't there yet.
+2. Before A gets to act, thread B checks too. It also sees "no GB". Now both plan to add it.
+3. A loads the exchange rates and stores v1.
+4. B stores v2 over it. The rates were loaded twice, and anyone already holding v1 now disagrees with the cache. Each call was thread-safe on its own; the **gap between the check and the act** wasn't. This is called a **race condition**.
+5. The fix is to make check-and-add **one step**: `GetOrAdd`. Under a race the loading code may still *run* twice, but only one result is ever stored. Wrap it in `Lazy<T>` (as in the code above) to make it run once.
 :::
+
+More on races in [Threading](ch:threading-concurrency#race-conditions-when-it-depends-on-timing-becomes-a-bug).
 
 :::qa How do you make a Dictionary thread-safe?
 Use `ConcurrentDictionary<K,V>` with its atomic operations (`GetOrAdd`, `AddOrUpdate`, `TryRemove`), or protect a normal `Dictionary` with a lock. For read-only data built once, use `FrozenDictionary` or an immutable dictionary, which need no locking.
@@ -306,6 +362,10 @@ The two lines that look alike behave differently. A **range** (`a[1..3]`) on an 
 Arrays are reference types with a **fixed length**. Return `[]` or `Array.Empty<T>()` rather than `null`, so callers can always `foreach` without a null check.
 
 ## Custom equality and ordering {a}
+
+:::plain
+You can tell a set or a sorted collection what "the same" and "comes first" mean, without changing the class itself.
+:::
 
 Hash-based and sorted collections accept your own rules for "same" and "order", without changing the type itself:
 

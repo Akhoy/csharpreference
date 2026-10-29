@@ -18,6 +18,20 @@ next: oop, generics, memory-gc
 - "Equal" means three things in C#. Records give you value equality for free. If you override `Equals`, you must override `GetHashCode` too.
 - Every argument is passed **by value**, which means as a copy. For a class, the copy is a copy of the arrow. Use `ref` to pass the variable itself.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **value type** | A type whose variable holds the data itself. `=` makes a copy. |
+| **reference type** | A type whose variable holds an *address* of an object. `=` copies the address, not the object. |
+| **reference** | That address: an arrow pointing at an object. |
+| **stack** | A scratch pad for the method that's running. Cleared automatically when the method returns. |
+| **heap** | Long-term memory shared by the whole app. Objects stay until nothing points at them. |
+| **garbage collector (GC)** | The part of .NET that finds heap objects nobody points at any more, and frees them. |
+| **boxing** | Wrapping a value (like an `int`) in a new heap object so it can be treated as `object`. |
+| **immutable** | Can't be changed after it's created. "Changing" it really makes a new one. |
+| **hash code** | A number worked out from an object's contents. Collections use it like a shelf number. |
+
 ## Previously, and the bug {b}
 
 Kettle's first feature is simple: a shopper can **save their basket for later** and keep shopping. You write it the obvious way.
@@ -120,6 +134,10 @@ A value-type variable contains its data, so assignment copies the data. A refere
 
 ## Where the data lives: stack and heap {i}
 
+:::plain
+A running program keeps data in two places. The **stack** is a scratch pad for the method that's running right now, and it's wiped automatically when that method ends. The **heap** is long-term storage shared by the whole app, where things stay until nothing uses them.
+:::
+
 You'll often hear "value types live on the stack, reference types live on the heap". It's half right, and interviewers like to check whether you know which half.
 
 First, the two places. The **stack** is a small block of memory each thread gets (about 1 MB by default on Windows). Every method call pushes a **frame** onto it for that call's local variables, and returning pops the frame off. That makes it fast and automatic, with no cleanup needed. The **heap** is one big shared area for the whole app. Objects there stay until nothing points to them, and then the **garbage collector** (GC) frees them.
@@ -163,12 +181,24 @@ No. Reference-type objects always live on the heap, but value types live whereve
 
 ## When should Kettle use a struct? {i}
 
+:::plain
+A struct is copied every time you pass it around. So it only makes sense for small things that act like a single value and never change, the way a number does.
+:::
+
 Kettle needs a `Money` type, an amount plus a currency. Should it be a struct? Microsoft's design guidelines say to **avoid structs unless all four** of these are true:
 
 1. It represents **a single value** (money, a coordinate, an ID).
 2. It's **small**, under about 16 bytes.
 3. It's **immutable**: it never changes after creation.
 4. It won't be **boxed** often (see the next section).
+
+:::scene visuals/scenes/ts-struct-check.svg | Should it be a struct? Money vs Order
+1. **One value?** Money is a single amount, like a number. An order is a bundle of lines, a status and a customer.
+2. **Small?** Money is a little over 16 bytes. An order has many fields and lists. Copying it around would be slow.
+3. **Never changes?** £12.50 stays £12.50, and "changing" it makes a new amount. An order gets paid, shipped and cancelled.
+4. **Rarely boxed?** Money is mostly used as itself. (Boxing is the next section.)
+5. Verdict: Money is a `readonly record struct`. Order is a `class`. When you're unsure, a class is the safe default.
+:::
 
 `Money` passes, so make it a `readonly record struct`:
 
@@ -189,7 +219,7 @@ public readonly record struct Money(decimal Amount, string Currency)
 Two keywords are doing work there:
 
 - **`readonly`** promises nothing in it can ever change. The compiler enforces this, and it can skip making safety copies when you pass the struct around.
-- **`record`** generates value equality (two `Money`s with the same fields are `==`), a readable `ToString()`, and `with` for making a changed copy: `price with { Amount = 10m }`.
+- **`record`** writes three things for you. Value equality: two `Money`s with the same fields are `==`. A readable `ToString()`. And `with`, for making a changed copy: `price with { Amount = 10m }`.
 
 A related trick is the **strongly typed ID**. Wrap a `Guid` in a tiny struct like `OrderId`, and passing an `OrderId` where a `CustomerId` is expected becomes a compile error instead of a production bug.
 
@@ -202,6 +232,10 @@ For a small (about 16 bytes or less), immutable value that represents a single t
 :::
 
 ## Boxing: a value type in a cardboard box {i}
+
+:::plain
+Some code only accepts objects. When you hand it a plain number, C# quietly wraps the number in a new object on the heap, like putting it in a cardboard box. That wrapping costs an allocation every single time.
+:::
 
 Sometimes a value type has to be treated as an `object`, for example when it's passed to an old API that takes `object`. But `object` is a reference type, and a reference has to point at something on the heap. So the runtime makes something.
 
@@ -243,7 +277,17 @@ Boxing converts a value type to `object` or an interface. It allocates a heap ob
 - **`==` compares the text**, not the reference.
 - **Identical literals are shared** ("interned"): two `"hello"`s in your code are one object.
 
-Immutability has a cost. Building a string with `+=` in a loop creates a new, longer string every time. That's about n²/2 characters copied in total. Use `StringBuilder` (one growing buffer) or `string.Join`:
+Immutability has a cost when you build a string piece by piece. Each `+=` can't add to the old string, so it makes a new one and copies everything so far into it:
+
+:::scene visuals/scenes/ts-strings.svg | Why `+=` in a loop gets slow
+1. Strings can't change. So `s += "Sencha "` makes a brand-new string on the heap.
+2. Adding `"Assam "` makes another new string and copies **all** of `"Sencha "` into it. The old string is now garbage.
+3. Every round copies everything built so far, again. The copying grows much faster than the list.
+4. For 1,000 teas that's about **3 million characters copied** and 999 dead strings for the GC. Double the teas and the copying quadruples. This growth is called **O(n²)** (n squared).
+5. **`StringBuilder`** keeps one buffer with spare room. Each `Append` copies only the new piece, and `ToString()` makes the final string once.
+:::
+
+Use `StringBuilder` or `string.Join`:
 
 ```csharp
 using System.Text;
@@ -273,6 +317,13 @@ Immutability makes strings thread-safe and safe to use as dictionary keys, and i
 Kettle's first invoice says a £0.10 tea plus a £0.20 biscuit costs £0.30000000000000004. That's `double` at work.
 
 `double` stores numbers in **binary**, and 0.1 can't be written exactly in binary, just as ⅓ can't be written exactly in decimal (0.333…). `decimal` stores numbers in **base 10**, so 0.1 is exact. **Money is always `decimal`.**
+
+:::scene visuals/scenes/ts-decimal.svg | Where the stray 0.00000000000000004 comes from
+1. In everyday base 10, ⅓ is 0.3333… forever. On paper you have to stop somewhere, so you write a slightly wrong number.
+2. Computers count in base 2. In base 2, **0.1 never ends either**. `double` keeps 52 binary digits and drops the rest, so it really stores 0.1000000000000000055…
+3. Add two slightly-wrong numbers and the errors show: 0.30000000000000004.
+4. `decimal` stores base-10 digits, so 0.1m is exactly "1 × 10⁻¹" with nothing dropped. That's why money is always `decimal`.
+:::
 
 ```csharp
 Console.WriteLine(0.1 + 0.2);      // 0.30000000000000004  (double)
@@ -343,6 +394,10 @@ enum OrderStatus { Draft = 0, Placed = 1, Paid = 2, Shipped = 3, Cancelled = 9 }
 
 ## Equality: "the same" means three things {i}
 
+:::plain
+"Are these equal?" can mean "is this the very same object?" or "do these hold the same values?". Classes answer the first question by default, records answer the second, and hash-based collections need you to be consistent about which one you mean.
+:::
+
 Two `Money` values of £5 are the same money. Two `Customer` objects that happen to share a name are probably *not* the same customer. C# lets you ask both questions, and each kind of type has a different default:
 
 | | class | struct | record |
@@ -351,7 +406,15 @@ Two `Money` values of £5 are the same money. Two `Customer` objects that happen
 | `Equals` | same object? | same values? (slow: uses reflection) | same values? (fast, generated) |
 | `ReferenceEquals` | same object? | always false | same object? |
 
-If you override `Equals` yourself, you **must** also override `GetHashCode` so that equal objects give equal hash codes. `Dictionary` and `HashSet` look items up by hash code first. If two "equal" objects have different hash codes, the lookup quietly fails.
+`HashSet` and `Dictionary` don't compare your item with every item they hold. That would be slow. They first compute its **hash code**, a number worked out from its contents, and use it like a shelf number to pick one small **bucket**. Only then do they call `Equals` on the few items in that bucket:
+
+:::scene visuals/scenes/ts-equality.svg | How a HashSet finds things, and how it loses them
+1. `set.Add(a)`: the set asks `a.GetHashCode()`, gets 7, and files `a` in **bucket 7**.
+2. `set.Contains(b)`, where `b` is a *different object* with the same value. Same value, so same hash code, 7. The set looks **only** in bucket 7, and `Equals(a, b)` confirms the match. Found.
+3. Now imagine a class that overrides `Equals` but **not** `GetHashCode`. Its hash code comes from the object's identity, so `a` and `b` land in different buckets. The set looks in the wrong bucket and says "not found", even though `Equals` would have said yes.
+4. Or change `a`'s code *after* adding it. `a` is still filed in bucket 7, but its hash code now points to bucket 3. Every lookup checks bucket 3. `a` is lost, with no error.
+5. The two rules: **equal objects must give equal hash codes**, so override `Equals` and `GetHashCode` together. And **never change a key** while it's inside a set or dictionary. A record follows the first rule for you.
+:::
 
 ```csharp
 var a = new Sku("tea-01");
@@ -369,15 +432,15 @@ public sealed record Sku
 }
 ```
 
-:::gotcha A key that changes is lost forever
-If a field that feeds `GetHashCode` changes *after* the object goes into a `HashSet` or becomes a `Dictionary` key, you'll never find it again. The set filed it under the old hash code. You get no exception, just missing data. **Keys must be immutable.**
-:::
-
 :::qa If you override Equals, what else must you do?
 Override `GetHashCode` consistently, so equal objects give equal hash codes. Ideally also implement `IEquatable<T>`, and overload `==` and `!=` so they agree. Or use a record, which generates all of this.
 :::
 
 ## Passing to methods: you always pass a copy {i}
+
+:::plain
+A method never gets your variable itself, only a copy of what's in it. For a class, what's in it is an arrow to an object. So the method can change *the object*, but it can't make *your variable* point somewhere else, unless you say `ref`.
+:::
 
 Here's the rule that untangles every parameter question: **C# passes every argument by value, which means as a copy.** For a class, what gets copied is the *reference*. So the method gets its own arrow to *your* object.
 
@@ -437,9 +500,20 @@ Use `var` freely. Almost never use `dynamic` in backend code.
 
 ## Memory layout and size {a}
 
-- Every heap object carries a hidden **16-byte header** on 64-bit (a sync-block index plus a pointer to its type's method table). So even an empty object costs about **24 bytes**. This is a CLR implementation detail, documented in *Pro .NET Memory Management* and *CLR via C#*.
-- Sizes: `int` 4 bytes, `long`/`double`/`DateTime` 8, `decimal`/`Guid` 16, a reference 8 (on 64-bit).
-- The runtime may reorder a class's fields to pack them tightly. Structs keep **declaration order** by default, which matters for native interop (`[StructLayout]`).
+:::plain
+Every object on the heap carries a small hidden label before its data, so tiny objects are surprisingly expensive. Structs stored in an array don't need that label.
+:::
+
+:::scene visuals/scenes/ts-object-layout.svg | What one Order really costs
+1. The variable `order` holds only an **address**: 8 bytes on a 64-bit machine.
+2. On the heap, every object starts with a **16-byte header**, before any of your fields. 8 bytes are used by the runtime for locks and hashing. The other 8 point at the object's type ("I'm an `Order`").
+3. Then your fields: `Quantity` (4 bytes, plus 4 bytes of padding so the next field lines up) and `Total` (a 16-byte `decimal`). That's **40 bytes**, and 16 of them are overhead.
+4. Even an empty object costs about 24 bytes. A million tiny objects means about 24 MB of headers alone. An **array of structs** has one header for the whole array, then pure data side by side.
+:::
+
+- These numbers are CLR implementation details, documented in *Pro .NET Memory Management* and *CLR via C#*, not promises in the C# language.
+- Common sizes: `int` 4 bytes, `long`/`double`/`DateTime` 8, `decimal`/`Guid` 16, a reference 8 (on 64-bit).
+- The runtime may reorder a class's fields to pack them tightly. Structs keep **declaration order** by default, which matters when you pass them to native code (`[StructLayout]`).
 - Measure rather than guess: `Unsafe.SizeOf<T>()`, ObjectLayoutInspector, and BenchmarkDotNet's `MemoryDiagnoser`.
 
 ## Next episode {b}

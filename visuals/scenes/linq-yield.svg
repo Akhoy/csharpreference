@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="yield return: the caller and the iterator take turns; the iterator pauses at each yield and resumes from that spot on the next MoveNext">
+<defs><marker id="ly-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<text class="t-cap" x="24" y="28">CALLER: foreach</text><text class="t-cap" x="380" y="28">ITERATOR: KeepAbove(prices, 10)</text>
+<rect x="24" y="40" width="320" height="130" rx="10" class="b-sunk"/><rect x="380" y="40" width="316" height="130" rx="10" class="b-sunk"/>
+<text class="t-c" x="36" y="64" style="font-size:12px">foreach (var p in KeepAbove(…))</text><text class="t-c" x="36" y="86" style="font-size:12px" data-hl="3">  Console.WriteLine($"got {p}");</text>
+<text class="t-c" x="392" y="64" style="font-size:12px" data-hl="2">foreach (var x in source)</text><text class="t-c" x="392" y="86" style="font-size:12px">  if (x &gt; min)</text><text class="t-c" x="392" y="108" style="font-size:12px" data-hl="2,4">    yield return x;</text>
+<g data-s="1-1"><path d="M240,100 C300,100 320,64 386,64" class="ln-acc" marker-end="url(#ly-a)"/><text class="t-s t-acc" x="36" y="130">MoveNext(): "give me the next one"</text></g>
+<g data-s="2-2"><path d="M390,112 C320,140 300,130 250,98" class="ln-acc" marker-end="url(#ly-a)"/><text class="t-s t-acc" x="392" y="140">checks 5 (no), 20 (yes): hands over 20</text><text class="t-s t-warn" x="392" y="158">🔖 pauses here, remembering x and the loop</text></g>
+<g data-s="3-3"><text class="t-s t-acc" x="36" y="130">prints "got 20". The iterator is frozen</text><text class="t-s t-acc" x="36" y="148">mid-loop, waiting.</text></g>
+<g data-s="4-4"><path d="M240,100 C300,100 330,110 386,110" class="ln-acc" marker-end="url(#ly-a)"/><text class="t-s t-acc" x="392" y="140">MoveNext() again: resumes AFTER the</text><text class="t-s t-acc" x="392" y="158">bookmark, checks 40: hands it over</text></g>
+<g data-s="5"><rect x="24" y="186" width="672" height="94" rx="10" class="b-deep"/><text class="t-h" x="40" y="212">How can a method pause halfway?</text>
+<text class="t-s" x="40" y="236">The compiler rewrites it into a small object: a state machine. Its fields hold the loop position and</text><text class="t-s" x="40" y="256">the local variables; MoveNext() runs to the next yield and saves its place. Nothing runs until asked,</text><text class="t-s" x="40" y="276">which is why LINQ is lazy and why an infinite sequence is fine.</text></g>
+<text class="t-s" x="24" y="210" data-s="1-4">The two pieces of code take TURNS. Only one item is ever "in flight".</text>
+</svg>

@@ -18,6 +18,19 @@ next: delegates-events, collections
 - .NET generics are **real at runtime** ("reified"). `List<int>` gets its own fast machine code. Java erases generics instead.
 - **Variance**: a read-only `IEnumerable<Cat>` can be used as an `IEnumerable<Animal>` (`out`), but a read-write `List<Cat>` can't be used as a `List<Animal>`.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **generic type** | A type with a blank in it, like `List<T>` or `Cache<T>`. |
+| **type parameter** | The blank itself: the `T`. |
+| **type argument** | What you fill the blank with: the `Order` in `Cache<Order>`. |
+| **closed / open generic** | `Cache<Order>` is closed (blank filled). `Cache<>` is open (blank still empty). |
+| **constraint** | A rule about what may fill the blank: `where T : IEntity`. |
+| **JIT** | The part of .NET that turns your compiled code into machine code while the app runs ([How code runs](ch:how-code-runs)). |
+| **reified** | The filled-in types still exist while the app runs, so `typeof(T)` works. |
+| **variance** | Whether a "something of Cat" may be used as a "something of Animal". |
+
 ## Previously, and the problem {b}
 
 In [Episode 2](ch:oop) Kettle's objects learned to guard their own rules. Pages got slow, so you added a cache for orders:
@@ -119,6 +132,13 @@ Inside `Cache<T>`, the line `_items[item.Id] = item` needs `item.Id`. But a bare
 
 A **constraint** is a promise about `T`, written with `where`. `where T : IEntity` says "only types that implement `IEntity` may fill this blank". The compiler enforces that at every use, and in return it lets your code use `IEntity`'s members on `T`.
 
+:::scene visuals/scenes/gen-constraint.svg | What a constraint unlocks
+1. With a bare `T`, the compiler only lets you use what *every* type has: `ToString`, `Equals`, `GetHashCode`, `GetType`. So `item.Id` is an error, because `T` might be a `string`.
+2. Add `where T : IEntity`. Now every `T` is promised to have `Id`, so the line compiles.
+3. The promise is checked from the other side too. `Cache<Order>` is fine because `Order` implements `IEntity`. `Cache<string>` is now a compile error.
+4. A constraint is a deal: you accept fewer types for `T`, and in return you get to use their members. The compiler checks both halves.
+:::
+
 :::analogy A job advert
 "Applicants must hold a driving licence." That constraint limits who can apply. But it also means that once someone's hired, you can hand them the van keys without checking. `where T : IEntity` limits who can fill `T`, and in return you can call `.Id` on it.
 :::
@@ -150,14 +170,18 @@ static T Create<T>() where T : new() => new T();
 
 ## What the runtime does with `List<int>` vs `List<string>` {a}
 
+:::plain
+.NET builds real machine code for your generic types while the app runs. Each value type gets code made just for it, so nothing is boxed. All the reference types share one copy, because every reference is the same size.
+:::
+
 Are `List<int>` and `List<string>` still different things while the app runs? In .NET, yes. Generics are **reified**: they exist for real at runtime, and `typeof(T)` gives the real type. Java **erases** generics, so at runtime every `List` is the same type-blind list.
 
-The JIT then handles the two families of types differently:
-
-- **Value types** (`int`, `Guid`, `Money`): each one gets its **own copy of the machine code**, built for that exact type. `List<int>` stores raw `int`s inline, which is why there's no boxing.
-- **Reference types**: every reference is the same size (one pointer), so all of them **share one copy** of the code.
-
-![List<T> compiled two ways: a specialised, inline copy per value-type T with no boxing, versus one shared implementation for every reference-type T](visuals/generics-reification.svg)
+:::scene visuals/scenes/gen-reify.svg | One `List<T>`, several kinds of machine code
+1. For a **value type** like `int`, the JIT writes machine code made just for `int`. The numbers sit directly in the list's array, so there's no boxing.
+2. Every *different* value type, like `Money`, gets **its own copy** of that code, sized exactly for that type.
+3. Every **reference type** is just a pointer (8 bytes), whatever it points at. So `List<string>`, `List<Order>` and the rest **share one copy** of the code.
+4. And the filled-in types stay real while the app runs. That's **reification**. Java instead **erases** them: at runtime every `List` is the same, and an `int` must be boxed to go in one.
+:::
 
 One useful side effect: **static fields are per filled-in type**. `Counter<Order>.Count` and `Counter<Customer>.Count` are two separate fields, which gives you a free per-type cache:
 
@@ -178,6 +202,10 @@ No. Each closed generic type (`Foo<int>`, `Foo<string>`) has its own copy of the
 :::
 
 ## Variance: is a box of cats a box of animals? {a}
+
+:::plain
+Can a "something of Cat" be used where a "something of Animal" is wanted? It depends on one thing: do Cats only ever come **out** of it, only go **in**, or both? If both, it's not allowed, because someone could sneak a Dog in.
+:::
 
 If `Cat` is an `Animal`, can a `List<Cat>` be used where a `List<Animal>` is expected? It seems obvious that it should. It isn't allowed, and the reason is the key to the whole topic. It comes down to whether things go **in**, come **out**, or both.
 
@@ -212,6 +240,8 @@ The rules:
 | **Contravariance** | `in T` | goes **in** (parameters) | `Action<in T>`, `IComparer<in T>`, `IEqualityComparer<in T>` |
 | **Invariant** | *(none)* | goes both ways | `List<T>`, `IList<T>`, `Dictionary<K,V>`, `Task<T>` (a class) |
 
+A way to remember the direction: **`out`** (things come out) lets you treat it as something *more general*, so cats come out as animals. **`in`** (things go in) lets you treat it as something *more specific*: anything that accepts any animal accepts a cat.
+
 - Variance works only on **interfaces and delegates**, never on classes.
 - It works only with **reference types**. `IEnumerable<int>` is never an `IEnumerable<object>`, because that would need boxing.
 - **Arrays** are an old exception: `object[] o = new string[1];` compiles, but `o[0] = 1;` throws `ArrayTypeMismatchException` at runtime.
@@ -226,7 +256,11 @@ Because `List<T>` both reads and writes T. If it were allowed, you could add a D
 
 ## Generic math {a}
 
-Since C# 11, an interface can require **static** members such as `+` or `Zero`. That lets you write maths once for every number type:
+:::plain
+Generic code used to be unable to add two `T`s, because `+` belongs to the type itself rather than to any one value. C# 11 lets an interface require static members like `+` and `Zero`, so one generic method can now do maths for every number type.
+:::
+
+The missing piece was **static** members. `+` and `Zero` aren't called on a particular number; they belong to the type (`int.Zero`, `decimal.Zero`). Interfaces used to only describe instance members. Since C# 11, an interface can say "every type that implements me has a static `Zero` and a static `+`", and `INumber<T>` says exactly that:
 
 ```csharp
 using System.Numerics;
@@ -246,6 +280,10 @@ You'll rarely write this in backend code, but you'll meet its cousin `IParsable<
 
 ## The generics you already use every day {i}
 
+:::plain
+Most of the generics you'll meet in ASP.NET Core are blanks the framework fills with your types. Once you read `T` as "the type goes here", the long names stop looking strange.
+:::
+
 Once you know `T` is "the blank", ASP.NET Core code becomes much easier to read:
 
 | API | What the `T` is doing |
@@ -258,7 +296,13 @@ Once you know `T` is "the blank", ASP.NET Core code becomes much easier to read:
 | `services.AddScoped<IRepo, Repo>()` | Interface → implementation |
 | `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))` | An **open generic**, which covers every `IRepository<X>` at once |
 
-`IRepository<>`, with the brackets left empty, is an **open** generic: the template with its blank still unfilled. Registering it once lets the [DI container](ch:dependency-injection) build `EfRepository<Order>`, `EfRepository<Customer>` and the rest on demand.
+`IRepository<>`, with the brackets left empty, is an **open** generic: the template with its blank still unfilled.
+
+:::scene visuals/scenes/gen-open.svg | One registration for every entity
+1. At startup you register the **open** generic, `IRepository<>` → `EfRepository<>`, with the blank left empty.
+2. Later, some code asks the [DI container](ch:dependency-injection) for `IRepository<Order>`. The container fills the same blank with `Order` and builds an `EfRepository<Order>`.
+3. `IRepository<Customer>` works the same way, and so will any entity you add next year, with no extra registration.
+:::
 
 :::qa What is an open generic registration in DI?
 Registering a generic type definition, such as `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))`. The container can then create any closed version (`IRepository<Order>`) on demand, without a separate registration for each.

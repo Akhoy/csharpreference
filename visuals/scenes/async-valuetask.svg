@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-label="Returning Task allocates an object even when the answer is already known; ValueTask can carry the answer directly with no allocation">
+<text class="t-cap" x="24" y="28">GetPriceAsync("TEA-01"): THE PRICE IS ALREADY IN THE CACHE</text>
+<g data-s="1"><rect x="24" y="44" width="320" height="110" rx="12" class="b-sunk"/><text class="t-h" x="40" y="68">returns Task&lt;decimal&gt;</text>
+<rect x="40" y="82" width="140" height="56" rx="8" class="b-warn"/><text class="t-cap" x="52" y="100">NEW HEAP OBJECT</text><text class="t-c" x="52" y="124" style="font-size:12px">Task: £6.50</text>
+<text class="t-s t-warn" x="192" y="104">allocated on</text><text class="t-s t-warn" x="192" y="122">every call</text></g>
+<g data-s="2"><rect x="376" y="44" width="320" height="110" rx="12" class="b-sunk"/><text class="t-h" x="392" y="68">returns ValueTask&lt;decimal&gt;</text>
+<rect x="392" y="82" width="140" height="56" rx="8" class="b-good"/><text class="t-cap" x="404" y="100">A STRUCT, NO HEAP</text><text class="t-c" x="404" y="124" style="font-size:12px">£6.50</text>
+<text class="t-s t-good" x="544" y="104">the answer rides</text><text class="t-s t-good" x="544" y="122">along inside it</text></g>
+<text class="t-s" x="24" y="186" data-s="1-1">A Task is a class. Even when the result is ready instantly, a Task object has to be created to carry it.</text>
+<text class="t-s" x="24" y="186" data-s="2-2">A ValueTask is a struct. When the answer is already known, it holds it directly: zero allocations.</text>
+<g data-s="3"><text class="t-s" x="24" y="186">When the price isn't cached, the ValueTask simply wraps a real Task, so nothing is lost.</text>
+<text class="t-s t-warn" x="24" y="210">The rules: await it exactly once, never twice or from two places. Need that? Call .AsTask().</text><text class="t-s" x="24" y="230">Use it only for hot methods that usually finish instantly. Everywhere else, Task is simpler.</text></g>
+</svg>

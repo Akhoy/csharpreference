@@ -6,13 +6,13 @@
 <rect x="24" y="140" width="104" height="40" rx="6" class="b"/><text class="t-c" x="34" y="157" style="font-size:12px">#3</text><text class="t-m" x="34" y="173" style="font-size:11px">paid £12</text>
 <rect x="24" y="190" width="104" height="40" rx="6" class="b"/><text class="t-c" x="34" y="207" style="font-size:12px">#4</text><text class="t-m" x="34" y="223" style="font-size:11px">paid £50</text>
 <rect x="24" y="240" width="104" height="40" rx="6" class="b"/><text class="t-c" x="34" y="257" style="font-size:12px">#5</text><text class="t-m" x="34" y="273" style="font-size:11px">unpaid</text>
-<rect x="150" y="120" width="120" height="60" rx="10" class="b-acc"/><text class="t-s" x="210" y="155" text-anchor="middle">keep if paid</text>
-<rect x="300" y="120" width="120" height="60" rx="10" class="b-acc"/><text class="t-s" x="360" y="155" text-anchor="middle">order → £total</text>
-<rect x="450" y="120" width="120" height="60" rx="10" class="b-acc"/><text class="t-s" x="510" y="155" text-anchor="middle">stop after 2</text>
+<rect x="150" y="120" width="120" height="60" rx="10" class="b-acc"/><text class="t-s" x="210" y="168" text-anchor="middle">keep if paid</text>
+<rect x="300" y="120" width="120" height="60" rx="10" class="b-acc"/><text class="t-s" x="360" y="168" text-anchor="middle">order → £total</text>
+<rect x="450" y="120" width="120" height="60" rx="10" class="b-acc"/><text class="t-s" x="510" y="168" text-anchor="middle">stop after 2</text>
 <path d="M128,150 L146,150" class="ln-m" marker-end="url(#lp-ar)"/><path d="M270,150 L296,150" class="ln-m" marker-end="url(#lp-ar)"/><path d="M420,150 L446,150" class="ln-m" marker-end="url(#lp-ar)"/><path d="M570,150 L604,150" class="ln-m" marker-end="url(#lp-ar)"/>
 <rect x="610" y="40" width="96" height="240" rx="10" class="b-sunk"/>
 <text class="t-s t-acc" x="150" y="230" data-s="1-1">Nothing has run yet. The query is only a plan: a recipe, not a meal.</text>
-<g data-s="2-2" data-mv="2:134,90"><rect x="34" y="46" width="84" height="28" rx="14" class="b-bad"/><text class="t-c" x="76" y="65" text-anchor="middle" style="font-size:12px">#1 ✗</text></g>
+<g data-s="2-2" data-mv="2:134,74"><rect x="34" y="46" width="84" height="28" rx="14" class="b-bad"/><text class="t-c" x="76" y="65" text-anchor="middle" style="font-size:12px">#1 ✗</text></g>
 <text class="t-s t-bad" x="150" y="230" data-s="2-2">foreach asks for an item. Where pulls #1: unpaid, so it's dropped.</text>
 <g data-s="3" data-mv="3:582,-40"><rect x="34" y="96" width="84" height="28" rx="14" class="b-good"/><text class="t-c" x="76" y="115" text-anchor="middle" style="font-size:12px">£30</text></g>
 <text class="t-s t-good" x="150" y="230" data-s="3-3">Where pulls #2: paid. Select turns it into £30. Take passes it on.</text>

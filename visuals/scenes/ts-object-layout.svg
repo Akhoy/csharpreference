@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="What one Order object costs in memory: an 8-byte reference, a 16-byte header, then its fields">
+<defs><marker id="tl-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="28">ONE Order OBJECT, BYTE BY BYTE (64-bit)</text>
+<g data-s="1"><rect x="24" y="50" width="96" height="40" rx="5" class="b-info"/><text class="t-c" x="36" y="75" style="font-size:12px">order ●</text><text class="t-m" x="24" y="108">8 bytes: the address</text>
+<path d="M112,70 L156,70" class="ln" marker-end="url(#tl-a)"/></g>
+<g data-s="2" class="fly-r"><rect x="160" y="50" width="96" height="40" class="b-warn"/><text class="t-c" x="170" y="75" style="font-size:11px">header</text>
+<rect x="256" y="50" width="96" height="40" class="b-warn"/><text class="t-c" x="266" y="75" style="font-size:11px">type ptr</text>
+<text class="t-m" x="160" y="108">8 B</text><text class="t-m" x="160" y="124">locks, hash</text><text class="t-m" x="256" y="108">8 B</text><text class="t-m" x="256" y="124">"I'm an Order"</text></g>
+<g data-s="3" class="fly-r"><rect x="352" y="50" width="48" height="40" class="b-good"/><text class="t-c" x="356" y="75" style="font-size:10px">Qty</text>
+<rect x="400" y="50" width="48" height="40" class="b-dash"/><text class="t-m" x="404" y="75" style="font-size:10px">pad</text>
+<rect x="448" y="50" width="192" height="40" class="b-good"/><text class="t-c" x="458" y="75" style="font-size:11px">Total (decimal)</text>
+<text class="t-m" x="352" y="108">4 B + 4 B</text><text class="t-m" x="352" y="124">qty + padding</text><text class="t-m" x="448" y="108">16 B</text><text class="t-m" x="448" y="124">the total</text>
+<text class="t-h" x="160" y="154">= 40 bytes on the heap, 16 of them before your data starts</text></g>
+<g data-s="4"><rect x="24" y="170" width="672" height="110" rx="10" class="b-sunk"/>
+<text class="t-s" x="40" y="196">An EMPTY object still costs about 24 bytes. A million tiny objects: ~24 MB of headers alone.</text>
+<text class="t-s" x="40" y="220">An array of structs has no header per element, just the data, side by side:</text>
+<rect x="40" y="234" width="60" height="30" class="b-good"/><rect x="100" y="234" width="60" height="30" class="b-good"/><rect x="160" y="234" width="60" height="30" class="b-good"/><rect x="220" y="234" width="60" height="30" class="b-good"/>
+<text class="t-m" x="292" y="254">one header for the whole array, then pure data</text></g>
+</svg>

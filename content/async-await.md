@@ -18,6 +18,21 @@ next: threading-concurrency, aspnet-hosting, efcore-querying
 - Async is about **scalability** (more requests with fewer threads), not making one request faster.
 - The rules: **async all the way**, **never `.Result` or `.Wait()`**, **no `async void`**, **pass a `CancellationToken`**, and run independent calls together with **`Task.WhenAll`**.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **thread** | A worker that runs your code, one instruction after another. |
+| **thread pool** | The shared team of threads a server uses to handle requests. |
+| **I/O** | Input/output: waiting on something outside the CPU, like a database, a network or a disk. |
+| **`Task`** | An object standing for work that will finish later: a receipt you can redeem for the result. |
+| **`await`** | "If this isn't finished, give my thread back and continue here when it is." |
+| **continuation** | The rest of the method after an `await`, which runs once the awaited work is done. |
+| **thread-pool starvation** | Every thread is busy *waiting*, so new requests queue up while the CPU sits idle. |
+| **`CancellationToken`** | A "please stop" signal passed down through your calls. |
+| **SynchronizationContext** | A rule some apps (UI apps) have about *which* thread may run the continuation. |
+| **deadlock** | Two things each waiting for the other, forever. |
+
 ## Previously, and the incident {b}
 
 In [Episode 7](ch:exceptions-disposal) Kettle learned to fail cleanly. Then came **Black Friday**. Traffic jumped 20×, and the site froze. Pages took 30 seconds, then timed out. The odd part was the server's **CPU at 5%**. It wasn't busy. A memory dump showed hundreds of threads, **every one of them waiting** on this line:
@@ -117,7 +132,7 @@ No. `async`/`await` doesn't create threads. For I/O, no thread is used at all wh
 
 ## Task: a receipt for work in progress {b}
 
-A **`Task`** is like a collection ticket at a dry cleaner's: proof the work is underway, and the way to pick up the result (`Task<T>`) or find out it failed. It has three end states:
+A **`Task`** is like a collection ticket at a dry cleaner's. It's proof the work is underway, and it's how you pick up the result (`Task<T>`) or find out it failed. It has three end states:
 
 | End state | Means | `await` does |
 |---|---|---|
@@ -198,7 +213,17 @@ Callers can't await it, so they can't know when it finishes, and exceptions can'
 
 ## Doing several things at once {i}
 
+:::plain
+If two slow calls don't depend on each other, start both before waiting for either. Then you wait for the slower one only, instead of both added together.
+:::
+
 The order page needs the customer and their recent orders, from two different services. Awaiting them one after the other takes the **sum** of the times. Starting both, *then* awaiting, takes only the **longest**:
+
+:::scene visuals/scenes/async-whenall.svg | One after the other, or both at once?
+1. `await customer`, *then* `await history`: the second call doesn't even start until the first finishes. That's 100 ms + 200 ms = **300 ms**, even though neither call needs the other's result.
+2. Instead, start both calls *without* awaiting yet. Both requests are now in flight at the same moment.
+3. Then `await Task.WhenAll(customerTask, historyTask)`. It finishes when the slowest one does: **200 ms** in total.
+:::
 
 ```csharp norun
 // one after the other: ~300 ms
@@ -236,7 +261,18 @@ Start them all without awaiting, so they run concurrently, then `await Task.When
 
 ## Cancellation and timeouts {i}
 
+:::plain
+A `CancellationToken` is a "please stop" flag that you pass down through every call. When it's raised, each piece of code that's watching it stops its own work.
+:::
+
 Cancellation in .NET is **cooperative**. A `CancellationTokenSource` raises the flag, and the code holding the token **checks it and stops**. Nothing gets killed by force.
+
+:::scene visuals/scenes/async-cancel.svg | One "stop" signal, passed all the way down
+1. ASP.NET Core gives every request a token (`RequestAborted`). You pass the same token, usually called `ct`, down to every call you make.
+2. The user closes the page halfway through.
+3. The token flips to "cancelled". Each level is watching it: EF Core cancels the SQL command, and HttpClient aborts its request. No wasted work.
+4. Nothing is killed by force. Code stops *itself* by throwing `OperationCanceledException`, which is normal flow, not an error. Forget to pass `ct` down one level, and that level carries on working for nobody.
+:::
 
 ```csharp
 using System.Threading;
@@ -280,6 +316,10 @@ It's cooperative. A `CancellationTokenSource` signals, and code that receives th
 
 ## Async streams: results that arrive over time {i}
 
+:::plain
+Sometimes results arrive in batches over time, like pages from an API. An async stream lets you handle each item as it arrives, instead of waiting for all of them.
+:::
+
 If data arrives in pieces (pages from an API, rows from a database), you don't have to wait for all of it. `IAsyncEnumerable<T>` is the async version of the `yield return` from [Episode 6](ch:linq#how-the-laziness-works-yield-return):
 
 ```csharp norun
@@ -300,6 +340,10 @@ await foreach (var p in GetAllAsync(ct)) { /* handle each product as it arrives 
 ASP.NET Core streams an `IAsyncEnumerable` response as a JSON array without buffering it all in memory.
 
 ## Under the hood: the state machine {a}
+
+:::plain
+The compiler turns your async method into a small object that remembers where it paused and what its local variables were. Each `await` is a numbered bookmark, so the method can be resumed later from that exact spot, on any thread.
+:::
 
 The compiler rewrites every `async` method into a **state machine** (a struct). Its fields hold your **local variables**, a **state number** ("which await am I paused at?") and a **builder** that creates and completes the Task. You can see it with reflection:
 
@@ -357,7 +401,18 @@ A state-machine struct implementing `IAsyncStateMachine`. Locals and parameters 
 
 ## Where does the code resume? SynchronizationContext and ConfigureAwait {a}
 
+:::plain
+In a desktop or mobile app, only one special thread may update the screen. So after an `await`, the rest of your method is sent back to that thread. ASP.NET Core has no such rule, so any free thread carries on.
+:::
+
 When an `await` resumes, *which thread* runs the rest? It depends on whether a **SynchronizationContext** was captured:
+
+:::scene visuals/scenes/async-context.svg | Who runs the rest of the method?
+1. A UI app (WPF, WinForms, MAUI) has one special **UI thread**, and only it may touch buttons and labels. It works through a mailbox of jobs.
+2. So by default, `await` posts "the rest of the method" into that thread's mailbox. The rule that does this is the **SynchronizationContext**.
+3. ASP.NET Core has no such context. Whichever pool thread is free runs the rest of the method.
+4. `ConfigureAwait(false)` means "skip the mailbox, any thread will do". Libraries should use it, because they might be called from a UI app. In ASP.NET Core app code it changes nothing. It also prevents the deadlock in the next section.
+:::
 
 | App type | Context | The continuation runs on |
 |---|---|---|
@@ -377,6 +432,10 @@ It tells `await` not to resume on the captured SynchronizationContext. ASP.NET C
 :::
 
 ## Deadlocks and thread-pool starvation {a}
+
+:::plain
+Blocking on an unfinished task with `.Result` or `.Wait()` is always bad news. In UI apps it can freeze forever. In ASP.NET Core it ties up a thread for nothing, and under load you run out of threads.
+:::
 
 Blocking on async code (`.Result`, `.Wait()`) fails in two different ways, depending on the app:
 
@@ -399,7 +458,17 @@ Pool threads are all blocked (usually by sync-over-async or other blocking calls
 
 ## ValueTask: skipping the allocation on the fast path {a}
 
+:::plain
+Returning a `Task` always creates a small object, even when the answer is ready instantly. `ValueTask` can carry an instant answer with no object at all, which matters only in very hot code.
+:::
+
 `Task<T>` is a class, so each call allocates one. **`ValueTask<T>`** is a struct that can hold the result directly when it's already known, so it allocates nothing:
+
+:::scene visuals/scenes/async-valuetask.svg | Task vs ValueTask on a cache hit
+1. The price is already in the cache. Returning `Task<decimal>` still has to **create a Task object** on the heap to carry £6.50, on every call.
+2. `ValueTask<decimal>` is a **struct**. When the answer is already known, it carries it directly, with no allocation.
+3. When the price isn't cached, the `ValueTask` wraps a real `Task`, so nothing is lost. The rules: await it **exactly once**, never from two places (call `.AsTask()` if you need that), and use it only in hot methods that usually finish instantly.
+:::
 
 ```csharp
 var catalogue = new ProductCatalogue();
@@ -427,6 +496,10 @@ For hot-path methods that usually complete synchronously, such as cache hits or 
 
 ## Fire-and-forget: don't, inside a request {i}
 
+:::plain
+Starting a task and not waiting for it seems harmless. But its errors vanish, it can be killed halfway through, and it may use objects that are thrown away when the request ends.
+:::
+
 ```csharp norun
 app.MapPost("/signup", async (User u, IEmailSender email) =>
 {
@@ -444,7 +517,14 @@ Unobserved exceptions, work lost on shutdown or recycle, and use of scoped servi
 
 ## Locks and await {i}
 
-You can't `await` inside a `lock` block. The compiler forbids it, because the code after the `await` might run on a different thread from the one that holds the lock. Use `SemaphoreSlim`, which has an async wait:
+You can't `await` inside a `lock` block. The compiler forbids it, and the reason is about *who holds the key*:
+
+:::scene visuals/scenes/async-lock.svg | Why `await` can't go inside `lock`
+1. Thread 7 enters `lock (_gate)`. A lock belongs to the **thread** that took it, so thread 7 holds the key.
+2. Inside, the code awaits. Thread 7 is handed back to the pool and goes off to serve someone else.
+3. When the work finishes, *thread 3* picks up the rest of the method and reaches the end of the `lock`, where the key must be returned. But thread 3 never took the key, so it can't release it. That's why the compiler refuses.
+4. `SemaphoreSlim` counts permits instead of remembering a thread, so any thread may release it, and it has an async `WaitAsync`.
+:::
 
 ```csharp norun
 private readonly SemaphoreSlim _gate = new(1, 1);

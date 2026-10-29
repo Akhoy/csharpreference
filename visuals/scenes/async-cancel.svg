@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 290" role="img" aria-label="A CancellationToken is passed down every call; when the user leaves, the token is cancelled and each level stops its work">
+<defs><marker id="ac-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<rect x="24" y="40" width="150" height="56" rx="10" class="b-info"/><text class="t-s" x="36" y="62">ASP.NET Core</text><text class="t-c" x="36" y="84" style="font-size:11px">RequestAborted</text>
+<rect x="210" y="40" width="150" height="56" rx="10" class="b"/><text class="t-c" x="222" y="62" style="font-size:11.5px">BuildAsync(ct)</text><text class="t-m" x="222" y="84">your service</text>
+<rect x="396" y="40" width="140" height="56" rx="10" class="b"/><text class="t-c" x="408" y="62" style="font-size:11.5px">ToListAsync(ct)</text><text class="t-m" x="408" y="84">EF Core → SQL</text>
+<rect x="566" y="40" width="130" height="56" rx="10" class="b"/><text class="t-c" x="578" y="62" style="font-size:11.5px">GetAsync(ct)</text><text class="t-m" x="578" y="84">HttpClient</text>
+<path d="M174,68 L204,68" class="ln" marker-end="url(#ac-a)"/><path d="M360,68 L390,68" class="ln" marker-end="url(#ac-a)"/><path d="M536,68 C550,68 552,68 560,68" class="ln" marker-end="url(#ac-a)"/>
+<g data-s="1"><text class="t-s" x="24" y="136">The same token (ct) is handed down to every call you make.</text></g>
+<g data-s="2"><rect x="24" y="150" width="200" height="36" rx="18" class="b-bad"/><text class="t-s t-bad" x="38" y="173">user closes the page ✕</text></g>
+<g data-s="3"><rect x="24" y="40" width="150" height="56" rx="10" class="b-bad" style="fill-opacity:.3"/><rect x="210" y="40" width="150" height="56" rx="10" class="b-bad" style="fill-opacity:.3"/><rect x="396" y="40" width="140" height="56" rx="10" class="b-bad" style="fill-opacity:.3"/><rect x="566" y="40" width="130" height="56" rx="10" class="b-bad" style="fill-opacity:.3"/>
+<text class="t-s" x="250" y="173">The token flips to "cancelled". Each level is watching it:</text>
+<text class="t-s t-bad" x="250" y="193">EF Core cancels the SQL command, HttpClient aborts the request.</text></g>
+<g data-s="4"><rect x="24" y="210" width="672" height="66" rx="10" class="b-warn"/><text class="t-s" x="36" y="234">Nothing is killed by force. Cancellation is cooperative: code checks the token and stops itself,</text><text class="t-s" x="36" y="254">by throwing OperationCanceledException. That's normal flow, not an error. Forget to pass ct</text><text class="t-s" x="36" y="272">down one level, and that level keeps working for nobody.</text></g>
+</svg>

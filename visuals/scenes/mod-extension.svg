@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 270" role="img" aria-label="An extension method call is rewritten by the compiler into an ordinary static method call with the object as the first argument">
+<defs><marker id="me-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<text class="t-cap" x="24" y="28">YOU WRITE</text><text class="t-cap" x="380" y="28">THE COMPILER TURNS IT INTO</text>
+<rect x="24" y="44" width="330" height="40" rx="6" class="b" data-hl="1"/><text class="t-c" x="36" y="69" style="font-size:12.5px">price.AsPounds()</text>
+<g data-s="2"><path d="M354,64 L374,64" class="ln-acc" marker-end="url(#me-a)"/><rect x="380" y="44" width="316" height="40" rx="6" class="b-acc"/><text class="t-c" x="392" y="69" style="font-size:12.5px">KettleExtensions.AsPounds(price)</text></g>
+<rect x="24" y="100" width="672" height="64" rx="8" class="b-sunk" data-hl="3"/><text class="t-c" x="36" y="124" style="font-size:12px">static class KettleExtensions {</text><text class="t-c" x="36" y="146" style="font-size:12px">  public static string AsPounds(<tspan class="t-acc" font-weight="700">this</tspan> decimal amount) =&gt; $"£{amount:0.00}"; }</text>
+<text class="t-s" x="24" y="196" data-s="1-1">It looks like decimal suddenly has a new method.</text>
+<text class="t-s" x="24" y="196" data-s="2-2">It doesn't. The compiler rewrites the call into a plain static method call.</text>
+<text class="t-s t-acc" x="24" y="196" data-s="3-3">The word "this" on the first parameter is what allows the dot syntax. price becomes that argument.</text>
+<g data-s="4"><text class="t-s" x="24" y="196">That's why it can't see private members: it's just an outside method that takes the object.</text>
+<text class="t-s t-good" x="24" y="220">All of LINQ (orders.Where), and every builder.Services.AddXyz() in ASP.NET Core,</text><text class="t-s t-good" x="24" y="240">is this same trick.</text></g>
+</svg>

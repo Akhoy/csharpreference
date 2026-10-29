@@ -18,6 +18,20 @@ next: efcore-querying, async-await
 - **`IEnumerable<T>`** runs the query in your app, in C#. **`IQueryable<T>`** (EF Core) turns it into SQL that runs in the database. The variable's type decides which, so be careful.
 - The bridge is the **expression tree**: a lambda stored as data, so EF Core can read it and write SQL.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **LINQ** | A set of ready-made methods (`Where`, `Select`, `GroupBy`…) for asking questions of a sequence. |
+| **operator** | One of those methods. |
+| **predicate** | A test that returns true or false, like `o => o.Paid`. |
+| **deferred execution** | Building a query runs nothing. It runs when something loops over it. |
+| **materialise** | Run a query and store the results, with `ToList()` or `ToArray()`. |
+| **iterator** | A method using `yield return`, which hands out items one at a time, on demand. |
+| **`IQueryable`** | A query that's translated (to SQL, say) and run somewhere else, such as the database. |
+| **provider** | The thing that does that translation, such as EF Core. |
+| **expression tree** | A lambda stored as data, so a provider can read it. |
+
 ## Previously, and the problem {b}
 
 In [Episode 5](ch:collections) Kettle got fast lookups. Now the owner wants a report: *the top 3 customers by money spent on paid orders*. Here's the loop version:
@@ -49,7 +63,7 @@ static class Sample
 }
 ```
 
-It works, but the *meaning* ("paid orders, grouped by customer, totalled, top 3") is buried under the mechanics: a temporary dictionary, `TryGetValue`, a copy, a sort, an index loop. Every new report means another 15 lines of the same kind of thing.
+It works, but the *meaning* ("paid orders, grouped by customer, totalled, top 3") is buried. All you can see is mechanics: a temporary dictionary, `TryGetValue`, a copy, a sort, an index loop. Every new report means another 15 lines of the same kind of thing.
 
 ## The lightbulb: describe the result {b}
 
@@ -78,6 +92,13 @@ static class Sample
 ```
 
 Each line reads like the spec. This is **LINQ**, short for **Language Integrated Query**. It isn't special syntax built into the compiler. It's a library of **extension methods** on `IEnumerable<T>` (in `System.Linq`). Each one takes a **delegate**, the lambda, which is the "slot for behaviour" from [Episode 4](ch:delegates-events). `Where` loops for you and calls your lambda to decide what to keep.
+
+:::scene visuals/scenes/linq-inside-where.svg | What `Where` really is
+1. `orders.Where(o => o.Paid)` looks like special syntax. It's just a method call.
+2. `Where` is an ordinary method in `System.Linq`. The `this` on its first parameter makes it an **extension method**, which is why you can call it with a dot on any sequence.
+3. Inside is a plain `foreach` and an `if`. Your lambda is plugged in as the **predicate**, the test in that `if`.
+4. That's all LINQ is: ordinary methods with the loop already written. You only supply the part that changes, as a delegate, like the discount slot in Episode 4.
+:::
 
 The same vocabulary works on lists, arrays, dictionaries and, with EF Core, **database tables**, where it becomes SQL. That last part is the real superpower, and it's covered at the end of this chapter.
 
@@ -123,6 +144,21 @@ The real difference is **what you're claiming about the data**. `First` means "a
 
 ### SelectMany, GroupBy, ToLookup and Join on Kettle data
 
+Two of these trip people up, so here they are in pictures first:
+
+:::scene visuals/scenes/linq-selectmany.svg | Select vs SelectMany
+1. `Select(o => o.Teas)` gives one result per order, and each result is itself a list. You end up with a list *of lists*.
+2. `SelectMany(o => o.Teas)` **flattens** them: one list of every tea from every order. Many lists become one.
+3. Now counting, grouping and de-duplicating are easy. An overload also keeps the parent if you need it: `SelectMany(o => o.Teas, (o, t) => (o.Id, t))`.
+:::
+
+:::scene visuals/scenes/linq-groupby.svg | GroupBy: sorting into labelled piles
+1. Start with a flat list of paid orders, in any order.
+2. `GroupBy(o => o.Customer)` sorts them into **piles**, one per customer. Each pile is a *group*, and its label is the **`Key`**.
+3. Then `Select` turns each pile into one result, such as the customer's name and the sum of their pile.
+4. Sort the results and take three: that's the whole top-3 report from the start of the chapter.
+:::
+
 ```csharp
 var orders = new[]
 {
@@ -162,6 +198,10 @@ record Customer(int Id, string Name);
 :::
 
 ## Deferred execution: a recipe, not a meal {i}
+
+:::plain
+A LINQ query is a set of instructions, not a result. Nothing happens until something asks for the items, and it happens all over again every time something asks.
+:::
 
 Here is the single most important idea in LINQ, and the cause of most LINQ bugs:
 
@@ -215,7 +255,19 @@ Enumerating a deferred `IEnumerable<T>` more than once re-runs the whole query e
 
 ## How the laziness works: yield return {i}
 
+:::plain
+`yield return` lets a method hand out its results one at a time. It gives one item, waits until the caller asks for another, then carries on from exactly where it stopped.
+:::
+
 You can write your own lazy operator. `yield return` hands **one** item to the caller and **pauses** the method right there, keeping every local variable, until the caller asks for the next item:
+
+:::scene visuals/scenes/linq-yield.svg | Caller and iterator taking turns
+1. The `foreach` asks for the first item by calling `MoveNext()`: "give me the next one".
+2. The iterator runs its loop: 5 fails the test, 20 passes. It hands over **20** and **pauses** right at the `yield return`, remembering `x` and where it is in the loop.
+3. Control goes back to the caller, which prints "got 20". Meanwhile the iterator is frozen mid-loop.
+4. `MoveNext()` again. The iterator **resumes just after** its bookmark, checks 40, and hands it over.
+5. How can a method pause halfway? The compiler rewrites it into a small object, a **state machine**, whose fields hold the loop position and the locals. Nothing runs until it's asked, which is why LINQ is lazy and why an infinite sequence is fine.
+:::
 
 ```csharp
 foreach (var p in KeepAbove(new[] { 5, 20, 40 }, 10))
@@ -246,6 +298,10 @@ The compiler turns an iterator method into a state-machine class that implements
 :::
 
 ## Where does the query run? IEnumerable vs IQueryable {i}
+
+:::plain
+The same LINQ code can run in two places: in your app, over data you already have, or in the database, translated into SQL. The declared type of the variable decides which, and getting it wrong can download a whole table.
+:::
 
 So far everything has run in your app, over data in memory. That's **LINQ to Objects**. But EF Core lets you write the *same* `Where` and `Take` over `db.Orders`, and that code never runs in your app at all. It becomes SQL. How can the same code do two different things?
 
@@ -279,7 +335,7 @@ var oops = all.Where(o => o.Status == OrderStatus.Paid).Take(20).ToList();
 ```
 
 :::gotcha The silent full-table scan
-These all quietly switch a query from SQL to in-memory, with no compiler warning: assigning it to an `IEnumerable<T>` variable, calling `.AsEnumerable()`, calling `.ToList()` before you've finished filtering, or a repository method that returns `IEnumerable<T>`. Keep queries as `IQueryable` until the very last call, and `Select` only the columns you need.
+Four things quietly switch a query from SQL to in-memory, with no compiler warning. Assigning it to an `IEnumerable<T>` variable. Calling `.AsEnumerable()`. Calling `.ToList()` before you've finished filtering. Or a repository method that returns `IEnumerable<T>`. Keep queries as `IQueryable` until the very last call, and `Select` only the columns you need.
 :::
 
 :::qa IEnumerable vs IQueryable?
@@ -287,6 +343,10 @@ These all quietly switch a query from SQL to in-memory, with no compiler warning
 :::
 
 ## Expression trees: how C# becomes SQL {a}
+
+:::plain
+To turn C# into SQL, EF Core needs to *read* your lambda, not run it. So `IQueryable` asks the compiler for the lambda as a tree of objects, which EF Core walks piece by piece to write the SQL.
+:::
 
 In [Episode 4](ch:delegates-events#the-same-lambda-compiled-two-ways-expression-trees) you saw that a lambda assigned to `Expression<Func<…>>` isn't compiled into runnable code. It becomes an **expression tree**, an object graph that describes the code. `IQueryable.Where` asks for exactly that, so EF Core can **read your lambda like data** and write SQL from it.
 
@@ -339,10 +399,14 @@ return await q.ToListAsync();   // one SQL query, with only the filters that wer
 ```
 
 :::qa How does EF Core translate LINQ to SQL?
-`IQueryable` operators take `Expression<Func<…>>`, so the compiler builds expression trees instead of delegates. EF Core walks the combined tree with expression visitors, maps entities and members to tables and columns, turns captured variables into SQL parameters, and generates SQL for the provider. Anything it can't translate throws, rather than being run silently on the client.
+`IQueryable` operators take `Expression<Func<…>>`, so the compiler builds expression trees instead of delegates. EF Core walks the combined tree with expression visitors. It maps entities and members to tables and columns, turns captured variables into SQL parameters, and generates the SQL. Anything it can't translate throws, rather than being run silently on the client.
 :::
 
 ## Performance notes {a}
+
+:::plain
+LINQ is fast enough for almost all business code. The traps are doing more work than you meant to: sorting everything to keep one item, or running the same query twice.
+:::
 
 - LINQ to Objects allocates small objects (enumerators, delegates, closures). In normal business code that cost is negligible. In true hot paths (millions of items per request) a plain `for` loop over an array or span can be several times faster.
 - **`Any()`** stops at the first match. `Count() > 0` may walk everything. (On a `List`, `Count` is a stored number, so it's free either way.)
@@ -360,7 +424,7 @@ For typical business code, no: its overhead is small and newer .NET versions opt
 
 ## Next episode {b}
 
-Kettle's reports are now a few readable lines each. Then the payment provider has a bad afternoon. Halfway through checkout, the charge call fails. The order is half-saved, the stock is already reserved, and a database connection is left open, again and again, until the pool runs dry and the whole site stops. You need a way to **fail cleanly** and to **always clean up**: [Episode 7 · Exceptions →](ch:exceptions-disposal)
+Kettle's reports are now a few readable lines each. Then the payment provider has a bad afternoon. Halfway through checkout, the charge call fails. The order is half-saved and the stock is already reserved. Worse, a database connection is left open each time, until the pool runs dry and the whole site stops. You need a way to **fail cleanly** and to **always clean up**: [Episode 7 · Exceptions →](ch:exceptions-disposal)
 
 ## Further reading
 

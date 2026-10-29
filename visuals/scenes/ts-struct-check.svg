@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="The four-question struct checklist applied to Money and to Order">
+<text class="t-cap" x="24" y="28">THE STRUCT CHECKLIST</text><text class="t-cap" x="460" y="28">Money</text><text class="t-cap" x="590" y="28">Order</text>
+<g data-s="1" class="fly"><rect x="24" y="40" width="672" height="40" rx="6" class="b"/><text class="t-s" x="36" y="65">1. Is it ONE value (an amount, a point, an ID)?</text>
+<text class="t-h t-good" x="460" y="66">✓ £12.50</text><text class="t-h t-bad" x="590" y="66">✗ many parts</text></g>
+<g data-s="2" class="fly"><rect x="24" y="88" width="672" height="40" rx="6" class="b"/><text class="t-s" x="36" y="113">2. Is it small (about 16 bytes or less)?</text>
+<text class="t-h t-good" x="460" y="114">✓ ~24 B</text><text class="t-h t-bad" x="590" y="114">✗ large</text></g>
+<g data-s="3" class="fly"><rect x="24" y="136" width="672" height="40" rx="6" class="b"/><text class="t-s" x="36" y="161">3. Does it never change after it's made?</text>
+<text class="t-h t-good" x="460" y="162">✓ immutable</text><text class="t-h t-bad" x="590" y="162">✗ gets paid</text></g>
+<g data-s="4" class="fly"><rect x="24" y="184" width="672" height="40" rx="6" class="b"/><text class="t-s" x="36" y="209">4. Will it rarely be boxed (treated as object)?</text>
+<text class="t-h t-good" x="460" y="210">✓</text><text class="t-h t-m" x="590" y="210">—</text></g>
+<g data-s="5" class="fly"><rect x="24" y="236" width="672" height="50" rx="8" class="b-acc"/><text class="t-s" x="36" y="258">Money: <tspan font-weight="700">readonly record struct</tspan>. Order: <tspan font-weight="700">class</tspan>. When in doubt, a class is the safe default.</text>
+<text class="t-m" x="36" y="276">(Money is a decimal + a string reference: a little over 16 B, but it's one value and immutable.)</text></g>
+</svg>

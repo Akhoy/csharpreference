@@ -18,6 +18,20 @@ next: advanced-csharp, building-apis
 - **`init` and `required`**: set once while the object is built, and *must* be set.
 - Plus **less ceremony**: top-level `Program.cs`, global usings, file-scoped namespaces, primary constructors, `[1, 2, 3]` collection expressions and raw `"""strings"""`.
 
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **nullable reference type** | Writing `string?` to say "this might be null". Plain `string` then means "never null". |
+| **flow analysis** | The compiler following your code line by line to work out what's safe at each point. |
+| **null-forgiving `!`** | "Trust me, it isn't null." It silences a warning and checks nothing. |
+| **pattern** | A description of a value's shape, like `{ Total: >= 100 }` or `"GB" or "IE"`. |
+| **switch expression** | `x switch { pattern => result, … }`: a table of rules, tried from top to bottom. |
+| **record** | A type for data: two records with the same values are equal. |
+| **`with`** | Make a copy of a record with some values changed. |
+| **`init` / `required`** | Settable only while the object is built / must be set while it's built. |
+| **extension method** | A static method you can call with a dot, as if the type had it. |
+
 ## Previously, and the 3 a.m. page {b}
 
 In [Episode 8](ch:async-await) Kettle survived Black Friday. At 3 a.m. the pager goes off. Shipping-label generation is crashing:
@@ -101,7 +115,7 @@ if (TryFind(5, out var o)) Console.WriteLine(o.Total);   // no warning: o is non
 **EF Core and ASP.NET Core read these annotations too.** A `string` property becomes a `NOT NULL` column and `string?` becomes nullable. A non-nullable property in a request model is treated as required.
 
 :::qa What are nullable reference types and do they prevent NullReferenceException at runtime?
-A compiler feature (enabled with `<Nullable>`) that treats reference types as non-null by default, so `T?` means "may be null", and it warns about possible null dereferences using flow analysis. It's compile-time only, with no runtime checks, so values from deserialisation, reflection or unannotated code can still be null. Validate at the boundaries.
+A compiler feature, enabled with `<Nullable>`, that treats reference types as non-null by default. `T?` then means "may be null", and the compiler uses flow analysis to warn about possible null dereferences. It's compile-time only, with no runtime checks, so values from deserialisation, reflection or unannotated code can still be null. Validate at the boundaries.
 :::
 
 :::qa What does the null-forgiving operator (!) do?
@@ -140,7 +154,12 @@ static decimal Fee(Order o) => o switch
 record Order(decimal Total, bool IsVip, string? Country);
 ```
 
-![A switch expression tries each arm in source order and stops at the first match; arms after it never run](visuals/switch-arms-narrowing.svg)
+:::scene visuals/scenes/mod-switch.svg | One order, tried against each arm
+1. The arms are tried **from the top**. The first asks: is `Total` at least 100? For this order it's 40, so no.
+2. Next arm: is this a VIP customer? No.
+3. Next: is `Country` "GB" or "IE"? Yes. The **first match wins**.
+4. The result is `3.95m`, and the arms below are never even checked. So order matters: put specific rules first.
+:::
 
 The arms are tried **top to bottom**, and the first match wins. The compiler also checks two things for you. **Exhaustiveness**: you get a warning if some input matches no arm. **Subsumption**: you get an error if an arm can never be reached because an earlier one already catches everything it would.
 
@@ -217,6 +236,18 @@ A record is a type with compiler-generated value-based equality, `GetHashCode`, 
 
 ## init and required: set once, and don't forget {b}
 
+:::plain
+Some properties should be set exactly once, when the object is created, and some must never be forgotten. `init` handles the first and `required` the second, and the compiler enforces both.
+:::
+
+:::scene visuals/scenes/mod-init.svg | The window where init and required apply
+1. `new CreateOrderRequest { … }` runs the **constructor** first, as always.
+2. Then comes the **`{ … }` window**, the object initialiser. Here `init` properties may be set, and `required` ones must be.
+3. Leave out a `required` member and it's **compile error CS9035**. You find out now, not at 3 a.m.
+4. Once the object is built, it's **locked**: assigning an `init` property later is also a compile error.
+5. In short, **`init`** answers "*when* may this be set?" (only during creation), and **`required`** answers "*must* it be set?" (yes). Together they mean set once and never forgotten.
+:::
+
 ```csharp
 var req = new CreateOrderRequest { CustomerId = 42, Teas = ["Sencha"] };
 Console.WriteLine($"{req.CustomerId}: {string.Join(",", req.Teas)}, coupon {req.Coupon ?? "none"}");
@@ -261,7 +292,18 @@ They're lightweight `ValueTuple` structs for returning or grouping a few values 
 
 ## Extension methods and extension members {i}
 
+:::plain
+An extension method lets you call your own helper with a dot, as if the type had always had it. Underneath, it's an ordinary static method that takes the object as its first argument.
+:::
+
 An **extension method** adds a method to a type you don't own. It's really a static method whose first parameter has `this`:
+
+:::scene visuals/scenes/mod-extension.svg | What `price.AsPounds()` really is
+1. `price.AsPounds()` looks as if `decimal` suddenly has a new method.
+2. It doesn't. The compiler rewrites the call into a plain static call: `KettleExtensions.AsPounds(price)`.
+3. The word **`this`** on the first parameter is what allows the dot syntax. `price` becomes that argument.
+4. That's why an extension can't see private members: it's just an outside method that's handed the object. All of LINQ, and every `builder.Services.AddXyz()`, is this same trick.
+:::
 
 ```csharp
 var price = 12.5m;
@@ -312,6 +354,12 @@ They're static methods in a static class, with `this` on the first parameter. Th
 
 None of these change what your code *does*. They remove typing that every file used to repeat.
 
+:::scene visuals/scenes/mod-toplevel.svg | Where did `Main` go?
+1. A modern `Program.cs` has no class and no `Main` method, though old tutorials always had both.
+2. They're still there. The compiler **generates** them around your lines. That's also why `args` works without being declared.
+3. Global usings and file-scoped namespaces are the same kind of thing: less to type, and identical compiled code.
+:::
+
 ```csharp norun
 // Program.cs: top-level statements (C# 9). The compiler writes the Main method for you.
 var builder = WebApplication.CreateBuilder(args);
@@ -333,6 +381,10 @@ public class OrderEndpoints { }
 `<ImplicitUsings>enable</ImplicitUsings>` in the project file adds the common ones (`System`, `System.Linq`, `System.Threading.Tasks` and so on) for you.
 
 ## Primary constructors, collection expressions, raw strings {i}
+
+:::plain
+You'll see three shortcuts in almost every modern file. Constructor parameters written on the class line. One bracket syntax for building any collection. And strings that need no escaping.
+:::
 
 ```csharp
 var checkout = new CheckoutService(new FixedClock());
@@ -374,6 +426,10 @@ Constructor parameters declared on the type (`class Svc(IRepo repo)`) that are i
 
 ## Small features you'll see everywhere {i}
 
+:::plain
+None of these is a big idea. Learn to recognise them so they don't slow you down when you read other people's code.
+:::
+
 | Feature | Example |
 |---|---|
 | Target-typed `new` | `Dictionary<string, List<int>> map = new();` |
@@ -403,7 +459,7 @@ Constructor parameters declared on the type (`class Svc(IRepo repo)`) that are i
 
 ## Next episode {b}
 
-Kettle's code is now safer and shorter, and Kettle is a real business: a warehouse, a nightly supplier feed, a finance team. The finale is one long night. At 01:00 the supplier's 2-million-row price file arrives, and `line.Split(',')` creates **ten million throwaway strings** that bury the garbage collector. Before the next afternoon, six more problems hit limits that normal C# can't get past: millions of struct copies, a printer that only speaks C, an audit rule people keep forgetting, a slow serverless cold start, and a report builder that has to stay safe from SQL injection: [Episode 10 · Advanced C# →](ch:advanced-csharp)
+Kettle's code is now safer and shorter, and Kettle is a real business: a warehouse, a nightly supplier feed, a finance team. The finale is one long night. At 01:00 the supplier's 2-million-row price file arrives, and `line.Split(',')` creates **ten million throwaway strings** that bury the garbage collector. By the next afternoon, six more problems hit limits that normal C# can't get past. Millions of struct copies. A printer that only speaks C. An audit rule people keep forgetting. A slow serverless cold start. And a report builder that must stay safe from SQL injection. [Episode 10 · Advanced C# →](ch:advanced-csharp)
 
 ## Further reading
 

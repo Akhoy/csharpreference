@@ -12,7 +12,7 @@ next: memory-gc, performance-engineering
 
 ## The 30-second version
 
-Advanced C# is the toolbox for when the normal tools **cost too much**: too many allocations, too many copies, a C library you have to call, or work done at runtime that could have been done at build time. Each act of this episode is one of those moments:
+Advanced C# is the toolbox for when the normal tools **cost too much**. Too many allocations, too many copies, a C library you have to call, or runtime work that could have been done at build time. Each act of this episode is one of those moments:
 
 | Act | Kettle's problem | The tool | The idea in one line |
 |---|---|---|---|
@@ -23,6 +23,25 @@ Advanced C# is the toolbox for when the normal tools **cost too much**: too many
 | 5 | Every refund must be audited | attributes, reflection | label code, read the labels at runtime |
 | 6 | The serverless cold start takes 2.4 s | source generators, Native AOT | do reflection's work at build time |
 | 7 | The owner wants a "filter by anything" screen | expression trees, built by hand | build the query as data |
+
+## Words you'll meet
+
+| Word | In plain words |
+|---|---|
+| **allocation** | Creating an object on the heap. Each one is future work for the garbage collector. |
+| **`Span<T>`** | A window onto memory you already have. No copy is made. |
+| **ref struct** | A type that may only live on the stack, which is what keeps spans safe. |
+| **`stackalloc`** | Grab a small buffer on the stack instead of the heap. |
+| **Large Object Heap (LOH)** | Where objects of 85 KB or more go. Expensive to clean. |
+| **`ArrayPool<T>`** | A shelf of reusable arrays to borrow and give back. |
+| **`ref` local / return** | A variable or result that *points at* a slot instead of copying what's in it. |
+| **pinning** | Telling the GC "don't move this object" while native code reads it. |
+| **P/Invoke** | Calling a function in a native (C) library from .NET. |
+| **metadata** | The catalogue of types and methods stored inside every compiled `.dll`. |
+| **reflection** | Code reading that catalogue while the program runs. |
+| **attribute** | A label on code, like `[Audit("refund")]`. Does nothing until something reads it. |
+| **source generator** | A compiler plugin that writes extra C# for you during the build. |
+| **Native AOT / trimming** | Compiling straight to machine code ahead of time / deleting code that looks unused. |
 
 ## Previously, and the night ahead {b}
 
@@ -39,6 +58,10 @@ In [Episode 9](ch:modern-csharp) Kettle's code got safer and shorter. Kettle is 
 :::
 
 ## Act 1 · 01:00 — The import: look, don't copy {i}
+
+:::plain
+Splitting text into pieces copies every character into new strings. A span lets you *point at* the piece you need inside the original text instead, so nothing is copied and nothing is left for the GC.
+:::
 
 Every night Kettle imports lines like `2026-11-27,TEA-01,6.50,GBP`. Here's the parsing code with an allocation counter attached. Run it:
 
@@ -149,6 +172,10 @@ It's a ref struct that may point to stack memory, so it must never end up on the
 
 ## Act 2 · 01:40 — The chunks: borrow, don't buy {i}
 
+:::plain
+Instead of creating a big new buffer every time you need one, borrow one from a shared pool and give it back when you're done.
+:::
+
 The import reads the file in 1 MB chunks, and every chunk allocates a fresh 1 MB array. Anything of 85 KB or more goes on the **Large Object Heap**, which is only cleaned by an expensive full GC ([Memory & GC](ch:memory-gc#the-large-object-heap-and-the-pinned-object-heap)). So the import keeps triggering the most expensive kind of garbage collection there is.
 
 **The lightbulb:** the import only ever needs a few buffers *at once*, so keep a shelf of them and reuse them. That shelf is **`ArrayPool<T>.Shared`**. You **rent** an array, use it, and **return** it.
@@ -190,6 +217,10 @@ A pool of reusable arrays (`ArrayPool<T>.Shared`). Rent large temporary buffers 
 
 ## Act 3 · 02:30 — Repricing: change it where it lives {a}
 
+:::plain
+Reading a struct out of an array gives you a copy, so changing it changes the copy. A `ref` variable points at the struct's actual slot instead, so a change lands in the array itself.
+:::
+
 The import finished. Now every price goes up 5%. Kettle keeps stock levels as a **struct**, `StockLevel` (it's small and there are two million of them, so a struct is the right call per [Episode 1](ch:type-system#when-should-kettle-use-a-struct)). The obvious code doesn't even compile:
 
 ```csharp norun
@@ -199,7 +230,7 @@ stock[0].Price *= 1.05m;                      // ✗ CS1612 on a List<T>: the in
 
 You met this in Episode 1: a struct is **copied** whenever it's read out of a collection, so changing "it" changes a temporary copy. The workaround people reach for is "read, change, write back", which copies every struct out **and** back in.
 
-**The lightbulb:** you want a variable that doesn't hold a copy of the struct but **points at the slot where the struct lives**. That's a **`ref` local**: `ref var s = ref stock[0];`. Writing `s.Price` writes straight into the array. The same idea appears as **`ref` returns** (a method hands back a slot, not a copy) and **`in` parameters** (pass a read-only reference instead of copying a big struct).
+**The lightbulb:** you want a variable that doesn't hold a copy of the struct but **points at the slot where the struct lives**. That's a **`ref` local**: `ref var s = ref stock[0];`. Writing `s.Price` writes straight into the array. The same idea appears in two more places. A **`ref` return** is a method handing back a slot, not a copy. An **`in` parameter** passes a read-only reference instead of copying a big struct.
 
 :::scene visuals/scenes/adv-ref.svg | A copy, or the slot itself?
 1. `var s = stock[0]` gives you a **copy**. Changing the price changes the copy, and the array still says £10.00. That's why the compiler refuses `foreach (var s …) s.Price = …`.
@@ -246,10 +277,14 @@ struct StockLevel(string sku, decimal price)
 The rest of this family is mostly for library authors: `ref readonly` returns, `scoped`, and `Unsafe`, `MemoryMarshal` and `CollectionsMarshal` for expert control over memory.
 
 :::qa What is a defensive copy, and how do `in` and `readonly struct` relate to it?
-When you call a member on a struct the compiler can't prove won't modify it, such as a method on a non-readonly struct passed by `in` or held in a `readonly` field, the compiler first copies the struct so the original can't change. That's a defensive copy. It silently undoes the point of `in`. Declaring the struct `readonly struct` (or its members `readonly`) tells the compiler mutation is impossible, so no copy is needed.
+Sometimes you call a method on a struct that's meant to stay unchanged, for example one passed by `in` or held in a `readonly` field. If the compiler can't prove the method won't modify the struct, it first copies the struct, so the original is safe. That's a defensive copy. That's a defensive copy. It silently undoes the point of `in`. Declaring the struct `readonly struct` (or its members `readonly`) tells the compiler mutation is impossible, so no copy is needed.
 :::
 
 ## Act 4 · 04:00 — The label printer only speaks C {a}
+
+:::plain
+.NET can call functions in C libraries. The catch is that the GC likes to move objects around, so while C code is reading your bytes you must pin them in place.
+:::
 
 The warehouse's new thermal printer comes with one thing: a C library, `labelprint.so`, with a single function:
 
@@ -295,7 +330,7 @@ Rules for this territory:
 - Wrap native handles (files, sockets, device handles) in a **`SafeHandle`**, which releases them even if someone forgets to dispose ([Episode 7](ch:exceptions-disposal#the-full-pattern-with-a-finalizer-rarely-needed)).
 
 :::qa What does the fixed statement do?
-It pins a managed object in memory for the duration of the block, so the GC can't move it, which lets you take a stable pointer to it for unsafe code or native interop. Long or frequent pinning fragments the heap.
+It pins a managed object in memory for the duration of the block, so the GC can't move it. That lets you take a stable pointer to it, for unsafe code or native interop. Long or frequent pinning fragments the heap.
 :::
 
 :::qa How do you call native code from .NET, and what is LibraryImport?
@@ -303,6 +338,10 @@ Through P/Invoke: you declare an `extern` (or `partial`) method marked with the 
 :::
 
 ## Act 5 · 09:00 — The audit nobody can forget {i}
+
+:::plain
+Put a label on the methods that need auditing, and have one piece of code read those labels at runtime and do the logging. Nobody has to remember anything, but reading labels at runtime has a cost.
+:::
 
 Morning. Finance has a new rule: every **refund** and every **cancellation** must be logged with who did it and when. The first version adds `audit.Log(...)` inside each admin method. Within a week someone adds `IssueStoreCredit` and forgets the line, and the auditors find the gap.
 
@@ -313,7 +352,7 @@ Morning. Finance has a new rule: every **refund** and every **cancellation** mus
 2. You add `[Audit("refund")]` and `[Audit("cancel")]` labels. An attribute is just an entry in that catalogue. **On its own it does nothing at all.**
 3. At startup, **reflection** reads the catalogue: `GetTypes()`, then `GetMethods()`, then `GetCustomAttribute<Audit>()`. It finds two labelled methods.
 4. The one central dispatcher logs every call to a labelled method automatically. Label once, enforce in one place, and nobody can forget. `[Authorize]` and `[HttpGet]` work the same way.
-5. The bill: calling a method by reflection is about **50× slower** than calling it directly, a rename breaks at runtime instead of at compile time, and the trimmer and Native AOT can't see what you look up by name. That bill comes due in Act 6.
+5. The bill: calling a method by reflection is about **50× slower** than calling it directly. A rename breaks at runtime instead of at compile time. And the trimmer and Native AOT can't see what you look up by name. That bill comes due in Act 6.
 :::
 
 ```csharp
@@ -407,7 +446,11 @@ Declarative metadata attached to code elements. They're passive, and they're rea
 
 ## Act 6 · 11:00 — The cold start: do the work at build time {a}
 
-Kettle moves its price-check API to a serverless function, which starts a fresh process whenever traffic rises. Each **cold start takes 2.4 seconds**. A trace shows why: at startup the JSON serializer reflects over every DTO, the audit dispatcher from Act 5 scans every type, and regexes are parsed and compiled. Then the team tries **Native AOT** (compiling straight to machine code, [How code runs](ch:how-code-runs#what-if-you-skipped-the-jit-completely)) to start faster, and the build prints warnings like *IL2026: … uses reflection and may break when trimmed*.
+:::plain
+Everything reflection discovers at startup was already known when you compiled. A source generator does that discovery once, during the build, and writes ordinary C# code, so the app has nothing left to figure out when it starts.
+:::
+
+Kettle moves its price-check API to a serverless function, which starts a fresh process whenever traffic rises. Each **cold start takes 2.4 seconds**. A trace shows why: at startup the JSON serializer reflects over every DTO, the audit dispatcher from Act 5 scans every type, and regexes are parsed and compiled. Then the team tries **Native AOT** to start faster: compiling straight to machine code before the app runs ([How code runs](ch:how-code-runs#what-if-you-skipped-the-jit-completely)). The build prints warnings like *IL2026: … uses reflection and may break when trimmed*.
 
 **The lightbulb:** everything reflection discovers at startup was **already known when you compiled**. The DTOs, the `[Audit]` labels and the regex patterns are all right there in your source. So discover them **once, during the build**, and write the results out as ordinary code. A plugin for the C# compiler that reads your code and **adds new C# files** to the build is a **source generator**.
 
@@ -485,11 +528,15 @@ A compiler plugin that analyses your code during the build and adds generated C#
 
 ## Act 7 · 14:00 — The report builder: build the query as data {a}
 
-Afternoon. The owner wants an admin screen where they can **filter orders by any field**: "Total > 50 **and** Country = GB", or "Status = Unpaid **and** Total > 200", chosen from dropdowns. And it must run as **SQL** in the database, not by loading every order into memory ([Episode 6](ch:linq#where-does-the-query-run-ienumerable-vs-iqueryable)).
+:::plain
+When the filters are chosen at runtime, build the query the same way the compiler builds a lambda, as a tree of small pieces. EF Core can still turn that tree into safe SQL.
+:::
+
+Afternoon. The owner wants an admin screen to **filter orders by any field**, chosen from dropdowns. For example "Total > 50 **and** Country = GB", or "Status = Unpaid **and** Total > 200". And it must run as **SQL** in the database, not by loading every order into memory ([Episode 6](ch:linq#where-does-the-query-run-ienumerable-vs-iqueryable)).
 
 You can't write a lambda for every combination. Gluing SQL strings together (`"WHERE " + field + " > " + value`) is a textbook **SQL injection** hole.
 
-**The lightbulb:** in Episode 6, EF Core *read* an expression tree that the compiler built from your lambda. Nothing stops **you** from building that tree yourself, node by node, from whatever the user picked. The `System.Linq.Expressions` API is a **code factory**: `Expression.Property`, `Expression.Constant`, `Expression.GreaterThan` and `Expression.AndAlso` assemble an `Expression<Func<Order, bool>>` at runtime, the same thing the compiler would have built from `o => o.Total > 50 && o.Country == "GB"`.
+**The lightbulb:** in Episode 6, EF Core *read* an expression tree that the compiler built from your lambda. Nothing stops **you** from building that tree yourself, node by node, from whatever the user picked. The `System.Linq.Expressions` API is a **code factory**. `Expression.Property`, `Expression.Constant`, `Expression.GreaterThan` and `Expression.AndAlso` assemble an `Expression<Func<Order, bool>>` at runtime. It's the same tree the compiler would have built from `o => o.Total > 50 && o.Country == "GB"`.
 
 :::scene visuals/scenes/adv-exprbuild.svg | From dropdowns to a safe SQL query
 1. The admin screen produces filter **rows** at runtime: `Total > 50`, `Country = "GB"`. You can't write a lambda in advance for every combination.
@@ -544,7 +591,7 @@ Two cautions:
 - **Whitelist the fields.** Without the `allowed` list, a crafted request could filter on any property, including internal ones.
 - **`.Compile()` is expensive** (milliseconds), and under Native AOT it falls back to a slower interpreter. Cache compiled delegates. For EF Core you don't compile at all, because EF reads the tree.
 
-The same trick powers object mappers and ORMs: they build a property-reading tree once per type, compile it, cache the delegate, and from then on it runs as fast as hand-written code. That's the reflection "bill" from Act 5, paid once instead of on every call.
+The same trick powers object mappers and ORMs. They build a property-reading tree once per type, compile it and cache the delegate. From then on it runs as fast as hand-written code. That's the reflection "bill" from Act 5, paid once instead of on every call.
 
 :::qa How would you build a dynamic, injection-safe filter for EF Core?
 Build an `Expression<Func<T,bool>>` with the `System.Linq.Expressions` API (`Parameter`, `Property`, `Constant`, comparisons, `AndAlso`) from the user's choices, whitelisting which properties may be filtered, and pass it to `IQueryable.Where`. EF Core translates the tree to SQL and sends the constants as parameters, so user input never becomes SQL text. Conditionally chaining `.Where` calls on an `IQueryable` also works when the set of filters is fixed.
@@ -562,7 +609,7 @@ Build an `Expression<Func<T,bool>>` with the `System.Linq.Expressions` API (`Par
 | 6 | 2.4 s cold starts | source generators, Native AOT | a build-time tool to learn, and less runtime flexibility |
 | 7 | filter by any field, as SQL | hand-built expression trees | `Compile()` is slow, and inputs need whitelisting |
 
-Every row is the same trade: **pay a cost once (at build time, or by writing more careful code) so you don't pay it millions of times at runtime.** And for every tool, the advice is the same: reach for it **after a profiler or a real requirement says so**, not before ([Performance engineering](ch:performance-engineering)).
+Every row is the same trade: **pay a cost once, so you don't pay it millions of times at runtime.** The "once" is either at build time or in writing more careful code. And the advice is the same for every tool: reach for it **after a profiler or a real requirement says so**, not before ([Performance engineering](ch:performance-engineering)).
 
 ## The road so far: Part II, tied together {b}
 
@@ -585,7 +632,7 @@ Notice how they lean on each other. Act 3's `ref` fixes Episode 1's copied struc
 
 ## Next: the web {b}
 
-Kettle's C# is solid. But so far it's been a program on its own. Customers reach it over **HTTP**, through a web server, with dependency injection wiring the services together, middleware checking every request, and configuration that's different in each environment. That's **ASP.NET Core**, and almost every page of it uses what you've just learned: delegates for middleware, interfaces for DI, generics for `ILogger<T>`, attributes for `[Authorize]`, source generators for JSON, and async everywhere. [Part III · ASP.NET Core →](ch:aspnet-hosting)
+Kettle's C# is solid. But so far it's been a program on its own. Customers reach it over **HTTP**, through a web server, with dependency injection wiring the services together, middleware checking every request, and configuration that's different in each environment. That's **ASP.NET Core**, and almost every page of it uses what you've just learned. Delegates for middleware, interfaces for DI, generics for `ILogger<T>`, attributes for `[Authorize]`, source generators for JSON, and async everywhere. [Part III · ASP.NET Core →](ch:aspnet-hosting)
 
 ## Further reading
 
