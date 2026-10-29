@@ -227,7 +227,8 @@ function buildChapter(id, meta, body, ctx) {
         const st = { lines: new Set(), vars: undefined, out: [], err: '', say: '' };
         for (const part of m[1].split(',')) { const [a, z] = part.trim().split('-').map(Number); for (let k = a; k <= (z || a); k++) st.lines.add(k); }
         for (const x of f) {
-          if (x.startsWith('>')) st.out.push(x.slice(1).replace(/^ /, ''));
+          if (x.startsWith('>+')) st.out.push({ add: true, t: x.slice(2).replace(/^ /, '') });
+          else if (x.startsWith('>')) st.out.push({ t: x.slice(1).replace(/^ /, '') });
           else if (x.startsWith('!')) st.err = x.slice(1).trim();
           else if (x === '-') st.vars = [];
           else if (x) st.vars = x.split(/\s;\s/).map(v => { const i = v.indexOf('='); return [v.slice(0, i).trim(), v.slice(i + 1).trim()]; });
@@ -243,11 +244,13 @@ function buildChapter(id, meta, body, ctx) {
       const vars = st.vars === undefined ? prevVars : st.vars;
       const prev = Object.fromEntries(prevVars);
       const rows = vars.map(([k, v]) => `<tr class="${prev[k] !== v ? 'chg' : ''}"><td>${esc(k)}</td><td>${renderInlineTitle(v)}</td></tr>`).join('');
-      const newOut = st.out.map(o => `<div class="new">${esc(o)}</div>`).join('');
+      const lines = outSoFar.slice(), fresh = new Set();
+      for (const o of st.out) { if (o.add && lines.length) lines[lines.length - 1] += o.t; else lines.push(o.t); fresh.add(lines.length - 1); }
+      const outHtml = lines.map((o, k) => `<div${fresh.has(k) ? ' class="new"' : ''}>${esc(o)}</div>`).join('');
       const html = `<div class="walk-state" data-step="${i + 1}"${i ? ' hidden' : ''}>`
         + `<div class="walk-col"><div class="walk-h">Variables</div>${rows ? `<table class="walk-vars">${rows}</table>` : '<div class="walk-none">none in play</div>'}</div>`
-        + `<div class="walk-col"><div class="walk-h">Output</div><div class="walk-out">${outSoFar.map(o => `<div>${esc(o)}</div>`).join('')}${newOut}${outSoFar.length || newOut ? '' : '<span class="walk-none">nothing printed yet</span>'}</div></div></div>`;
-      prevVars = vars; outSoFar = outSoFar.concat(st.out);
+        + `<div class="walk-col"><div class="walk-h">Output</div><div class="walk-out">${outHtml || '<span class="walk-none">nothing printed yet</span>'}</div></div></div>`;
+      prevVars = vars; outSoFar = lines;
       return html;
     }).join('');
     const code = codeLines.map((ln, i) => `<div class="wl" data-ln="${i + 1}"><span class="wn">${i + 1}</span><span class="wc">${ln || ' '}</span></div>`).join('');

@@ -35,8 +35,11 @@ next: linq, threading-concurrency
 
 ## Previously, and the problem {b}
 
-In [Episode 4](ch:delegates-events) Kettle learned to swap discount rules and notify subscribers about every order. Business took off. There are 200,000 orders in memory, and the order-status page is slow:
+In [Episode 4](ch:delegates-events) Kettle learned to swap discount rules and notify subscribers about every order. Business took off. There are 200,000 orders in memory, and the order-status page is slow. On launch day it was instant, with 300 orders. Nothing in the code changed since. Only the amount of data did, and that's the clue: the code does more work for every order that exists.
 
+Here's a scaled-down copy you can run, with 100,000 orders and 100 customers checking theirs at once:
+
+:::walk Same data, two containers
 ```csharp
 using System.Diagnostics;
 
@@ -57,8 +60,27 @@ Console.WriteLine($"Dictionary: ~{lookingFor.Length} lookups, {sw.ElapsedMillise
 
 record Order(int Id, decimal Total);
 ```
+@3-4 | orders = List [#0, #1, #2 … #99,999]
+100,000 orders in a `List`, in ID order.
+@5 | orders = List [#0 … #99,999] ; lookingFor = [99,900 … 99,999]
+100 customers looking for recent orders, which are near the **end** of the list.
+@7-8 | checks = 0
+Count how many orders get compared, and start a stopwatch.
+@9-10 | id = 99,900 ; checks = 99,901
+`First` walks the list **from the start** until it finds a match. For order 99,900 that's 99,901 comparisons.
+@9-10 | id = 99,999 ; checks = 9,995,050
+Repeat for all 100 customers. Each one walks almost the whole list again.
+@11 | | > List:       9,995,050 checks, … ms
+Almost **10 million** comparisons to answer 100 questions. Double the orders and this doubles too. That's O(n).
+@13 | byId = Dictionary { 0 → #0, 1 → #1 … 99,999 → #99,999 }
+Build a `Dictionary` keyed by ID, once. This costs one pass over the list.
+@15 | byId = Dictionary { 0 → #0 … } ; id = 99,999
+`byId[id]` doesn't search. It hashes the key to pick a bucket and looks only there, one or two comparisons per lookup.
+@16 | | > Dictionary: ~100 lookups, … ms
+About 100 comparisons in total. That's the order-status page fixed. (The milliseconds depend on your machine. The comparison count doesn't.)
+:::
 
-Run it. The `List` makes about **10 million** comparisons to find 100 orders, and the `Dictionary` takes almost no time. The data and the answers are the same. Only the container changed.
+The data and the answers are the same. Only the container changed.
 
 ## The lightbulb: a container shaped like the question {b}
 
@@ -109,6 +131,7 @@ Three of those are about *order*, and they're easiest to see:
 3. **`PriorityQueue<T, P>`** gives the most *urgent* item, the one with the lowest priority number, whatever order they arrived in.
 :::
 
+:::walk Three rules for "what comes out next"
 ```csharp
 var packing = new Queue<string>();          // FIFO: fair order
 packing.Enqueue("order 1"); packing.Enqueue("order 2");
@@ -123,11 +146,25 @@ dispatch.Enqueue("standard #3", 2);
 dispatch.Enqueue("express #9", 1);
 Console.WriteLine($"dispatch first: {dispatch.Dequeue()}");    // express #9
 ```
+@1-2 | packing = Queue [order 1, order 2]
+A queue. New items join at the back.
+@3 | packing = Queue [order 2] | > pack next: order 1
+`Dequeue` takes from the **front**: the order that has waited longest goes first. That's fair.
+@5-6 | packing = Queue [order 2] ; undo = Stack [removed Earl Grey, added Sencha] (top first)
+A stack. New items go on **top**.
+@7 | packing = Queue [order 2] ; undo = Stack [added Sencha] | > undo: removed Earl Grey
+`Pop` takes the top: the most recent action is undone first, exactly like Ctrl+Z.
+@9-11 | dispatch = PriorityQueue [standard #3 (2), express #9 (1)]
+A priority queue. Each item has a number, and a lower number means more urgent. The express order arrived **second**.
+@12 | dispatch = PriorityQueue [standard #3 (2)] | > dispatch first: express #9
+It comes out **first** anyway, because it's more urgent. Arrival order doesn't matter.
+:::
 
 ### The single best fix: `List.Contains` → `HashSet`
 
 The most common slow code in real projects is a `Contains` on a list, inside a loop:
 
+:::walk The one-line fix that's worth the most
 ```csharp
 var blockedList = Enumerable.Range(0, 2_000).Select(i => $"spam{i}@x.com").ToList();
 var signups = Enumerable.Range(0, 2_000).Select(i => $"user{i}@kettle.shop").ToList();
@@ -140,6 +177,19 @@ var blocked = new HashSet<string>(blockedList, StringComparer.OrdinalIgnoreCase)
 var allowedFast = signups.Count(s => !blocked.Contains(s));    // ~2,000 hash lookups: O(n + m)
 Console.WriteLine($"HashSet: {signups.Count:N0} lookups, {allowedFast} allowed");
 ```
+@1-2 | blockedList = List of 2,000 emails ; signups = List of 2,000 emails
+Kettle's sign-up check: 2,000 new sign-ups, and a list of 2,000 blocked addresses.
+@5 | checks = 4,000,000
+For **each** sign-up, `Any` scans the whole blocked list. None match, so every scan goes to the end: 2,000 × 2,000 comparisons.
+@6 | | > List:    4,000,000 comparisons
+Four million. With 20,000 of each it would be **400 million**: ten times the data, a hundred times the work. That's O(n × m).
+@8 | blocked = HashSet of 2,000 emails (case-insensitive)
+Put the blocked addresses in a `HashSet`, once. The comparer makes `SPAM1@x.com` count as the same address as `spam1@x.com`.
+@9 | blocked = HashSet of 2,000 emails ; allowedFast = 2000
+Now each sign-up is **one** hash lookup. 2,000 sign-ups means about 2,000 lookups.
+@10 | | > HashSet: 2,000 lookups, 2000 allowed
+Same answer, two thousand times less work. Change one type, and the slow page is gone.
+:::
 
 Turning the lookup list into a `HashSet` changes O(n×m) into O(n+m). Interviewers ask about this one because it's such an easy, common win.
 
@@ -161,6 +211,7 @@ A `List` is an array with spare room at the end. When the room runs out, it move
 5. The 9th `Add` doubles the array again, to 16, then 32, then 64. The copies get rarer as the list grows, so averaged over every `Add` the cost is constant. That's what **amortised O(1)** means.
 :::
 
+:::walk Watch a List grow
 ```csharp
 var list = new List<int>();
 var lastCapacity = -1;
@@ -174,6 +225,19 @@ Console.WriteLine("← each jump was a full copy");
 var presized = new List<int>(capacity: 10_000);   // know the size? Skip the copies entirely
 Console.WriteLine(presized.Capacity);
 ```
+@1 | list = [ ] (Count 0, Capacity 0)
+An empty `List<int>`. Inside, it's an array plus a count. There's no array yet.
+@5-6 | list = [0] (Count 1, Capacity 4) | > 4
+The first `Add` creates an array with **4** slots.
+@5-6 | list = [0, 1, 2, 3, 4] (Count 5, Capacity 8) | >+  8
+The 5th `Add` finds the array full. It allocates a new array of **8**, copies all 4 items across, then adds. The old array is garbage now.
+@5-6 | list = [0 … 16] (Count 17, Capacity 32) | >+  16 32
+Each time it fills, it doubles: 16, then 32. Notice the copies get **rarer**: 4 items, then 8, then 16 between them.
+@8 | list = [0 … 99] (Count 100, Capacity 128) | >+  64 128 ← each jump was a full copy
+100 adds caused only 6 resizes. Adding is "amortised O(1)": the occasional big copy, spread over all the cheap adds, averages out to a constant cost each.
+@10-11 | presized = [ ] (Count 0, Capacity 10000) | > 10000
+If you know roughly how many items are coming, say so up front. Then there are no resizes at all.
+:::
 
 Related costs: `Insert(0, x)` and `RemoveAt(0)` are O(n), because every item after that position has to shift. Need fast removal from the front? That's what `Queue<T>` is for.
 
@@ -189,6 +253,7 @@ The lookup you stepped through above, in three steps:
 2. Turn the number into a bucket index (roughly `hash % bucketCount`).
 3. Compare the few entries in that bucket with `Equals`.
 
+:::walk Look it up once, and know if it was there
 ```csharp
 var stock = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
 {
@@ -203,6 +268,16 @@ stock["TEA-03"] = 5;                                // add or overwrite
 try { stock.Add("TEA-01", 1); }                     // Add throws on a duplicate key
 catch (ArgumentException) { Console.WriteLine("duplicate key"); }
 ```
+@1-5 | stock = { TEA-01 → 12, TEA-02 → 0 }
+A dictionary of stock by SKU. The comparer decides what "same key" means: here, case is ignored.
+@7 | stock = { TEA-01 → 12, TEA-02 → 0 } ; qty = 12
+`TryGetValue` does **one** lookup and tells you two things: was it there (the `bool`), and what's the value (the `out`). `tea-01` finds `TEA-01` because of the comparer.
+@8 | | > TEA-01: 12 in stock
+@10 | stock = { TEA-01 → 12, TEA-02 → 0, TEA-03 → 5 }
+The indexer adds a new key, or overwrites the value if the key is already there.
+@11-12 | | > duplicate key
+`Add` is stricter: it throws if the key exists. Use it when a duplicate would be a bug you want to hear about.
+:::
 
 - Use **`TryGetValue`**, not `ContainsKey` followed by the indexer, which does the whole lookup twice.
 - **Keys must be immutable.** The bucket is chosen from the hash code *at insertion*. If the key changes later, the dictionary looks in the wrong bucket forever ([Episode 1](ch:type-system#equality-the-same-means-three-things)).
@@ -230,6 +305,7 @@ Collections implement a ladder of interfaces. Each rung promises one more abilit
 
 The design rule is **accept the least you need, and return what you honestly have**:
 
+:::walk Ask for the least you need
 ```csharp
 var orders = new List<Order> { new(1, 12m), new(2, 30m) };
 Console.WriteLine(Sum(orders));                     // a List works
@@ -240,6 +316,17 @@ static IReadOnlyList<Order> Recent(List<Order> all) => all.TakeLast(10).ToList()
 
 record Order(int Id, decimal Total);
 ```
+@5 | -
+`Sum` asks for `IEnumerable<Order>`, the lowest rung. It only needs to loop, so that's all it asks for.
+@1 | orders = List [#1 £12, #2 £30]
+Two orders in a list.
+@2 | | > 42
+A `List` is an `IEnumerable`, so it fits.
+@3 | | > 30
+So does a LINQ query, which isn't a list at all. If `Sum` had demanded `List<Order>`, the caller would have to copy the query into a list first.
+@6 | -
+`Recent` goes the other way. It **returns** `IReadOnlyList<Order>`: callers can count and index, which is honest, but the type doesn't offer `Add`.
+:::
 
 :::gotcha An `IEnumerable<T>` might run twice
 An `IEnumerable<T>` may be a *lazy query*, not stored data. Loop over it twice and the query runs twice. If it's a database query, that's two database trips ([LINQ](ch:linq#deferred-execution-a-recipe-not-a-meal)). If you need to look more than once, call `.ToList()` first.
@@ -284,6 +371,39 @@ Exposing from a class?              → IReadOnlyList<T> / IReadOnlyDictionary<K
 | `ReadOnlyCollection<T>` (`list.AsReadOnly()`) | No | Yes, through the wrapped list | A thin wrapper |
 | `ImmutableList<T>`, `ImmutableArray<T>` | No. "Changes" return a new collection | **Never** | Safe to share anywhere |
 | `FrozenDictionary<K,V>`, `FrozenSet<T>` (.NET 8) | No | **Never** | Slow to build, **fastest possible reads** |
+
+See how thin "read-only" is:
+
+:::walk A read-only view is not a frozen list
+```csharp
+var menu = new List<string> { "Sencha", "Assam" };
+IReadOnlyList<string> view = menu;            // what the class hands out
+Console.WriteLine(view.Count);
+
+// view.Add("Chai");                          // compile error: no Add here
+menu.Add("Chai");                             // the owner still can
+Console.WriteLine(view.Count);
+
+var sneaky = (List<string>)view;              // and a cast gets round it
+sneaky.Remove("Assam");
+Console.WriteLine(string.Join(", ", menu));
+```
+@1 | menu = → list #1 [Sencha, Assam]
+The class's own list.
+@2 | menu = → list #1 [Sencha, Assam] ; view = → list #1, seen as IReadOnlyList
+The class returns it as `IReadOnlyList<string>`. That's **the same list**, seen through an interface with no `Add` or `Remove`. Nothing was copied.
+@3 | | > 2
+@5 | ! CS1061: 'IReadOnlyList<string>' does not contain a definition for 'Add'
+Through the view you can't change it. That's all "read-only" means: *this reference* can't write. (It's commented out so the rest can run.)
+@6 | menu = → list #1 [Sencha, Assam, Chai] ; view = → list #1, seen as IReadOnlyList
+But the owner can still change the list underneath.
+@7 | | > 3
+And the "read-only" view sees it, because it's the same list.
+@9 | menu = → list #1 [Sencha, Assam, Chai] ; view = → list #1 ; sneaky = → list #1, seen as List
+Worse, any caller can cast the view back to `List<string>`, because that's what the object really is.
+@10-11 | menu = → list #1 [Sencha, Chai] | > Sencha, Chai
+And now a caller has changed your internal list. If that matters, return a real copy (`.ToList()`), a `ReadOnlyCollection` (`list.AsReadOnly()`, which a cast can't get past), or an immutable collection.
+:::
 
 The first two only stop *you*. Whoever holds the original `List` can still change it under your feet. The last two guarantee the data can never change. `Frozen*` makes the ideal startup lookup table:
 
@@ -344,6 +464,7 @@ No. Under contention, several threads can run the factory, but only one result i
 
 ## Arrays, spans and collection expressions {i}
 
+:::walk Copies and windows
 ```csharp
 int[] a = [1, 2, 3, 4];                 // collection expression (C# 12)
 List<string> teas = ["Sencha", "Assam"];
@@ -356,6 +477,22 @@ Span<int> view = a.AsSpan(1, 2);        // a VIEW of {2, 3}, with no copy
 view[0] = 99;
 Console.WriteLine($"{middle[0]} vs {a[1]}");   // 2 vs 99: the span wrote into a itself
 ```
+@1 | a = → array [1, 2, 3, 4]
+A collection expression: the same `[...]` syntax works for arrays, lists and spans.
+@3 | a = → array [1, 2, 3, 4] ; more = → array [1, 2, 3, 4, 5, 6]
+`..a` spreads `a`'s items into a new array.
+@4 | | > 1,2,3,4,5,6
+@6 | | > 4
+`^1` means "1 from the end". It's the last item.
+@7 | a = → array [1, 2, 3, 4] ; middle = → new array [2, 3]
+A range on an array makes a **copy**: a new array with items 1 and 2.
+@8 | a = → array [1, 2, 3, 4] ; middle = → new array [2, 3] ; view = window onto a[1..3]
+A span is a **window** onto the same memory. Nothing is copied.
+@9 | a = → array [1, 99, 3, 4] ; middle = → new array [2, 3] ; view = window onto a[1..3]
+Write through the window and `a` itself changes.
+@10 | | > 2 vs 99
+The copy kept the old 2. The array has 99.
+:::
 
 The two lines that look alike behave differently. A **range** (`a[1..3]`) on an array makes a *copy*. A **span** is a *window* onto the original memory. Spans get their own episode in [Advanced C#](ch:advanced-csharp).
 
@@ -369,6 +506,7 @@ You can tell a set or a sorted collection what "the same" and "comes first" mean
 
 Hash-based and sorted collections accept your own rules for "same" and "order", without changing the type itself:
 
+:::walk Your own definition of "the same"
 ```csharp
 var customers = new[] { new Customer("Ada", "ADA@x.com"), new Customer("Ada L.", "ada@x.com") };
 
@@ -383,6 +521,19 @@ Console.WriteLine(byName.Min!.Name);
 
 record Customer(string Name, string Email);
 ```
+@1 | customers = [Ada (ADA@x.com), Ada L. (ada@x.com)]
+Two records that are different by default: the names differ and the email case differs.
+@3-5 | byEmail = HashSet (same email, ignoring case = same customer)
+Give the set your own **equality comparer**: two functions, one for "are these equal?" and one for "what's the hash code?". They agree with each other, which is the rule from Episode 1.
+@6 | byEmail = HashSet [Ada (ADA@x.com)]
+The second customer hashes to the same bucket and compares equal, so it isn't added.
+@7 | | > 1
+One customer, as far as this set is concerned. The `Customer` record itself didn't change.
+@9 | byName = SortedSet [Ada, Ada L.]
+A sorted set with your own ordering, by name.
+@10 | | > Ada
+`Min` is the first in that order.
+:::
 
 ## Next episode {b}
 
