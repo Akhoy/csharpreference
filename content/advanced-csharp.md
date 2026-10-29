@@ -65,6 +65,7 @@ Splitting text into pieces copies every character into new strings. A span lets 
 
 Every night Kettle imports lines like `2026-11-27,TEA-01,6.50,GBP`. Here's the parsing code with an allocation counter attached. Run it:
 
+:::walk Measure it: the obvious parser
 ```csharp
 using System.Globalization;
 
@@ -79,6 +80,17 @@ var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
 Console.WriteLine($"20,000 lines: £{total:N2}, {bytes:N0} bytes of garbage created");
 Console.WriteLine($"2,000,000 lines would be ~{bytes * 100 / 1_000_000:N0} MB of garbage, every night");
 ```
+@3 | lines = 20,000 lines like "2026-11-27,TEA-00000,6.50,GBP"
+A scaled-down night: 20,000 lines instead of 2 million. They're already in memory, so this part doesn't count.
+@5-6 | before = (bytes allocated so far) ; total = 0
+Read the allocation counter.
+@7-8 | line = "2026-11-27,TEA-00000,6.50,GBP" ; Split gives = new string[4] + "2026-11-27" + "TEA-00000" + "6.50" + "GBP"
+For each line, `Split(',')` builds a **new array** and **four new strings**, copying every character. We use one field (the price) and throw the other four objects away.
+@9 | total = 170,000.00 ; bytes = 3,048,120
+Three megabytes of objects nobody needed. That's about 150 bytes of garbage per line.
+@11-12 | | > 20,000 lines: £170,000.00, 3,048,120 bytes of garbage created | > 2,000,000 lines would be ~304 MB of garbage, every night
+Scale it up to the real file and the GC has to find and free hundreds of megabytes of tiny strings, at the same time as the import is trying to run.
+:::
 
 `Split` builds a new array and four new strings for every line, copying every character, and all of it is thrown away a moment later. Two million lines means **ten million objects** for the GC to find and free.
 
@@ -92,6 +104,7 @@ Console.WriteLine($"2,000,000 lines would be ~{bytes * 100 / 1_000_000:N0} MB of
 5. A span can point at **stack** memory, which vanishes when a method returns. So the compiler never lets a span reach the heap: no fields, no lambdas, no `await`. Those rules are what make "zero-copy" safe.
 :::
 
+:::walk Measure it: the same parser with a window
 ```csharp
 using System.Globalization;
 
@@ -112,9 +125,27 @@ static decimal PriceOf(string line)
     return decimal.Parse(price, CultureInfo.InvariantCulture);   // parses straight from the window
 }
 ```
+@7 | line = "2026-11-27,TEA-00000,6.50,GBP"
+Same lines, same total. Jump into `PriceOf`.
+@13 | rest = window over "2026-11-27,TEA-00000,6.50,GBP"
+A `ReadOnlySpan<char>` over the whole line. It's just "start here, this long" over the string's existing characters. No copy.
+@14 | rest = window over "TEA-00000,6.50,GBP"
+Slice past the first comma. Slicing a span makes a **smaller window**, never a new string.
+@15 | rest = window over "6.50,GBP"
+Past the second comma.
+@16 | rest = window over "6.50,GBP" ; price = window over "6.50"
+Up to the next comma: a window over exactly the four price characters.
+@17 | price = window over "6.50" → 6.50
+`decimal.Parse` accepts a span, so it reads the digits straight out of the original line.
+@8 | total = 170,000.00 ; bytes = 824
+After all 20,000 lines: **824 bytes**, and those are the stopwatch and the string formatting, not the parsing. The parser itself allocated nothing.
+@9 | | > 20,000 lines: £170,000.00, 824 bytes of garbage created
+Same answer, about 3,700 times less garbage.
+:::
 
 A span can view almost any memory: part of an array, part of a string, or memory on the **stack** that the GC never sees.
 
+:::walk Three kinds of memory, one kind of window
 ```csharp
 int[] stock = [12, 0, 7, 3, 9];
 Span<int> middle = stock.AsSpan(1, 3);       // a window over part of an array
@@ -129,6 +160,26 @@ Span<char> label = stackalloc char[16];       // 16 chars on the STACK: no heap,
 42.TryFormat(label[4..], out int written);    // format straight into the buffer
 Console.WriteLine(label[..(4 + written)].ToString());   // ORD-42
 ```
+@1 | stock = → array [12, 0, 7, 3, 9]
+An ordinary array of stock counts.
+@2 | stock = → array [12, 0, 7, 3, 9] ; middle = window over stock[1..4] → [0, 7, 3]
+A span over part of an **array**.
+@3 | stock = → array [12, 50, 7, 3, 9] ; middle = window → [50, 7, 3]
+Writing through the window writes into the array, because there's only one copy of the data.
+@4 | | > 50
+@6 | word = window over "Sencha tea"[0..6] → "Sencha"
+A span over part of a **string**. No new string exists until you ask for one.
+@7 | | > Sencha
+`ToString()` makes one, here, only because we want to print it.
+@9 | label = 16 chars on the stack, all empty
+`stackalloc` reserves 16 characters in this method's **stack frame**. The GC never sees them, and they vanish when the method returns.
+@10 | label = "ORD-" + 12 empty chars
+Copy "ORD-" into the start of the buffer.
+@11 | label = "ORD-42" + 10 empty chars ; written = 2
+`TryFormat` writes the digits of 42 straight into the rest of the buffer, with no temporary string.
+@12 | | > ORD-42
+Print the part that was used.
+:::
 
 :::qa What is Span<T> and why is it useful?
 A stack-only struct that represents a contiguous region of memory (an array, a string, the stack or native memory) as a pointer plus a length. Slicing creates views without copying, so parsing and formatting can run with zero allocations, which reduces GC pressure in hot paths.
@@ -188,10 +239,12 @@ The import reads the file in 1 MB chunks, and every chunk allocates a fresh 1 MB
 5. Two rules. `Rent` may give you a **bigger** array than you asked for, so use only the length you requested. And after `Return`, the array **belongs to someone else**, so never touch it again.
 :::
 
+:::walk Rent, use, give back
 ```csharp
 using System.Buffers;
 
 var pool = ArrayPool<byte>.Shared;
+byte[]? first = null;
 for (int chunk = 1; chunk <= 3; chunk++)
 {
     byte[] buffer = pool.Rent(100_000);              // may be bigger than requested
@@ -199,15 +252,30 @@ for (int chunk = 1; chunk <= 3; chunk++)
     {
         var usable = buffer.AsSpan(0, 100_000);      // only use what you asked for
         usable.Fill((byte)chunk);
-        Console.WriteLine($"chunk {chunk}: rented {buffer.Length:N0} bytes, hash {buffer.GetHashCode()}");
+        first ??= buffer;
+        Console.WriteLine($"chunk {chunk}: rented {buffer.Length:N0} bytes, same array as chunk 1? {ReferenceEquals(buffer, first)}");
     }
     finally
     {
         pool.Return(buffer);                         // give it back, even on errors
     }
 }
-// the same hash each time: the SAME array, reused, never reallocated
 ```
+@3-4 | pool = the shared shelf of arrays ; first = null
+The pool is shared by the whole app.
+@7 | chunk = 1 ; buffer = → array A (131,072 bytes)
+Rent a buffer of at least 100,000 bytes. The pool hands out arrays in fixed sizes, so you get **131,072** (2¹⁷). That's why you must only use the part you asked for.
+@10-11 | chunk = 1 ; buffer = → array A ; usable = window over A[0..100,000]
+A span limits the code to the 100,000 bytes we asked for.
+@12-13 | first = → array A | > chunk 1: rented 131,072 bytes, same array as chunk 1? True
+@17 | chunk = 1 ; buffer = → array A (back on the shelf)
+`Return` in a `finally`, so the array goes back even if processing throws. From now on, array A belongs to the pool, not to us.
+@7 | chunk = 2 ; buffer = → array A (131,072 bytes)
+The next chunk rents again, and gets **the same array** back.
+@13 | | > chunk 2: rented 131,072 bytes, same array as chunk 1? True
+@5-18 | chunk = 3 ; buffer = → array A | > chunk 3: rented 131,072 bytes, same array as chunk 1? True
+Three chunks, one array. For the real import, that's thousands of 1 MB chunks and no new large arrays at all, so the expensive full GCs stop.
+:::
 
 Related tools: `ObjectPool<T>` (often used to pool `StringBuilder`s), `RecyclableMemoryStream`, `IBufferWriter<T>`, and **System.IO.Pipelines**, the pooled-buffer machinery Kestrel is built on.
 
@@ -240,6 +308,7 @@ You met this in Episode 1: a struct is **copied** whenever it's read out of a co
 5. Why this is safe: the compiler **proves** a ref can never outlive what it points at. Returning a ref to a local variable is a compile error. This is called **ref safety**, and the `scoped` keyword lets you tighten it further.
 :::
 
+:::walk Change it where it lives
 ```csharp
 using System.Runtime.InteropServices;
 
@@ -269,6 +338,27 @@ struct StockLevel(string sku, decimal price)
     public decimal Price = price;
 }
 ```
+@3 | stock = List [TEA-01 £10.00, TEA-02 £20.00, TEA-03 £6.00]
+Three `StockLevel` structs in a `List`. Because they're structs, they sit **inside** the list's internal array, one after another.
+@5 | s = ref → slot 0 of the list's array
+`CollectionsMarshal.AsSpan` gives a span over the list's own array, and `ref var s` makes `s` an arrow **to the slot**, not a copy of the struct.
+@6 | stock = List [TEA-01 £10.50, TEA-02 £20.00, TEA-03 £6.00]
+`s.Price *= 1.05m` writes straight into slot 0.
+@5-6 | stock = List [TEA-01 £10.50, TEA-02 £21.00, TEA-03 £6.30]
+The loop does the same for every slot. No struct was copied out or back in.
+@7 | | > TEA-01 £10.50, TEA-02 £21.00, TEA-03 £6.30
+@9 | shelf = [TEA-09 £4.00, TEA-10 £0]
+An array with a mistake in it: TEA-10 has no price.
+@16-17 | i = 1
+`Find` searches the array and returns `ref items[i]`: not the struct, but **the slot it lives in**.
+@10 | tea10 = ref → shelf[1]
+So `tea10` is an alias for `shelf[1]`.
+@11 | shelf = [TEA-09 £4.00, TEA-10 £7.50]
+Setting the price through the alias changes the array.
+@21 | s = read-only ref → shelf[1]
+`in` passes a **read-only** reference: the method can look but not change, and the struct isn't copied.
+@12 | | > TEA-10 now £7.50, valid: True
+:::
 
 :::gotcha `CollectionsMarshal.AsSpan` and resizing
 `CollectionsMarshal.AsSpan(list)` gives you the `List`'s own internal array. Don't add or remove items while you hold it. A resize swaps in a new array ([Episode 5](ch:collections#inside-list-why-add-is-amortised-o-1)) and your span keeps pointing at the old one.
@@ -277,7 +367,7 @@ struct StockLevel(string sku, decimal price)
 The rest of this family is mostly for library authors: `ref readonly` returns, `scoped`, and `Unsafe`, `MemoryMarshal` and `CollectionsMarshal` for expert control over memory.
 
 :::qa What is a defensive copy, and how do `in` and `readonly struct` relate to it?
-Sometimes you call a method on a struct that's meant to stay unchanged, for example one passed by `in` or held in a `readonly` field. If the compiler can't prove the method won't modify the struct, it first copies the struct, so the original is safe. That's a defensive copy. That's a defensive copy. It silently undoes the point of `in`. Declaring the struct `readonly struct` (or its members `readonly`) tells the compiler mutation is impossible, so no copy is needed.
+Sometimes you call a method on a struct that's meant to stay unchanged, for example one passed by `in` or held in a `readonly` field. If the compiler can't prove the method won't modify the struct, it first copies the struct, so the original is safe. That's a defensive copy. It silently undoes the point of `in`. Declaring the struct `readonly struct` (or its members `readonly`) tells the compiler mutation is impossible, so no copy is needed.
 :::
 
 ## Act 4 · 04:00 — The label printer only speaks C {a}
@@ -355,6 +445,7 @@ Morning. Finance has a new rule: every **refund** and every **cancellation** mus
 5. The bill: calling a method by reflection is about **50× slower** than calling it directly. A rename breaks at runtime instead of at compile time. And the trimmer and Native AOT can't see what you look up by name. That bill comes due in Act 6.
 :::
 
+:::walk Label the code, read the labels
 ```csharp
 using System.Reflection;
 
@@ -391,6 +482,23 @@ class OrderAdmin
     public string Get(int orderId) => $"order {orderId}: 2 × Sencha";
 }
 ```
+@29-34 | -
+Two methods carry an `[Audit]` label, and `Get` doesn't. The label does nothing by itself: it's just an entry in the assembly's metadata.
+@4 | methodName = "Refund" ; args = [42, 12.50]
+Ask the dispatcher to call `Refund`, by name.
+@17 | m = MethodInfo for OrderAdmin.Refund
+Reflection looks the method up **by its name**, as a string, in the type's metadata.
+@18-19 | m = MethodInfo for Refund ; audit = AuditAttribute { Action = refund.issue } | > [audit] refund.issue by ada@kettle
+Read the label. It's there, so log it. This is the **one place** the rule is enforced.
+@20 | | >   refunded £12.50 on order 42
+Call the method, also by name, with the arguments packed in an `object[]`.
+@5 | | > [audit] order.cancel by ada@kettle | >   cancelled order 43
+`Cancel` has a label too.
+@6 | | >   order 44: 2 × Sencha
+`Get` has no label, so it isn't audited. Add a new `[Audit]` method next month and it's covered automatically, with nobody having to remember.
+@8-12 | type = OrderAdmin ; m = each public method | > | > Every audited action in the app (for the admin page): | >   OrderAdmin.Refund → refund.issue | >   OrderAdmin.Cancel → order.cancel
+Reflection can also **list** everything: every type in the assembly, every method, every label. That's how ASP.NET Core finds your controllers and test runners find your tests.
+:::
 
 That's the real pattern behind much of .NET. **DI containers** find constructors this way, **serializers** read properties, **ASP.NET Core** finds controllers and `[Authorize]`, **EF Core** builds its model, and **test frameworks** find `[Fact]` methods.
 
@@ -407,6 +515,7 @@ Who reads attributes:
 
 Measure it. Here's the same method called 200,000 times, three ways:
 
+:::walk Measure it: the price of calling by name
 ```csharp
 using System.Diagnostics;
 using System.Reflection;
@@ -431,6 +540,18 @@ Console.WriteLine($"direct call:         {sw.ElapsedMilliseconds} ms");
 
 class OrderAdmin { public decimal Refund(decimal amount) => amount; }
 ```
+@4-7 | refund = MethodInfo for Refund ; callArgs = [5]
+Look the method up once, and box the argument into an `object[]`.
+@9-10 | i = 0 … 199,999
+Call it 200,000 times through `MethodInfo.Invoke`. Each call checks the arguments, unpacks the array and boxes the result.
+@11 | | > MethodInfo.Invoke:   … ms
+@13 | fast = Func<decimal, decimal> → OrderAdmin.Refund
+Reflect **once**, then turn the `MethodInfo` into an ordinary typed delegate.
+@14-16 | | > cached delegate:     … ms
+Much faster, because each call is now a normal delegate call with no checks and no boxing.
+@18-20 | | > direct call:         … ms
+The plain call is the baseline. The exact milliseconds depend on your machine; in your browser, `Invoke` is typically 10 to 30 times slower than the direct call. That's why frameworks cache reflection, or skip it with generators (next act).
+:::
 
 - **It's slow and allocates.** There are string lookups, and arguments are boxed into an `object[]`. Cache the `MethodInfo`, or turn it into a delegate once, as above.
 - **The compiler can't see it.** Rename `Refund` and `GetMethod("Refund")` still compiles, then returns `null` at runtime.
@@ -464,6 +585,7 @@ Kettle moves its price-check API to a serverless function, which starts a fresh 
 
 Generated code is less magic than it sounds. It's the boring code you'd write yourself if you had the patience. Here's what an `[Audit]` generator would emit in place of Act 5's reflection, and it runs with no reflection at all:
 
+:::walk What a generator would write for you
 ```csharp
 var admin = new OrderAdmin();
 Console.WriteLine(AuditedOrderAdmin.Refund(admin, 42, 12.50m));
@@ -490,6 +612,18 @@ class OrderAdmin
     [Audit("order.cancel")] public string Cancel(int orderId) => $"cancelled order {orderId}";
 }
 ```
+@20-24 | -
+Your code is unchanged: the same labelled methods.
+@8-14 | -
+This class is what an `[Audit]` source generator would write **at build time**, after reading the labels. It's plain C#: a wrapper for each labelled method, and the list of actions as an array.
+@2 | orderId = 42 ; amount = 12.50
+Call the generated wrapper.
+@11 | | > [audit] refund.issue by ada@kettle | > refunded £12.50 on order 42
+It logs, then calls `Refund` **directly**. There's no lookup by name, no `object[]` and no boxing.
+@3 | | > [audit] order.cancel by ada@kettle | > cancelled order 43
+@4 | | > audited actions: refund.issue, order.cancel
+The list of audited actions was worked out at build time, so at startup there's nothing to discover. And if someone renames `Refund`, line 11 stops compiling, so the build tells you.
+:::
 
 Rename `Refund` now and the **build** fails inside `AuditedOrderAdmin.g.cs`, where you can see it, instead of production failing at 3 a.m.
 
@@ -546,6 +680,7 @@ You can't write a lambda for every combination. Gluing SQL strings together (`"W
 5. Why not just build a SQL string? `"WHERE " + userInput` is SQL injection waiting to happen. In a tree, whatever the user typed is only ever a `Constant` node, sent as a parameter.
 :::
 
+:::walk Build the query from what the admin picked
 ```csharp
 using System.Globalization;
 using System.Linq.Expressions;
@@ -585,6 +720,30 @@ static Expression<Func<Order, bool>> Build(Filter[] rows)
 record Order(int Id, decimal Total, string Country);
 record Filter(string Field, string Op, string Value);
 ```
+@4-5 | orders = [#1 £80 GB, #2 £30 GB, #3 £120 FR] ; fromScreen = [Total > 50, Country = GB]
+Three orders, and two filter rows that came from dropdowns at runtime.
+@7
+Build a filter from the rows.
+@16-18 | o = parameter "o" (an Order) ; body = null
+`Expression.Parameter` makes the `o` in `o => …`. `body` will hold the condition as it grows.
+@21-22 | r = Total > 50 ; prop = o.Total
+First row. "Total" is on the allowed list. `Expression.Property` makes the node for `o.Total`.
+@23 | r = Total > 50 ; prop = o.Total ; value = 50 (a decimal constant)
+The user's text "50" is converted to the property's type and becomes a **constant node**. It's data, never code, which is what keeps this safe from injection.
+@24-26 | test = (o.Total > 50)
+`>` picks `Expression.GreaterThan`.
+@31 | body = (o.Total > 50)
+It's the first row, so it becomes the whole body.
+@21-28 | r = Country = GB ; test = (o.Country == "GB")
+Second row: the same steps, with `Equal`.
+@31 | body = ((o.Total > 50) AndAlso (o.Country == "GB"))
+Join it to what's there with `AndAlso`, which is `&&`.
+@33 | where = o => ((o.Total > 50) AndAlso (o.Country == "GB"))
+Wrap the body and the parameter into a lambda. This is exactly the tree the compiler would build from writing that lambda by hand.
+@8 | | > built: o => ((o.Total > 50) AndAlso (o.Country == "GB"))
+@10-11 | matches = [#1] | > matches: #1
+`Compile()` turns the tree into a delegate for in-memory filtering. Only order 1 is over £50 *and* in GB. With EF Core you'd pass the tree to `db.Orders.Where(where)` instead, and it would become SQL with `50` and `'GB'` sent as parameters.
+:::
 
 Two cautions:
 
