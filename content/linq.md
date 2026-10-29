@@ -36,6 +36,7 @@ next: efcore-querying, async-await
 
 In [Episode 5](ch:collections) Kettle got fast lookups. Now the owner wants a report: *the top 3 customers by money spent on paid orders*. Here's the loop version:
 
+:::walk The loop version: every step by hand
 ```csharp
 var orders = Sample.Orders;
 
@@ -62,6 +63,19 @@ static class Sample
     ];
 }
 ```
+@1 | orders = 6 orders (#3 unpaid)
+Six orders. Ada's Rooibos order (#3) isn't paid, so it mustn't count.
+@3 | totals = { }
+A temporary dictionary to add up each customer's spending.
+@4-9 | totals = { Ada → 30, Bob → 37, Cy → 55, Di → 9 }
+Loop over every order: skip unpaid ones, read the running total (`TryGetValue` gives 0 the first time), add this order. Ada's unpaid £18 was skipped.
+@10 | totals = { Ada → 30, Bob → 37, Cy → 55, Di → 9 } ; sorted = [Ada 30, Bob 37, Cy 55, Di 9]
+Copy the dictionary into a list, because a dictionary can't be sorted.
+@11 | sorted = [Cy 55, Bob 37, Ada 30, Di 9]
+Sort it, biggest first. `b.Value.CompareTo(a.Value)` is backwards on purpose, to get descending order. That's easy to get wrong.
+@12-13 | sorted = [Cy 55, Bob 37, Ada 30, Di 9] ; i = 0…2 | > Cy: £55 | > Bob: £37 | > Ada: £30
+Print the first three, with `Math.Min` in case there are fewer than three customers. That's 11 lines of mechanics for one sentence of meaning.
+:::
 
 It works, but the *meaning* ("paid orders, grouped by customer, totalled, top 3") is buried. All you can see is mechanics: a temporary dictionary, `TryGetValue`, a copy, a sort, an index loop. Every new report means another 15 lines of the same kind of thing.
 
@@ -69,6 +83,7 @@ It works, but the *meaning* ("paid orders, grouped by customer, totalled, top 3"
 
 Here's the same report written as a description of what you want:
 
+:::walk The LINQ version: say what you want
 ```csharp
 var top3 = Sample.Orders
     .Where(o => o.Paid)                                       // keep paid orders
@@ -90,6 +105,23 @@ static class Sample
     ];
 }
 ```
+@1-6 | top3 = a query (nothing has run yet)
+This builds a **query**: a description of the work. No order has been looked at yet. (The next section is all about why.)
+@8 | top3 = a query (nothing has run yet)
+The `foreach` asks for results, so now the work happens. Here's what each line does with the data.
+@2 | after Where = [#1 Ada 30, #2 Bob 12, #4 Cy 55, #5 Bob 25, #6 Di 9]
+`Where` keeps the orders for which your lambda says `true`. Order #3 is dropped.
+@3 | after GroupBy = Ada [30] ; Bob [12, 25] ; Cy [55] ; Di [9]
+`GroupBy` sorts them into piles, one per customer. Each pile's label is its `Key`.
+@4 | after Select = [Ada 30, Bob 37, Cy 55, Di 9]
+`Select` turns each pile into one small object: the name and the pile's total.
+@5 | after OrderByDescending = [Cy 55, Bob 37, Ada 30, Di 9]
+Biggest first. No backwards comparison to get wrong.
+@6 | after Take = [Cy 55, Bob 37, Ada 30]
+Keep three. If there were only two customers, you'd simply get two.
+@8 | | > Cy: £55 | > Bob: £37 | > Ada: £30
+Same answer as the loop. But each line now reads like the request: paid orders, by customer, totalled, biggest first, top 3.
+:::
 
 Each line reads like the spec. This is **LINQ**, short for **Language Integrated Query**. It isn't special syntax built into the compiler. It's a library of **extension methods** on `IEnumerable<T>` (in `System.Linq`). Each one takes a **delegate**, the lambda, which is the "slot for behaviour" from [Episode 4](ch:delegates-events). `Where` loops for you and calls your lambda to decide what to keep.
 
@@ -104,6 +136,7 @@ The same vocabulary works on lists, arrays, dictionaries and, with EF Core, **da
 
 ### Two spellings, one query
 
+:::walk Two spellings, one query
 ```csharp
 int[] prices = [12, 30, 8, 55];
 
@@ -112,6 +145,15 @@ var b = prices.Where(p => p > 10).OrderBy(p => p).Select(p => p * 2);   // metho
 
 Console.WriteLine(string.Join(",", a) + " = " + string.Join(",", b));
 ```
+@1 | prices = [12, 30, 8, 55]
+Four prices.
+@3 | prices = [12, 30, 8, 55] ; a = query: where > 10, order, double
+**Query syntax** looks a bit like SQL. The compiler rewrites it into method calls…
+@4 | prices = [12, 30, 8, 55] ; a = query: where > 10, order, double ; b = the same query
+…exactly these ones. `a` and `b` compile to the same thing.
+@6 | | > 24,60,110 = 24,60,110
+8 is filtered out, the rest are sorted (12, 30, 55) and doubled.
+:::
 
 The compiler turns query syntax into exactly the method calls. Method syntax is what you'll see most. Query syntax reads better for **joins** and **`let`**. Many operators (`Take`, `Distinct`, `Any`, `Sum`) only exist as methods.
 
@@ -142,6 +184,32 @@ The compiler turns query syntax into exactly the method calls. Method syntax is 
 
 The real difference is **what you're claiming about the data**. `First` means "any match will do", for example after sorting. `Single` means "there must be **exactly one**". Use it for lookups by a unique key, where finding two means your data has a bug and you want to hear about it loudly.
 
+Kettle learned this the hard way. A botched import created two orders with the same ID. The refund page used `First`, so it quietly refunded whichever one came first, which was the wrong customer. With `Single` it would have crashed on the first try, and someone would have found the duplicate that day:
+
+:::walk First shrugs, Single shouts
+```csharp
+var orders = new[] { new Order(1, "Ada"), new Order(2, "Bob"), new Order(2, "Cy (imported twice!)") };
+
+Console.WriteLine(orders.First(o => o.Id == 2).Customer);
+Console.WriteLine(orders.FirstOrDefault(o => o.Id == 9)?.Customer ?? "none");
+
+try { orders.Single(o => o.Id == 2); }
+catch (InvalidOperationException) { Console.WriteLine("Single: two orders with ID 2. Data bug!"); }
+
+record Order(int Id, string Customer);
+```
+@1 | orders = [#1 Ada, #2 Bob, #2 Cy]
+Three orders, and two of them share ID 2. That should be impossible.
+@3 | | > Bob
+`First` stops at the first match and returns it. It doesn't look further, so it never notices the duplicate.
+@4 | | > none
+`FirstOrDefault` returns `null` when nothing matches, instead of throwing. `?.` and `??` turn that into "none".
+@6 | orders = [#1 Ada, #2 Bob, #2 Cy]
+`Single` keeps looking after the first match, to make sure there isn't a second one.
+@7 | | > Single: two orders with ID 2. Data bug!
+It finds Cy's order and throws. That's what you want for a lookup by a key that's supposed to be unique: a loud failure the first time, not a quiet wrong answer forever.
+:::
+
 ### SelectMany, GroupBy, ToLookup and Join on Kettle data
 
 Two of these trip people up, so here they are in pictures first:
@@ -159,6 +227,7 @@ Two of these trip people up, so here they are in pictures first:
 4. Sort the results and take three: that's the whole top-3 report from the start of the chapter.
 :::
 
+:::walk Flatten, group, look up and join
 ```csharp
 var orders = new[]
 {
@@ -188,6 +257,22 @@ Console.WriteLine(string.Join("; ", rows));
 record Order(int Id, int CustomerId, string[] Teas);
 record Customer(int Id, string Name);
 ```
+@1-7 | orders = [#1 (cust 10): Sencha, Assam ; #2 (cust 20): Rooibos ; #3 (cust 10): Sencha] ; customers = [10 Ada, 20 Bob]
+Three orders, each with a list of teas, and two customers.
+@10 | | > Sencha, Assam, Rooibos, Sencha
+`SelectMany` takes each order's tea list and **flattens** them into one sequence. `Select` would have given three separate lists.
+@13 | g = Sencha [Sencha, Sencha]
+Group the flattened teas by name. Each group is a pile with a `Key`.
+@14 | g = Sencha [Sencha, Sencha] | > Sencha × 2 | > Assam × 1 | > Rooibos × 1
+One line per pile. Groups come out in the order their key was first seen.
+@17 | byCustomer = lookup { 10 → [#1, #3], 20 → [#2] }
+`ToLookup` builds the groups **now** (not lazily) and indexes them by key, like a dictionary of lists.
+@18 | | > customer 10 has 2 orders, customer 99 has 0
+The difference from a dictionary: a missing key gives an **empty** sequence, not an exception.
+@21-23 | rows = query: orders matched to customers by ID
+`join … on … equals …` pairs each order with the customer whose `Id` matches its `CustomerId`.
+@24 | | > order 1 → Ada; order 2 → Bob; order 3 → Ada
+:::
 
 :::qa What's the difference between First, FirstOrDefault, Single and SingleOrDefault?
 `First` returns the first match and throws if there's none. `FirstOrDefault` returns default instead of throwing. `Single` asserts there is exactly one match and throws if there are zero or several. `SingleOrDefault` returns default for zero matches but still throws for several. Use `Single` when duplicates would mean a bug, and `First` when you only want any or the top item.
@@ -219,6 +304,7 @@ That behaviour has a name: **deferred execution**. Operators that just add to th
 
 Run this and watch *when* the lambda actually runs:
 
+:::walk When does the lambda run?
 ```csharp
 var prices = new List<int> { 5, 20, 40 };
 var expensive = prices.Where(p => { Console.WriteLine($"  checking {p}"); return p > 10; });
@@ -233,6 +319,23 @@ var snapshot = expensive.ToList();       // runs one last time and KEEPS the res
 Console.WriteLine($"snapshot has {snapshot.Count} items; reading it again checks nothing");
 Console.WriteLine($"first = {snapshot[0]}");
 ```
+@1 | prices = [5, 20, 40]
+Three prices in a list.
+@2 | prices = [5, 20, 40] ; expensive = a recipe: "prices where > 10"
+Build the query. The lambda prints whenever it runs, so you'll see exactly when it does.
+@3 | | > query built (nothing checked yet)
+Nothing printed "checking". Building a query runs **nothing**.
+@5 | prices = [5, 20, 40, 80] ; expensive = a recipe: "prices where > 10"
+Add 80 to the list, *after* the query was written.
+@7 | | >   checking 5 | >   checking 20 | >   checking 40 | >   checking 80 | > count = 3
+`Count()` needs a real answer, so now the query runs. It reads the list **as it is now**, so it sees the 80.
+@8 | | >   checking 5 | >   checking 20 | > first = 20
+`First()` runs the query **again** from the start. It stops at the first match, 20, so 40 and 80 aren't checked this time.
+@10 | snapshot = [20, 40, 80] | >   checking 5 | >   checking 20 | >   checking 40 | >   checking 80
+`ToList()` runs it one more time and **keeps the results** in a real list.
+@11-12 | snapshot = [20, 40, 80] | > snapshot has 3 items; reading it again checks nothing | > first = 20
+Reading the list doesn't run the lambda at all. If this were a database query, that's the difference between one round trip and three.
+:::
 
 Four bugs follow directly from this, and you'll meet each of them:
 
@@ -269,6 +372,7 @@ You can write your own lazy operator. `yield return` hands **one** item to the c
 5. How can a method pause halfway? The compiler rewrites it into a small object, a **state machine**, whose fields hold the loop position and the locals. Nothing runs until it's asked, which is why LINQ is lazy and why an infinite sequence is fine.
 :::
 
+:::walk Caller and iterator, taking turns
 ```csharp
 foreach (var p in KeepAbove(new[] { 5, 20, 40 }, 10))
     Console.WriteLine($"got {p}");
@@ -290,6 +394,27 @@ static IEnumerable<long> Fibonacci()
     while (true) { yield return a; (a, b) = (b, a + b); }    // never ends, but only runs when asked
 }
 ```
+@6-13 | -
+`KeepAbove` is a home-made `Where`. `yield return` hands over one item and **pauses** the method right there.
+@1
+`KeepAbove(...)` is called, but none of its body runs yet. You get back an object that will run it on demand.
+@8-10 | x = 5 | >   looking at 5
+The `foreach` asks for the first item, so the method starts. 5 is too small, so it isn't yielded…
+@10-11 | x = 20 | >   looking at 20
+…and the loop moves on to 20, which passes. `yield return 20` hands it over and **freezes** the method, remembering `x` and its place in the loop.
+@2 | p = 20 | > got 20
+Control is back in the caller, which prints it.
+@11 | x = 20
+The caller asks for the next item. The method **resumes just after** the `yield return`, exactly where it paused.
+@10-11 | x = 40 | >   looking at 40
+40 passes and is handed over.
+@2 | p = 40 | > got 40
+The source runs out, so the method ends and the `foreach` finishes. The output interleaves, because the two sides took turns.
+@15-19 | (a, b) = (0, 1)
+`Fibonacci` is an **infinite** loop. That's only safe because it pauses after every `yield return`.
+@4 | | > 0,1,1,2,3,5,8,13,21,34
+`Take(10)` asks for ten items, then stops asking, and the loop is never resumed again.
+:::
 
 The output interleaves "looking at" and "got". The loop and the method take turns. The compiler rewrites a `yield` method into a small **state machine** object that remembers where it paused. `foreach` drives it by calling `MoveNext()` again and again. Chaining `Where().Select().Take()` builds a pipeline of these, each pulling from the one before it. That's exactly the conveyor belt above.
 
@@ -354,6 +479,7 @@ In [Episode 4](ch:delegates-events#the-same-lambda-compiled-two-ways-expression-
 
 The best way to believe it is to build a tiny EF Core yourself. This walks the tree and writes a `WHERE` clause:
 
+:::walk Build a tiny EF Core
 ```csharp
 using System.Linq.Expressions;
 
@@ -383,6 +509,28 @@ static string Op(ExpressionType t) => t switch
 static class Rules { public static bool IsVip(Order o) => o.Total > 1000; }
 record Order(decimal Total, string Country);
 ```
+@3 | filter = tree: AndAlso(GreaterThan(Total, 100), Equal(Country, "GB"))
+Because the type is `Expression<...>`, this lambda isn't compiled into code. It's a **tree of objects** describing it.
+@4 | | > tree: ((o.Total > 100) AndAlso (o.Country == "GB"))
+@5
+Hand the tree's body to `ToSql`.
+@13 | e = AndAlso node
+The top node is a `BinaryExpression` (two sides and an operator). So translate the left side, the operator and the right side.
+@13 | e = GreaterThan node
+The left side is another binary node, `Total > 100`.
+@14 | e = Member node (Total)
+`o.Total` is a `MemberExpression`. A property becomes a column: `[Total]`.
+@15 | e = Constant node (100)
+`100` is a `ConstantExpression`, so it's written as a value. Then the same for `Country == "GB"`.
+@5 | | > SQL:  WHERE (([Total] > 100) AND ([Country] = 'GB'))
+The pieces come back up the tree and join into SQL. This is what EF Core does, with a lot more node types.
+@7-8 | custom = tree: Call(Rules.IsVip, o)
+Now a lambda that calls your own C# method.
+@16 | e = Call node
+There's no SQL for "call `Rules.IsVip`", because the database can't run C#. So the translator gives up.
+@9 | | > error: can't translate a Call node to SQL
+That's EF Core's "could not be translated" error, and now you know exactly where it comes from.
+:::
 
 That's the real mechanism, minus a few thousand edge cases. Two details matter in the real EF Core:
 
@@ -409,7 +557,36 @@ LINQ is fast enough for almost all business code. The traps are doing more work 
 :::
 
 - LINQ to Objects allocates small objects (enumerators, delegates, closures). In normal business code that cost is negligible. In true hot paths (millions of items per request) a plain `for` loop over an array or span can be several times faster.
-- **`Any()`** stops at the first match. `Count() > 0` may walk everything. (On a `List`, `Count` is a stored number, so it's free either way.)
+- **`Any()`** stops at the first match. `Count() > 0` may walk everything. (On a `List`, `Count` is a stored number, so it's free either way.) Here's the difference, counted:
+
+:::walk Count every order each one touches
+```csharp
+var orders = Enumerable.Range(1, 10_000).Select(i => new Order(i, i % 500)).ToList();
+
+int touched = 0;
+IEnumerable<Order> Watched() { foreach (var o in orders) { touched++; yield return o; } }
+
+bool any = Watched().Any(o => o.Total > 100);
+Console.WriteLine($"Any:   touched {touched:N0} orders");
+
+touched = 0;
+bool count = Watched().Count(o => o.Total > 100) > 0;
+Console.WriteLine($"Count: touched {touched:N0} orders");
+
+record Order(int Id, decimal Total);
+```
+@1 | orders = 10,000 orders (totals 0 to 499)
+Ten thousand orders.
+@3-4 | touched = 0
+A small iterator that hands out the orders one by one and counts how many it handed out.
+@6 | touched = 101 ; any = true
+`Any` asks "is there at least one over £100?". Order #101 is the first, so it stops there.
+@7 | | > Any:   touched 101 orders
+@10 | touched = 10,000 ; count = true
+`Count(...) > 0` asks the same question in a worse way. `Count` has to see **every** order to count them all, and only then do you compare with 0.
+@11 | | > Count: touched 10,000 orders
+Same answer, a hundred times more work. Against a database, `Any` becomes `EXISTS`, which can also stop at the first row.
+:::
 - Use **`MinBy` / `MaxBy`**, not `OrderBy(...).First()`.
 - Each `.ToList()` in the middle of a chain makes a full copy. Only materialise at the end, or when you need the results more than once.
 - Newer .NET versions make many operators faster (`Sum`, `Min` and `Max` over arrays use SIMD). Upgrading is often a free speed-up.
