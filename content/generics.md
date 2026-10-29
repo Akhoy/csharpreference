@@ -44,10 +44,13 @@ class OrderCache
 }
 ```
 
-Then you needed one for customers, and then for products. Now there are three files that are identical except for the type name. Every bug fix has to be made three times.
+Then you needed one for customers, and then for products. Now there are three files that are identical except for the type name. Every bug fix has to be made three times, and it didn't take long for one to be missed. Someone fixed "entries never expire" in `OrderCache` and forgot `CustomerCache`. A customer changed their address, the cache kept the old one, and a parcel went to a flat they'd moved out of.
+
+Copy-paste isn't just tedious. It's how the same bug ends up living in three places, fixed in only one of them.
 
 The old-school fix is one cache that stores `object`, since every type is an `object`:
 
+:::walk The old fix: one cache of `object`
 ```csharp
 using System.Collections;
 
@@ -62,6 +65,20 @@ catch (InvalidCastException) { Console.WriteLine("crash: that wasn't an Order");
 
 record Order(int Id);
 ```
+@3 | cache = { }
+A `Hashtable` stores `object` keys and `object` values. Since everything is an `object`, one cache can hold orders, customers, anything.
+@4 | cache = { 1 → Order(1) }
+Store an order.
+@5 | cache = { 1 → Order(1), 2 → "oops, a string" }
+Store a string by mistake. **It compiles**, because a string is an `object` too. The compiler can't tell you meant "orders only".
+@7 | cache = { 1 → Order(1), 2 → "oops, a string" } ; order = Order(1)
+Reading gives back an `object`, so you have to cast it to `Order` yourself. Here the guess is right.
+@8 | | > 1
+@9 | cache = { 1 → Order(1), 2 → "oops, a string" } ; order = Order(1)
+Cast item 2 to `Order`. It's a string, so the cast fails **at runtime**, when a customer is using the site.
+@10 | | > crash: that wasn't an Order
+In a real app nothing would catch this. The mistake on line 5 turns into a crash somewhere far away, much later.
+:::
 
 It compiles, but the compiler has stopped helping. It can't stop a string going in, every read needs a cast, and value types get boxed ([Episode 1](ch:type-system#boxing-a-value-type-in-a-cardboard-box)). You've swapped copy-paste for runtime crashes.
 
@@ -79,6 +96,7 @@ That's a **generic type**. The blank is called a **type parameter**, written `T`
 5. One class to write, test and fix. There are no casts and no boxing, and every use is checked.
 :::
 
+:::walk The real fix: write it once, with a blank for the type
 ```csharp
 var orders = new Cache<Order>();
 orders.Add(new Order(1, 25m));
@@ -102,6 +120,21 @@ interface IEntity { int Id { get; } }
 record Order(int Id, decimal Total) : IEntity;
 record Customer(int Id, string Name) : IEntity;
 ```
+@12-17 | -
+`Cache<T>` is written once. `T` is the blank. `_items` is a dictionary of `T`, `Add` takes a `T`, and `Get` returns a `T`.
+@1 | orders = Cache<Order> { }
+Write `Cache<Order>` and the compiler fills every `T` with `Order`. As far as the compiler is concerned, this is a class whose `Add` takes an `Order` and nothing else.
+@2 | orders = Cache<Order> { 1 → Order(1, 25) }
+Add an order.
+@3 | orders = Cache<Order> { 1 → Order(1, 25) } ; o = Order(1, 25)
+`Get` already returns an `Order`, so **no cast** is needed, and nothing can fail at runtime.
+@4 | | > Order { Id = 1, Total = 25 }
+@6-7 | orders = Cache<Order> { 1 → Order(1, 25) } ; customers = Cache<Customer> { 7 → Customer(7, Ada) }
+The same class with a different fill: `Cache<Customer>`. One piece of code, so a bug fixed here is fixed for every cache.
+@8 | | > Ada
+@10 | ! CS1503: Argument 1: cannot convert from 'Customer' to 'Order'
+The string-in-the-order-cache mistake is now a **compile error**. (It's commented out here so the rest can run.) You find out in the editor, not from a customer.
+:::
 
 You've used generics since your first C# program: `List<string>` is `List<T>` with `T` filled in as `string`.
 
@@ -109,6 +142,7 @@ You've used generics since your first C# program: `List<string>` is `List<T>` wi
 
 A method can have its own type parameter. Usually you don't even write it, because the compiler **infers** `T` from the arguments:
 
+:::walk The compiler fills in T for you
 ```csharp
 Console.WriteLine(FirstOr(new[] { 3, 4 }, 0));         // T inferred as int
 Console.WriteLine(FirstOr(Array.Empty<string>(), "none"));   // T inferred as string
@@ -119,6 +153,18 @@ static T FirstOr<T>(IEnumerable<T> items, T fallback)
     return fallback;
 }
 ```
+@4-8 | -
+`FirstOr<T>` has its own blank. It returns the first item, or the fallback if there are none.
+@1 | T = int ; items = [3, 4] ; fallback = 0
+You never wrote `<int>`. The compiler looked at the arguments (an `int[]` and an `int`) and **inferred** `T = int`.
+@6 | T = int ; item = 3
+The loop gets the first item and returns it straight away.
+@1 | | > 3
+@2 | T = string ; items = [ ] ; fallback = "none"
+This time the arguments are strings, so `T = string`. It's the same method with a different fill.
+@7 | T = string ; fallback = "none" | > none
+The list is empty, so the loop body never runs and the fallback is returned.
+:::
 
 Two conventions: use `T` when there's one type parameter, and descriptive names (`TKey`, `TValue`, `TRequest`) when there are several. `default(T)` is the "empty" value for any `T`: `null` for a reference type and zero for a value type.
 
@@ -154,6 +200,7 @@ A **constraint** is a promise about `T`, written with `where`. `where T : IEntit
 | `where T : unmanaged` | a struct containing no references (for low-level code) |
 | `where T : allows ref struct` (C# 13) | allowed to be a `Span`-like type |
 
+:::walk Constraints let you use T's members
 ```csharp
 Console.WriteLine(Max(3, 9));                     // 9
 Console.WriteLine(Max("earl grey", "sencha"));    // sencha
@@ -163,6 +210,17 @@ Console.WriteLine(fresh.Count);
 static T Max<T>(T a, T b) where T : IComparable<T> => a.CompareTo(b) >= 0 ? a : b;
 static T Create<T>() where T : new() => new T();
 ```
+@6 | -
+`where T : IComparable<T>` means "T must be able to compare itself with another T". That promise is what makes `a.CompareTo(b)` legal inside the method.
+@1 | T = int ; a = 3 ; b = 9 | > 9
+`int` implements `IComparable<int>`, so it's allowed. 3 compared with 9 is negative, so `b` wins.
+@2 | T = string ; a = "earl grey" ; b = "sencha" | > sencha
+`string` is comparable too. "s" comes after "e" alphabetically.
+@7 | -
+`where T : new()` means "T must have a public parameterless constructor". That's what makes `new T()` legal.
+@3-4 | T = List<int> ; fresh = [ ] | > 0
+`List<int>` has one, so `Create` builds an empty list. `Max(new object(), new object())` would be a compile error, because `object` isn't comparable.
+:::
 
 :::qa What generic constraints are available?
 `class`, `class?`, `struct`, `notnull`, `unmanaged`, `new()`, a base class, an interface, another type parameter, `default` (for overrides), and `allows ref struct` (C# 13). A constraint lets you use the constrained type's members inside generic code.
@@ -185,6 +243,7 @@ Are `List<int>` and `List<string>` still different things while the app runs? In
 
 One useful side effect: **static fields are per filled-in type**. `Counter<Order>.Count` and `Counter<Customer>.Count` are two separate fields, which gives you a free per-type cache:
 
+:::walk Each filled-in type gets its own statics
 ```csharp
 Counter<Order>.Hit(); Counter<Order>.Hit(); Counter<Customer>.Hit();
 Console.WriteLine($"Order: {Counter<Order>.Count}, Customer: {Counter<Customer>.Count}");   // 2, 1
@@ -192,6 +251,13 @@ Console.WriteLine($"Order: {Counter<Order>.Count}, Customer: {Counter<Customer>.
 static class Counter<T> { public static int Count; public static void Hit() => Count++; }
 record Order; record Customer;
 ```
+@4 | -
+One static class, `Counter<T>`, with one static field.
+@1 | Counter<Order>.Count = 2 ; Counter<Customer>.Count = 1
+Because .NET generics are real at runtime, `Counter<Order>` and `Counter<Customer>` are **two different types**, and each has its own `Count`.
+@2 | | > Order: 2, Customer: 1
+So the counts don't mix. In Java, with erasure, there would be one shared `Count`.
+:::
 
 :::qa How are .NET generics different from Java generics?
 .NET generics are reified: closed generic types exist at runtime, `typeof(T)` works, and value-type instantiations get specialised code with no boxing. Java uses type erasure, so the type information is gone at runtime and primitives must be boxed.
@@ -216,6 +282,7 @@ If `Cat` is an `Animal`, can a `List<Cat>` be used where a `List<Animal>` is exp
 4. `Action<T>` only **takes things in**. A vet who can treat *any* animal can certainly treat a cat, so an `Action<Animal>` can be used as an `Action<Cat>`. This is **contravariance**, marked `in T`.
 :::
 
+:::walk Out is safe, in is safe, both is not
 ```csharp
 List<Cat> cats = [new Cat("Tom"), new Cat("Mog")];
 
@@ -231,6 +298,21 @@ catCheckUp(cats[0]);
 record Animal(string Name);
 record Cat(string Name) : Animal(Name);
 ```
+@12-13 | -
+Every `Cat` is an `Animal`.
+@1 | cats = List<Cat> [Tom, Mog]
+A list of cats.
+@3 | cats = List<Cat> [Tom, Mog] ; animals = → the same list, seen as IEnumerable<Animal>
+Allowed. `IEnumerable<out T>` only hands things **out**, and every cat that comes out is an animal. Nothing can be put in through it, so nothing can go wrong.
+@4 | | > Tom | > Mog
+@6 | checkUp = a vet for any Animal
+A vet who can check *any* animal.
+@7 | checkUp = a vet for any Animal ; catCheckUp = → the same vet, seen as Action<Cat>
+Also allowed, the other way round. `Action<in T>` only takes things **in**. Someone who can handle any animal can certainly handle a cat.
+@8 | | > vet sees Tom
+@10
+This is the one that's refused. A `List` lets things go in **and** out. If you could see `cats` as a `List<Animal>`, you could `Add` a dog to it, and the next person reading `cats` would get a dog. So the compiler says no.
+:::
 
 The rules:
 
@@ -262,6 +344,7 @@ Generic code used to be unable to add two `T`s, because `+` belongs to the type 
 
 The missing piece was **static** members. `+` and `Zero` aren't called on a particular number; they belong to the type (`int.Zero`, `decimal.Zero`). Interfaces used to only describe instance members. Since C# 11, an interface can say "every type that implements me has a static `Zero` and a static `+`", and `INumber<T>` says exactly that:
 
+:::walk One Sum for every kind of number
 ```csharp
 using System.Numerics;
 
@@ -275,6 +358,20 @@ static T Sum<T>(IEnumerable<T> values) where T : INumber<T>
     return total;
 }
 ```
+@6 | -
+`where T : INumber<T>` promises that `T` is a number type: it has a static `Zero`, a `+` operator, and the rest.
+@3 | T = int ; values = [1, 2, 3]
+Call it with ints. `T` is inferred as `int`.
+@8 | T = int ; total = 0
+`T.Zero` calls a **static** member through the type parameter. For `int`, that's 0.
+@9 | T = int ; total = 6
+`+=` uses `int`'s own `+` operator.
+@3 | | > 6
+@4 | T = decimal ; values = [1.5, 2.25]
+Same method, now with decimals.
+@8-10 | T = decimal ; total = 3.75 | > 3.75
+`decimal.Zero` and decimal `+`. One method, correct for every number type, with no copy-paste and no boxing.
+:::
 
 You'll rarely write this in backend code, but you'll meet its cousin `IParsable<T>` when binding custom types from routes and query strings ([Building APIs](ch:building-apis)).
 
