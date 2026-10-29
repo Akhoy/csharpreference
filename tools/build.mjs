@@ -238,7 +238,7 @@ function buildChapter(id, meta, body, ctx) {
     }
     if (!steps.length) throw new Error(`${id}: walk "${title}" has no @steps`);
     const rawLines = src.split('\n');
-    steps.forEach((st, i) => { for (const k of st.lines) if (!rawLines[k - 1] || !rawLines[k - 1].trim()) throw new Error(`${id}: walk "${title}" step ${i + 1} points at blank or missing line ${k}`); if (!st.say && st.out.length) st.say = 'Print it.'; if (!st.say) throw new Error(`${id}: walk "${title}" step ${i + 1} has no narration`); });
+    steps.forEach((st, i) => { for (const k of st.lines) if (k > rawLines.length || (st.lines.size === 1 && !rawLines[k - 1].trim())) throw new Error(`${id}: walk "${title}" step ${i + 1} points at blank or missing line ${k}`); if (!st.say && st.out.length) st.say = 'Print it.'; if (!st.say) throw new Error(`${id}: walk "${title}" step ${i + 1} has no narration`); });
     let prevVars = [], outSoFar = [];
     const states = steps.map((st, i) => {
       const vars = st.vars === undefined ? prevVars : st.vars;

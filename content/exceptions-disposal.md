@@ -50,6 +50,8 @@ public void Checkout(Order order)
 
 Each failed checkout leaves stock reserved for an order that will never complete, and **one database connection that's never given back**. The pool only has a fixed number of connections. After enough failures it's empty, and *every* request on the site starts timing out, including ones that have nothing to do with payments.
 
+That's what made the afternoon so confusing. The alerts said "database timeout" on the product pages, the search and the login. The database itself was fine and nearly idle. The real cause was a payment provider having a bad hour, three calls away, in code nobody was looking at.
+
 Two problems need two tools: handling the failure *somewhere sensible*, and making sure cleanup *always* happens.
 
 ## The lightbulb: an exception climbs the call stack {b}
@@ -66,6 +68,7 @@ That walk back through the callers has a name: **unwinding the stack**. A caller
 5. If no frame catches it, the exception reaches the top. In ASP.NET Core the exception-handling middleware catches it there and returns a 500 response ([Errors & logging](ch:errors-logging)).
 :::
 
+:::walk A failed payment, unwinding
 ```csharp
 Checkout();
 
@@ -100,6 +103,26 @@ static void ChargeCard()
 
 class PaymentFailedException(string message) : Exception(message);
 ```
+@1 | call stack = Checkout
+Start at the top.
+@5 | call stack = Checkout → PlaceOrder
+`Checkout` calls `PlaceOrder` inside a `try`. Each call adds a **frame** to the call stack.
+@16 | call stack = Checkout → PlaceOrder | > 1. stock reserved
+`PlaceOrder` reserves stock. Its own `try` has a `finally` but no `catch`.
+@17 | call stack = Checkout → PlaceOrder → ChargeCard
+Call `ChargeCard`.
+@28 | call stack = Checkout → PlaceOrder → ChargeCard | > 2. charging card... provider timed out
+@29 | call stack = Checkout → PlaceOrder → ChargeCard ; exception = PaymentFailedException
+`throw` creates an exception object and **stops normal execution**. Now the runtime walks back down the stack, asking each frame "do you have a matching `catch`?".
+@18 | call stack = Checkout → PlaceOrder ; exception = PaymentFailedException
+`ChargeCard` has no `catch`, so its frame is torn down. Back in `PlaceOrder`, line 18 is **skipped**: execution never resumes mid-`try` after a throw.
+@22 | call stack = Checkout → PlaceOrder ; exception = PaymentFailedException | > 3. finally: stock released (runs even though nobody caught it yet)
+`PlaceOrder` has no matching `catch` either, but it has a `finally`. That **always runs** on the way out, so the stock is released. Then this frame is torn down too.
+@6 | call stack = Checkout ; exception = PaymentFailedException
+`Checkout` has `catch (PaymentFailedException ex)`, and the type matches. The unwinding stops here.
+@8 | call stack = Checkout | > 4. Checkout caught it: card provider timeout. Ask for another card.
+The exception is handled, and the program carries on normally after the `catch`. The error was handled two frames up from where it happened, by the code that knew what to do about it.
+:::
 
 An exception object carries `Message`, `StackTrace` (where it happened), `InnerException` (the underlying cause, if it wraps another), and `ToString()`, which prints all of them. **Always log the exception object, not just `.Message`**, or you throw away the stack trace.
 
@@ -133,6 +156,7 @@ Exception
 
 Modern .NET has one-line **guard helpers** that throw the right type with a good message:
 
+:::walk Guards that throw the right type for you
 ```csharp
 try { PlaceOrder(null!, 2); } catch (ArgumentNullException ex) { Console.WriteLine(ex.Message); }
 try { PlaceOrder("TEA-01", -1); } catch (ArgumentOutOfRangeException ex) { Console.WriteLine(ex.Message); }
@@ -144,6 +168,17 @@ static void PlaceOrder(string sku, int qty)
     Console.WriteLine("placed");
 }
 ```
+@4-9 | -
+Two guard lines at the top of the method check the arguments before anything happens.
+@1 | sku = null ; qty = 2
+Call it with no SKU.
+@6 | | > Value cannot be null. (Parameter 'sku')
+`ThrowIfNullOrWhiteSpace` throws `ArgumentNullException`. It even fills in the parameter name for you.
+@2 | sku = "TEA-01" ; qty = -1
+Now a negative quantity.
+@7 | | > qty ('-1') must be a non-negative and non-zero value. (Parameter 'qty') | > Actual value was -1.
+`ArgumentOutOfRangeException`, with the bad value in the message. Line 8 never runs in either case.
+:::
 
 ## `throw;` vs `throw ex;` {i}
 
@@ -160,6 +195,7 @@ Inside a `catch` you often log and then pass the exception on. *How* you rethrow
 4. **Wrapping**: `throw new PaymentException("Checkout of order 42 failed", ex)` gives a clearer message *and* keeps the original exception inside as `InnerException`. Nothing is lost.
 :::
 
+:::walk `throw;` keeps the evidence, `throw ex;` destroys it
 ```csharp
 try { Checkout(properRethrow: true); }
 catch (Exception ex) { Console.WriteLine($"throw;     trace still shows ChargeCard? {ex.StackTrace!.Contains("ChargeCard")}"); }
@@ -189,6 +225,25 @@ static void Save()
 
 static void ChargeCard() => throw new InvalidOperationException("card declined");
 ```
+@1 | properRethrow = true
+First, the right way.
+@12 | properRethrow = true ; ex.StackTrace = "at ChargeCard … at Checkout …"
+`ChargeCard` throws. The exception's stack trace records where it really came from.
+@16 | properRethrow = true ; ex.StackTrace = "at ChargeCard … at Checkout …"
+After logging, `throw;` passes on **the same exception, untouched**.
+@2 | | > throw;     trace still shows ChargeCard? True
+The trace still points at `ChargeCard`, so whoever reads the log can find the bug.
+@4 | properRethrow = false
+Now the wrong way.
+@17 | properRethrow = false ; ex.StackTrace = "at Checkout …" (ChargeCard is gone)
+`throw ex;` counts as a **new** throw from this line. The runtime resets the trace to start here.
+@5 | | > throw ex;  trace still shows ChargeCard? False
+The real origin is gone. At 3 a.m. the log says the problem is in `Checkout`, and it isn't.
+@23-24 | ex = IOException("disk full")
+The third option: catch, then throw a **new** exception that explains what you were doing, and pass the original in as the inner exception.
+@8 | | > wrapped:   Saving order 42 failed ← caused by: disk full
+Both messages survive: the context ("saving order 42") and the cause ("disk full").
+:::
 
 - **`throw;`** passes on the same exception with its stack trace untouched.
 - **`throw ex;`** treats it as a *new* throw from inside the `catch`, which overwrites the trace. If a stack trace starts somewhere unhelpful, look for a `throw ex;`.
@@ -200,6 +255,7 @@ static void ChargeCard() => throw new InvalidOperationException("card declined")
 A `when` clause lets a `catch` say "only if this condition is true". The condition is checked before anything is torn down, so exceptions you don't want pass straight through.
 :::
 
+:::walk Catch only the errors worth retrying
 ```csharp
 foreach (var status in new[] { 503, 404 })
 {
@@ -217,6 +273,21 @@ foreach (var status in new[] { 503, 404 })
 static void CallSupplier(int status) => throw new SupplierException(status);
 class SupplierException(int status) : Exception($"HTTP {status}") { public int Status { get; } = status; }
 ```
+@1 | status = 503
+First, a 503 ("service unavailable"), which usually goes away if you wait.
+@3 | status = 503 ; ex = SupplierException(503)
+The supplier call throws.
+@4 | status = 503 ; ex = SupplierException(503)
+The type matches, so the `when` filter runs: is the status 429 or 503? Yes.
+@6 | status = 503 | > 503: transient, so retry later
+So this `catch` handles it.
+@1 | status = 404
+Next, a 404 ("not found"). Retrying won't help.
+@4 | status = 404 ; ex = SupplierException(404)
+The type matches the first `catch`, but the filter says **no**. The filter runs *before* anything is unwound, so the exception simply moves on to the next `catch`, untouched.
+@10 | status = 404 | > 404: permanent, so give up
+The second `catch` takes it.
+:::
 
 A `when` clause runs **before** the stack unwinds, so a non-matching filter leaves the exception untouched for someone else. A filter that logs and returns `false` lets you *observe* an exception without catching it.
 
@@ -234,6 +305,7 @@ A `when` clause runs **before** the stack unwinds, so a non-matching filter leav
 Make your own exception type when callers need to recognise *this* problem and act on it, and give it properties for the facts they'll need.
 :::
 
+:::walk An exception that carries the facts
 ```csharp
 try { Reserve("TEA-01", requested: 5, available: 2); }
 catch (InsufficientStockException ex) { Console.WriteLine($"[{ex.Code}] {ex.Message} (sku {ex.Sku})"); }
@@ -254,6 +326,15 @@ sealed class InsufficientStockException(string sku, int requested, int available
     public string Sku { get; } = sku;
 }
 ```
+@9-18 | -
+A base `DomainException` with a machine-readable `Code`, and a specific `InsufficientStockException` that adds the `Sku` as a typed property.
+@1 | requested = 5 ; available = 2
+Try to reserve 5 when only 2 are left.
+@6 | ex = InsufficientStockException { Code = stock.insufficient, Sku = TEA-01 }
+The rule fails, so throw the specific type.
+@2 | | > [stock.insufficient] Requested 5 of TEA-01, only 2 left (sku TEA-01)
+The caller catches **this type** and reads typed properties. It never has to parse the message text, so you can reword the message later without breaking anyone.
+:::
 
 A short checklist. End the name with `Exception`. Derive from `Exception`, not the old `ApplicationException`. And put anything a caller might act on in **typed properties** (`Sku`), not hidden in the message. Map exceptions to HTTP status codes in **one central place** ([Errors & logging](ch:errors-logging)).
 
@@ -272,6 +353,7 @@ Exceptions are for situations the caller couldn't reasonably expect. They're als
 | Validation failed | a validation result |
 | "Card declined", "out of stock" | a `Result<T>` (see [CQRS & Result](ch:cqrs-mediator-result#the-result-pattern-making-expected-failure-part-of-the-metho)) |
 
+:::walk Normal "no"s as values
 ```csharp
 Console.WriteLine(int.TryParse("abc", out var qty) ? $"qty {qty}" : "not a number: ask again");   // no exception
 
@@ -281,6 +363,12 @@ Console.WriteLine(result.Ok ? "reserved" : $"refused: {result.Error}");
 static (bool Ok, string? Error) TryReserve(string sku, int qty) =>
     qty <= 2 ? (true, null) : (false, $"only 2 {sku} left");
 ```
+@1 | qty = 0 | > not a number: ask again
+A shopper typing "abc" isn't exceptional, it happens all day. `TryParse` returns `false` instead of throwing, so there's no stack trace to capture and no `try/catch` to write.
+@3 | result = (Ok: false, Error: "only 2 TEA-01 left")
+Same idea for a business rule. "Out of stock" is a normal answer, so return it as a value. The return type tells every caller that this can fail, which an exception never does.
+@4 | | > refused: only 2 TEA-01 left
+:::
 
 :::gotcha An empty catch hides the fire
 `catch { }` doesn't make a problem go away. It makes it **invisible**, while the bad state keeps doing damage. If you really must ignore an exception, catch the **narrowest** type, add a comment explaining why, and log it anyway.
@@ -303,6 +391,35 @@ In async code an exception doesn't fly out straight away. It's stored inside the
 2. **`await`** opens the envelope and rethrows the exception right there, with its original stack trace. So a `try/catch` around the `await` works normally.
 3. If nobody awaits the task (`_ = ChargeAsync();`), nobody ever opens the envelope. The payment failed silently. That's the fire-and-forget bug.
 4. **`async void`** has no `Task`, so there's no envelope. The exception has nowhere to go, and it **crashes the whole process**.
+:::
+
+You can see the envelope without any real waiting. This method throws, but the caller doesn't crash, because the exception is put inside the task:
+
+:::walk The exception goes into the Task
+```csharp
+Task t = ChargeAsync();
+Console.WriteLine("after the call: no crash, nothing printed");
+Console.WriteLine($"task status: {t.Status}");
+Console.WriteLine($"stored inside: {t.Exception!.InnerException!.Message}");
+
+static async Task ChargeAsync()
+{
+    await Task.CompletedTask;
+    throw new InvalidOperationException("card declined");
+}
+```
+@1
+Call the async method, and don't `await` it.
+@8-9
+Inside, the method throws.
+@1 | t = Task (Faulted, holding: card declined)
+But because it's an `async Task` method, the compiler catches the exception and **stores it in the returned task**. The caller just gets a task back.
+@2 | | > after the call: no crash, nothing printed
+Execution carries on as if nothing happened. If this were checkout, the card was declined and nobody knows.
+@3 | | > task status: Faulted
+The task knows: its status is `Faulted`.
+@4 | | > stored inside: card declined
+The exception is sitting inside it, waiting for someone to `await` the task. `await t` would rethrow it right there, and a `try/catch` around the `await` would catch it.
 :::
 
 The rules, in short:
@@ -347,6 +464,7 @@ The contract for "release this now" is **`IDisposable`**, which has one method, 
 5. With **`using`**, the compiler wraps the code in `try { … } finally { conn.Dispose(); }`. The connection goes back on **every** path out: success, early return or exception.
 :::
 
+:::walk Leak the pool, then fix it with one word
 ```csharp
 var pool = new Pool(size: 3);
 
@@ -395,6 +513,31 @@ sealed class Connection(Action giveBack) : IDisposable
     public void Dispose() { if (_disposed) return; _disposed = true; giveBack(); }
 }
 ```
+@1 | pool.Free = 3
+A connection pool with 3 connections to lend.
+@5 | i = 1 ; pool.Free = 3
+First leaky checkout.
+@18 | i = 1 ; pool.Free = 2
+Borrow a connection.
+@19 | i = 1 ; pool.Free = 2
+The card call throws. Line 20, which would give the connection back, **never runs**.
+@5-6 | i = 1 ; pool.Free = 2 | >   leaky #1 failed: card provider timeout | >   pool: 2 free
+One connection gone for good.
+@5-6 | i = 3 ; pool.Free = 0 | >   leaky #2 failed: card provider timeout | >   pool: 1 free | >   leaky #3 failed: card provider timeout | >   pool: 0 free
+Two more failures, two more leaks. The pool is empty.
+@5-6 | i = 4 ; pool.Free = 0 | >   leaky #4 failed: Timeout expired obtaining a connection | >   pool: 0 free
+The 4th checkout can't even get a connection. On the real site, so does every other page. That's the outage.
+@9 | pool.Free = 3
+A fresh pool, and the safe version.
+@25 | i = 1 ; pool.Free = 2
+`using var` borrows a connection. The compiler wraps the rest of the method in `try { … } finally { conn.Dispose(); }`.
+@26 | i = 1 ; pool.Free = 2
+The card call throws again.
+@27 | i = 1 ; pool.Free = 3
+But on the way out, the hidden `finally` calls `Dispose`, which gives the connection back.
+@12-13 | i = 4 ; pool.Free = 3 | >   safe #1 failed: card provider timeout | >   pool: 3 free | >   safe #2 failed: card provider timeout | >   pool: 3 free | >   safe #3 failed: card provider timeout | >   pool: 3 free | >   safe #4 failed: card provider timeout | >   pool: 3 free
+Every checkout still fails, because the provider is still down. But the pool stays full, so the rest of the site keeps working.
+:::
 
 The three forms you'll see:
 
@@ -433,6 +576,7 @@ If your class holds things that need disposing, it must be disposable too, and i
 
 If your class *holds* other disposables (a file, a timer), it should be disposable too, and pass the `Dispose` on:
 
+:::walk A class that holds a disposable must be one
 ```csharp
 using (var export = new ReportExporter())
 {
@@ -462,6 +606,21 @@ sealed class ReportExporter : IDisposable
     }
 }
 ```
+@8-11 | -
+`ReportExporter` holds a stream (a disposable), so it implements `IDisposable` itself, and keeps a flag saying whether it has been disposed.
+@1 | export = ReportExporter (open)
+Create the exporter in a `using` block.
+@3 | | > wrote: order 42
+Write a line.
+@4 | export = ReportExporter (disposed)
+The closing brace of the `using` block calls `Dispose`.
+@22-25 | | > disposed
+`Dispose` passes the call on to the stream it owns, then sets the flag.
+@5 | again = ReportExporter (disposed) | > disposed
+Dispose another one **twice**. The second call sees `_disposed` is already true and returns at once (line 22). Calling `Dispose` twice must always be safe.
+@6 | | > used after dispose: refused
+Using it after disposal throws `ObjectDisposedException` from line 15, rather than failing somewhere confusing inside the stream.
+:::
 
 ### The full pattern, with a finalizer (rarely needed) {a}
 
