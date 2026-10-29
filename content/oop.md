@@ -37,8 +37,11 @@ next: generics, design-principles, dependency-injection
 
 ## Previously, and the bug {b}
 
-In [Episode 1](ch:type-system) Kettle's baskets started copying properly. Now orders are being placed, and the database has two that should be impossible:
+In [Episode 1](ch:type-system) Kettle's baskets started copying properly. Now orders are being placed, and the database has two that should be impossible. One has a quantity of **−3**: the refund job saw a negative order and paid the "customer" £15. The other is marked *Shipped* but was never paid for, so a parcel of tea left the warehouse for free.
 
+Here's how easy it was to create both:
+
+:::walk The bug: anyone can write anything
 ```csharp
 var order = new Order();
 order.Quantity = -3;            // nothing stops this
@@ -52,8 +55,23 @@ class Order
     public string Status = "Placed";
 }
 ```
+@9-10 | -
+The class is just two public fields. `public` means any code in the app can read **and write** them directly.
+@1 | order = → Order { Quantity = 0, Status = Placed }
+Create an order. The fields start at their defaults.
+@2 | order = → Order { Quantity = -3, Status = Placed }
+Write −3 straight into the field. There's no code between the caller and the memory, so nothing gets a chance to say no.
+@3 | order = → Order { Quantity = -3, Status = Shipped }
+Mark it shipped. It was never paid, and nothing asked.
+@5 | | > -3 × tea, status Shipped
+Two impossible facts, saved to the database as if they were fine.
+:::
 
 Every field is `public`, so any line of code anywhere in the app can write anything into it. The rules "quantity must be at least 1" and "you can't ship before payment" exist only in your head.
+
+:::why Why not just check the values in the checkout page?
+Because the checkout page isn't the only way in. Kettle already has four ways to touch an order: the website, the admin tool, the nightly CSV import and the refund job. Each was written by a different person on a different day. If the rule lives in the checkout page, the other three have to remember it too, and one of them won't. The only place *every* path has to go through is **the order itself**. So that's where the rule has to live.
+:::
 
 ## The lightbulb: hide the data, expose the doors {b}
 
@@ -69,6 +87,7 @@ That idea has a name: **encapsulation**. The rules the object protects ("quantit
 5. Now `order.Ship()` is allowed. Every change went through a door that checked the rules. That's encapsulation.
 :::
 
+:::walk The fix: private data, checked doors
 ```csharp
 var order = new Order(quantity: 2);
 try { order.Ship(); }
@@ -106,6 +125,29 @@ class Order
 
 enum OrderStatus { Placed, Paid, Shipped }
 ```
+@13-14 | -
+The data is now behind **`private set`**. Anyone can *read* `Quantity` and `Status`, but only code inside `Order` can change them.
+@1 | quantity = 2
+Creating an order goes through the constructor. Jump in.
+@18 | quantity = 2
+The first door checks the first rule. 2 is fine. (`new Order(-3)` would throw right here, so a −3 order can't even exist.)
+@19 | order = → Order { Quantity = 2, Status = Placed }
+The order now exists, and it's valid from its first moment.
+@2 | order = → Order { Quantity = 2, Status = Placed }
+Try to ship it before paying.
+@30 | order = → Order { Quantity = 2, Status = Placed }
+The `Ship` door checks the rule: is the status `Paid`? It isn't, so it throws. Line 31 never runs, so the status never changes.
+@3 | | > Refused: Can't ship an unpaid order.
+The caller catches the refusal. The order is exactly as it was.
+@5 | order = → Order { Quantity = 2, Status = Paid }
+`Pay()` checks its own rule (only a `Placed` order can be paid) and moves the order to `Paid`.
+@6 | order = → Order { Quantity = 2, Status = Shipped }
+Now `Ship()` is allowed.
+@7 | | > 2 × tea, status Shipped
+Every change went through a door that checked the rules first.
+@9
+And the original bug is now impossible to write. `order.Quantity = -3` doesn't compile, because the setter is private. The admin tool, the import and the refund job all have to go through the same doors.
+:::
 
 :::analogy A bank teller
 You don't walk behind the counter and change your own balance. You ask the teller (a method), and the teller checks the rules (enough funds? valid ID?) before touching the ledger (the private field).
@@ -143,6 +185,7 @@ A property *looks* like a field to the caller (`order.Quantity`), but it's reall
 4. A plain field can't do that, because it's only a slot in memory. And callers can't tell a property from a field, so you can add rules later without changing their code.
 :::
 
+:::walk A property runs code when you set it
 ```csharp
 var tea = new Product { Sku = "TEA-01", Name = "Sencha" };   // object initialiser
 tea.Stock = 10;
@@ -163,6 +206,21 @@ class Product
     }
 }
 ```
+@1 | tea = → Product { Sku = TEA-01, Name = Sencha, Stock = 0 }
+Create a product with an **object initialiser**: the constructor runs, then each property in the `{ }` is set. `Sku` is `required`, so leaving it out would be a compile error.
+@2 | tea = → Product { Sku = TEA-01, Name = Sencha, Stock = 10 }
+`tea.Stock = 10` looks like writing a field. It's really a call to the `set` accessor, with `value` = 10.
+@16 | value = 10
+The setter checks the value. 10 is not negative, so it's stored in the private field `_stock`.
+@3 | value = -1
+Now try −1. Again this calls the setter.
+@16 | value = -1 | > negative stock refused
+This time the check fails and it throws. `_stock` keeps its old value. A plain field could never do this, because writing to a field runs no code.
+@4 | tea = → Product { Sku = TEA-01, Name = Sencha, Stock = 10 } | > TEA-01 Sencha: 10 in stock
+Reading `tea.Stock` calls `get`, which returns `_stock`.
+@5
+`Sku` is `init`-only: it can be set while the object is created and never again. This line would be a compile error.
+:::
 
 - **`init`**: can be set only while the object is being created, then it's locked.
 - **`required`** (C# 11): the compiler refuses any `new Product { … }` that doesn't set it.
@@ -180,6 +238,7 @@ When one class builds on another, C# finishes building the base part of the obje
 
 When a class has a base class, which code runs first? It's the opposite of what most people guess. Run this:
 
+:::walk What really runs inside `new GiftCard()`
 ```csharp
 new GiftCard();
 
@@ -196,6 +255,21 @@ class GiftCard : PaymentMethod
     public GiftCard() => Log("4. derived constructor body");
 }
 ```
+@1
+Make a `GiftCard`. It inherits from `PaymentMethod`, so the object has two parts to build: the base part and the gift-card part.
+@13
+The call goes to `GiftCard`'s constructor. But the compiler has quietly put two things in front of its body: first this class's field initialisers, then a call to the base constructor.
+@12 | | > 1. derived field initialiser
+So the **derived** field initialiser runs first, before any constructor body.
+@6
+Next, the hidden call to the base constructor, `PaymentMethod()`. It also starts with its own field initialisers.
+@5 | | > 2. base field initialiser
+The base field initialiser.
+@6 | | > 3. base constructor body
+Then the base constructor's body. The `PaymentMethod` part is now fully built.
+@13 | | > 4. derived constructor body
+Only now does `GiftCard`'s own body run, so it can safely use anything the base set up.
+:::
 
 :::scene visuals/scenes/oop-ctor-order.svg | The real order inside `new GiftCard()`
 1. **Step 1:** `GiftCard`'s *field initialisers* run first, the `= …` parts of its field declarations. No constructor body has run yet.
@@ -207,11 +281,13 @@ class GiftCard : PaymentMethod
 
 Why this order? The derived constructor's body is allowed to use the base class, so the base must be finished *before* that body runs. (A **static constructor** is different: it runs once per type, before the type is first used, and the runtime makes that thread-safe.)
 
-:::gotcha Never call a virtual method from a constructor
-The base constructor runs **before** the derived constructor sets its fields. If the base constructor calls a method that the derived class overrides, that override runs on a half-built object:
+### The trap: calling a virtual method from a constructor
 
+Kettle's payment classes once logged "Created: …" from the base constructor, using a virtual `Describe()` so each subclass could describe itself. Every gift card was logged as "gift card (null!)". Here's why. The base constructor runs **before** the derived constructor sets its fields:
+
+:::walk A half-built object
 ```csharp
-new GiftCard("GC-1");    // prints: Created: gift card (null!)
+new GiftCard("GC-1");
 
 abstract class PaymentMethod
 {
@@ -226,7 +302,19 @@ class GiftCard : PaymentMethod
     public override string Describe() => $"gift card {_code ?? "(null!)"}";
 }
 ```
+@1
+Create a gift card with code `GC-1`.
+@12 | code = "GC-1" ; _code = null
+Enter `GiftCard`'s constructor. `code` holds "GC-1", but the body (`_code = code`) hasn't run yet. The base constructor goes first.
+@5 | _code = null
+The base constructor calls `Describe()`. It's virtual, and the object's real type is `GiftCard`, so the **override** runs.
+@13 | _code = null | > Created: gift card (null!)
+`GiftCard.Describe()` reads `_code`, which nobody has set yet. It prints "(null!)". With a non-null-safe line like `_code.ToUpper()`, this would crash instead.
+@12 | _code = "GC-1"
+Back in `GiftCard`'s constructor, the body finally sets `_code`. Too late: the log line has already gone out.
 :::
+
+The rule: **never call a virtual method from a constructor.** Pass what the base needs as constructor parameters instead.
 
 ### Primary constructors: the modern shorthand
 
@@ -260,6 +348,7 @@ else if (method == "giftcard") ReduceGiftCardBalance(total);
 
 Every new payment type means hunting down every `if` like this. Instead, describe *what* every payment method can do, and let each one decide *how*:
 
+:::walk One line, three behaviours
 ```csharp
 var total = 20m;
 IPaymentMethod[] payments = [new CardPayment("4242"), new PayPalPayment("ada@example.com"), new GiftCard(50m)];
@@ -291,6 +380,27 @@ class GiftCard(decimal balance) : IPaymentMethod
     }
 }
 ```
+@7-10 | -
+The interface is a **contract**: anything that is an `IPaymentMethod` has a `Charge` method. It says nothing about how charging works.
+@1-2 | total = 20 ; payments = [card, PayPal, gift card]
+Three different objects, held in one array whose element type is just the contract.
+@4 | p = → CardPayment ("4242")
+First time round the loop, `p` points at a card.
+@5 | p = → CardPayment ("4242")
+`p.Charge(total)`. The compiler doesn't know which `Charge` this is. At runtime the call looks at the **object**: it's a `CardPayment`.
+@14 | p = → CardPayment ("4242") | > Card ****4242 charged £20
+So the card's `Charge` runs.
+@4 | p = → PayPalPayment ("ada@example.com")
+Second time round, `p` points at a PayPal payment.
+@19 | p = → PayPalPayment ("ada@example.com") | > Redirecting ada@example.com to PayPal for £20
+**The same line 5** now runs PayPal's code, because the object is different.
+@4 | p = → GiftCard (balance 50)
+Third time, a gift card.
+@26 | p = → GiftCard (balance 30)
+The gift card's own `Charge` takes 20 off its balance.
+@27 | | > Gift card used, £30 left
+Three behaviours from one line. When Kettle adds Apple Pay, it writes one new class, and the loop doesn't change.
+:::
 
 ## The lightbulb: one call, many bodies {b}
 
@@ -342,6 +452,7 @@ Both describe "a kind of thing" that other classes fill in. They solve different
 5. In short: an interface means "can do", and an abstract class means "is a kind of, and shares code". If you're unsure, start with an interface.
 :::
 
+:::walk Shared code in the base, blanks filled by the subclass
 ```csharp
 PaymentMethod pm = new CardPayment("4242");
 pm.LogAttempt();                          // shared code, written once in the base
@@ -360,6 +471,21 @@ sealed class CardPayment(string last4) : PaymentMethod
     public override string Describe() => $"card ****{last4}";
 }
 ```
+@5-10 | -
+The abstract base. `Charge` is `abstract` (a blank every subclass must fill). `Describe` is `virtual` (has a default, may be replaced). `LogAttempt` is ordinary code, written once for every payment type.
+@1 | pm = → CardPayment ("4242")
+The variable's type is the base class. The object is a card.
+@2
+Call `LogAttempt()`. Only the base has it, so the base's code runs.
+@9
+Inside, it calls `Describe()`. That's virtual, so the runtime asks the object what it really is.
+@15 | | > Charging via card ****4242
+`CardPayment` overrides `Describe`, so its version runs, even though the call came from base-class code. Shared code in the base, specific details from the subclass.
+@3
+Now `Charge`.
+@14 | | > Card ****4242: £10
+It's abstract in the base, so the only body there is the card's.
+:::
 
 | | Interface | Abstract class |
 |---|---|---|
@@ -401,6 +527,7 @@ An interface member with a body (C# 8). Their intended use is evolving a publish
 
 `override` and `new` look alike but behave very differently:
 
+:::walk override vs new: who decides?
 ```csharp
 A x = new B();
 Console.WriteLine(x.Who());         // "B": override, so the OBJECT's real type decides
@@ -410,6 +537,17 @@ Console.WriteLine(((B)x).Plain());  // "B": same object, different declared type
 class A { public virtual string Who() => "A"; public string Plain() => "A"; }
 class B : A { public override string Who() => "B"; public new string Plain() => "B"; }
 ```
+@6-7 | -
+`A` has two methods. `Who` is `virtual` and `B` **overrides** it. `Plain` is not virtual, and `B` **hides** it with `new`.
+@1 | x = → B object (declared type A)
+One `B` object, held in a variable declared as `A`.
+@2 | | > B
+`Who` is virtual, so at runtime the call asks the object for its real type. It's a `B`, so `B.Who` runs.
+@3 | | > A
+`Plain` is not virtual, so the **compiler** chose which method to call when it compiled this line. It only knew the variable's type, `A`, so it picked `A.Plain`. The object is never asked.
+@4 | | > B
+Cast the same object to `B` and the compiler picks `B.Plain`. The object didn't change, only the variable type did. That's why `new` is confusing, and why it's almost always a mistake.
+:::
 
 :::scene visuals/scenes/oop-override-new.svg | Same object, three calls, different answers
 1. One object whose real type is `B`, held in a variable whose declared type is `A`. Which method runs depends on *how* each method was declared.
@@ -443,15 +581,23 @@ Inheritance is great for **one shallow, real "is-a" relationship**. A `GiftCard`
 5. Snap them together at startup: `Retry(Logging(Email))`, `Logging(Sms)`, any combination you like. It's still 4 classes.
 :::
 
+Here are the pieces in code. The email sender fails the first time, the way a busy mail server does, so you can watch `Retry` earn its keep:
+
+:::walk Wrappers inside wrappers
 ```csharp
 INotifier email = new Retry(new Logging(new EmailNotifier()));
 email.Send("Your tea has shipped!");
 
 interface INotifier { void Send(string message); }
 
-class EmailNotifier : INotifier
+class EmailNotifier : INotifier          // fails the first time, like a busy mail server
 {
-    public void Send(string message) => Console.WriteLine($"  email: {message}");
+    private int _calls;
+    public void Send(string message)
+    {
+        if (++_calls == 1) throw new TimeoutException("mail server busy");
+        Console.WriteLine($"  email: {message}");
+    }
 }
 
 class Logging(INotifier inner) : INotifier          // wraps ANY notifier
@@ -471,6 +617,25 @@ class Retry(INotifier inner) : INotifier            // wraps ANY notifier
     }
 }
 ```
+@1 | email = → Retry → Logging → EmailNotifier
+Build from the inside out: an email sender, wrapped in logging, wrapped in retry. Each wrapper holds the next one in its `inner` parameter. To the caller it's all just an `INotifier`.
+@2
+Send one message. The caller doesn't know about the wrappers.
+@25-27 | attempt = 1 | > [retry] attempt 1
+The outermost layer, `Retry`, starts attempt 1 and passes the message inward.
+@18 | attempt = 1 | >  [log] sending
+`Logging` writes a log line and passes it inward again.
+@11 | attempt = 1
+The real email sender. The server is busy, so it throws `TimeoutException`.
+@28 | attempt = 1
+The exception climbs back out through `Logging` to `Retry`. `catch when (attempt < 3)` catches it, because 1 < 3. (The `when` filter means attempt 3's failure would *not* be caught, so it would reach the caller.)
+@25-27 | attempt = 2 | > [retry] attempt 2
+Round again: attempt 2.
+@18 | attempt = 2 | >  [log] sending
+Logging again.
+@12 | attempt = 2 | >   email: Your tea has shipped!
+This time the email goes. Then `return` ends the retry loop.
+:::
 
 This wrapping trick is the **Decorator pattern** ([Design patterns](ch:design-patterns)), and it's how ASP.NET Core assembles logging, retries and caching around your services.
 
@@ -510,6 +675,36 @@ The full list, including two rarer combinations:
 
 ## static, sealed and partial {b}
 
+Start with the one that has bitten Kettle. A developer made the basket counter `static` "so it's quick to read". On their laptop, with one shopper, it worked. On the server, every shopper's page shares the same process:
+
+:::walk A static field is shared by everyone
+```csharp
+var ada = new BasketCounter();
+var ben = new BasketCounter();
+ada.AddTea(); ada.AddTea();
+ben.AddTea();
+Console.WriteLine($"Ada's header says {ada.Count} teas");
+Console.WriteLine($"Ben's header says {ben.Count} teas");
+
+class BasketCounter
+{
+    private static int _teas;        // static: ONE value for the whole app
+    public void AddTea() => _teas++;
+    public int Count => _teas;
+}
+```
+@10 | -
+The mistake is one word. `static` means the field belongs to the **type**, not to any one object. There's exactly one `_teas` in the whole app, however many counters you create.
+@1-2 | ada = → counter #1 ; ben = → counter #2 ; BasketCounter._teas = 0
+Two separate counter objects, one for Ada's page and one for Ben's. But neither object holds a `_teas`. It lives with the type.
+@3 | ada = → counter #1 ; ben = → counter #2 ; BasketCounter._teas = 2
+Ada adds two teas. Both increments go to the one shared field.
+@4 | ada = → counter #1 ; ben = → counter #2 ; BasketCounter._teas = 3
+Ben adds one. Same field.
+@5-6 | | > Ada's header says 3 teas | > Ben's header says 3 teas
+Both see 3. On a web server with a thousand shoppers, every header shows the total for **everyone**. Remove `static` and each counter gets its own field.
+:::
+
 - **`static` class**: can't be created with `new` and can't be inherited. It's a bag of helpers and extension methods. Avoid **mutable** static fields. They're shared by every request and every thread, so they become a hidden channel between unrelated code (and unrelated tests).
 - **`sealed` class**: can't be inherited. Seal by default unless you designed the class for inheritance. It documents intent and lets the JIT skip virtual dispatch.
 - **`partial` class**: one class split across several files. It mostly exists so **source generators** can add code to your class in a separate file ([Advanced C#](ch:advanced-csharp)).
@@ -532,6 +727,29 @@ Every type ultimately inherits from `object`, which is where these come from:
 | `ToString()` | Override it for readable logs and debugging |
 | `GetType()` | The object's real runtime type, and the entry point to reflection |
 | `MemberwiseClone()` | A protected, shallow copy |
+
+Overriding `ToString` is the one you'll do most. It's what you see in logs, in the debugger and in string interpolation:
+
+:::walk Every class gets ToString from object
+```csharp
+Console.WriteLine(new Plain(42));
+Console.WriteLine(new Order(42, 2));
+
+class Plain(int id) { }
+class Order(int id, int quantity)
+{
+    public override string ToString() => $"Order #{id} ({quantity} × tea)";
+}
+```
+@4 | -
+`Plain` declares nothing, but it still has `ToString`, `Equals`, `GetHashCode` and `GetType`. It inherits them from `object`, even though it never says `: object`.
+@1 | | > Plain
+`Console.WriteLine` calls `ToString()`. The version from `object` only knows the type's name, so that's all you get. A log full of "Plain" is useless at 3 a.m.
+@7
+`Order` overrides `ToString`. It's `virtual` in `object`, so this replaces it for every caller.
+@2 | | > Order #42 (2 × tea)
+Now logs and the debugger show something a human can use.
+:::
 
 Objects are freed by the GC once nothing references them ([Memory & GC](ch:memory-gc)). Anything that must be closed *promptly*, like files and connections, uses `IDisposable` ([Episode 7](ch:exceptions-disposal)).
 

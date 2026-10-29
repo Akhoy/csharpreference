@@ -227,7 +227,7 @@ function buildChapter(id, meta, body, ctx) {
         const st = { lines: new Set(), vars: undefined, out: [], err: '', say: '' };
         for (const part of m[1].split(',')) { const [a, z] = part.trim().split('-').map(Number); for (let k = a; k <= (z || a); k++) st.lines.add(k); }
         for (const x of f) {
-          if (x.startsWith('>')) st.out.push(x.slice(1).trim());
+          if (x.startsWith('>')) st.out.push(x.slice(1).replace(/^ /, ''));
           else if (x.startsWith('!')) st.err = x.slice(1).trim();
           else if (x === '-') st.vars = [];
           else if (x) st.vars = x.split(/\s;\s/).map(v => { const i = v.indexOf('='); return [v.slice(0, i).trim(), v.slice(i + 1).trim()]; });
