@@ -36,6 +36,7 @@ next: advanced-csharp, building-apis
 
 In [Episode 8](ch:async-await) Kettle survived Black Friday. At 3 a.m. the pager goes off. Shipping-label generation is crashing:
 
+:::walk The 3 a.m. crash, step by step
 ```csharp
 var customers = new[]
 {
@@ -49,8 +50,21 @@ foreach (var c in customers)
 record Address(string Postcode);
 record Customer(string Name, Address Address);
 ```
+@10-11 | -
+`Customer` has an `Address`. The type says nothing about whether it can be missing.
+@1-5 | customers = [Ada → Address(SW1A 1AA), Bob → null]
+Bob signed up and never entered an address, so his `Address` is `null`: an arrow that points at nothing.
+@7-8 | c = Ada ; c.Address = → Address(SW1A 1AA) | > Label for Ada: SW1A 1AA
+Ada's address exists, so `.Postcode` follows the arrow and reads it.
+@7 | c = Bob ; c.Address = null
+Next customer.
+@8 | c = Bob ; c.Address = null | ! NullReferenceException: Object reference not set to an instance of an object.
+`c.Address.Postcode` tries to follow an arrow that points nowhere, and the program crashes. Everything after this, every other customer's label, never happens. Press **Run** to see the real crash.
+:::
 
-Run it. Ada's label prints, then **`NullReferenceException`**. It's the most common crash in C# history. The type said `Address`, the data said "nothing", and nothing warned anyone until a customer hit it in production.
+Ada's label prints, then **`NullReferenceException`**. It's the most common crash in C# history. The type said `Address`, the data said "nothing", and nothing warned anyone until a customer hit it in production.
+
+And the crash didn't just skip Bob. The label job ran as one loop over the night's orders, so one bad customer stopped it halfway. Four hundred parcels missed the morning van. The fix took one line. Finding it took two hours, at night, from a stack trace.
 
 ## The lightbulb: make the compiler worry about it {b}
 
@@ -72,6 +86,7 @@ That's the theme of this whole episode: modern C# features mostly **move mistake
 
 The fixed Kettle code:
 
+:::walk The fix: say "might be missing", then handle it
 ```csharp
 var customers = new[] { new Customer("Ada", new Address("SW1A 1AA")), new Customer("Bob", null) };
 foreach (var c in customers) Console.WriteLine(LabelFor(c));
@@ -85,6 +100,17 @@ static string LabelFor(Customer c)
 record Address(string Postcode);
 record Customer(string Name, Address? Address);         // ← the ? is the whole fix: "may be missing"
 ```
+@11 | -
+The whole fix starts with one character: `Address?`. Now the type **says** an address may be missing, and the compiler holds you to it. Writing `c.Address.Postcode` without a check would now be a warning in your editor.
+@2 | c = Ada
+Make a label for each customer.
+@6 | c = Ada ; c.Address = → Address(SW1A 1AA)
+Check first. Ada has an address, so carry on.
+@7 | | > Ada: ship to SW1A 1AA
+After the check, the compiler **knows** `Address` isn't null here, so there's no warning.
+@6 | c = Bob ; c.Address = null | > Bob: no address, so offer click & collect
+Bob has no address. Instead of crashing, the code takes the path for missing addresses, and the loop carries on to the next customer.
+:::
 
 The null toolkit:
 
@@ -97,12 +123,21 @@ The null toolkit:
 | `x!` | **null-forgiving**: "trust me". It silences the warning and checks nothing. Use it rarely |
 | `[NotNullWhen(true)]` and friends | teach the compiler your method's null rules |
 
+:::walk The null operators
 ```csharp
 string? coupon = null;
 Console.WriteLine(coupon?.ToUpper() ?? "(no coupon)");   // ?. then ??
 coupon ??= "WELCOME10";
 Console.WriteLine(coupon);
 ```
+@1 | coupon = null
+A coupon that hasn't been entered.
+@2 | | > (no coupon)
+`coupon?.ToUpper()` means "call `ToUpper` only if `coupon` isn't null". It's null, so the whole expression is `null`. Then `??` supplies a fallback.
+@3 | coupon = "WELCOME10"
+`??=` assigns only if the variable is currently null.
+@4 | | > WELCOME10
+:::
 
 That last row matters for your own `Try…` methods:
 
@@ -136,6 +171,7 @@ else throw new InvalidOperationException("No country");
 
 A **switch expression** says the same thing as a table of rules. Each arm is a **pattern**, a description of the *shape* a value must have:
 
+:::walk Rules as a table, tried from the top
 ```csharp
 Console.WriteLine(Fee(new Order(120m, false, "FR")));   // 0
 Console.WriteLine(Fee(new Order(40m, true, "FR")));     // 0
@@ -153,6 +189,27 @@ static decimal Fee(Order o) => o switch
 
 record Order(decimal Total, bool IsVip, string? Country);
 ```
+@6-13 | -
+Each arm is a **pattern**: a description of a shape. The first arm that matches wins.
+@1 | o = Order(Total 120, not VIP, FR)
+A £120 order to France.
+@8 | o = Order(Total 120, not VIP, FR) | > 0
+First arm: is `Total` at least 100? Yes, so free shipping. The other arms aren't even checked.
+@2 | o = Order(Total 40, VIP, FR)
+A £40 order from a VIP.
+@9 | o = Order(Total 40, VIP, FR) | > 0
+The first arm fails (40 < 100). The second asks "is `IsVip` true?", and it is.
+@3 | o = Order(Total 40, not VIP, IE)
+A £40 order to Ireland.
+@10 | o = Order(Total 40, not VIP, IE) | > 3.95
+Not over 100, not VIP, but `Country` is `"GB" or "IE"`.
+@4 | o = Order(Total 40, not VIP, US)
+A £40 order to the US.
+@11 | o = Order(Total 40, not VIP, US) | > 12.90
+Only "has a country at all" matches.
+@12 | -
+And an order with no country falls through to `_`, which matches anything. If you deleted this arm, the compiler would warn that some inputs aren't handled.
+:::
 
 :::scene visuals/scenes/mod-switch.svg | One order, tried against each arm
 1. The arms are tried **from the top**. The first asks: is `Total` at least 100? For this order it's 40, so no.
@@ -176,6 +233,7 @@ The pattern kinds:
 | List | `[var first, .., var last]`, `[]` | a sequence has that shape |
 | Discard | `_` | anything |
 
+:::walk Patterns for the shape of a list
 ```csharp
 Console.WriteLine(Describe([]));
 Console.WriteLine(Describe(["Sencha"]));
@@ -188,6 +246,19 @@ static string Describe(string[] teas) => teas switch
     [var first, .. var middle, var last] => $"{first} … {last} ({middle.Length} in between)",
 };
 ```
+@1 | teas = [ ]
+An empty basket.
+@7 | teas = [ ] | > empty basket
+`[]` matches an empty array.
+@2 | teas = [Sencha]
+One tea.
+@8 | teas = [Sencha] ; only = Sencha | > just Sencha
+`[var only]` matches exactly one item and **names** it.
+@3 | teas = [Sencha, Assam, Rooibos, Chai]
+Four teas.
+@9 | first = Sencha ; middle = [Assam, Rooibos] ; last = Chai | > Sencha … Chai (2 in between)
+`[var first, .. var middle, var last]` names the first and last, and `..` collects everything between them.
+:::
 
 :::qa Explain switch expressions and property patterns.
 A switch expression (`x switch { pattern => value, … }`) evaluates arms top to bottom and returns the first match. The compiler warns when the arms aren't exhaustive and errors on unreachable arms. Property patterns like `{ Status: Paid, Total: > 100 }` match on members, and can nest, combine with `and`/`or`/`not`, and use relational operators.
@@ -206,6 +277,7 @@ A **record** is a type designed for **data**. Two records with the same values *
 4. **`with`** makes a changed **copy**. The original is untouched, so records are safe to pass around and share.
 :::
 
+:::walk What a one-line record gives you
 ```csharp
 var a = new OrderDto(1, "Sencha", 6m);
 var b = a with { Total = 9m };                            // a copy with one change
@@ -219,6 +291,21 @@ Console.WriteLine($"{id}: {tea}");
 public record OrderDto(int Id, string Tea, decimal Total);        // record class (a reference type)
 public readonly record struct Money(decimal Amount, string Currency);   // record struct (a value type)
 ```
+@10 | -
+One line. The compiler writes the constructor, the properties, `Equals`, `GetHashCode`, `==`, `ToString`, `Deconstruct` and copying.
+@1 | a = → OrderDto { Id = 1, Tea = Sencha, Total = 6 }
+Create one.
+@2 | a = → OrderDto { 1, Sencha, 6 } ; b = → OrderDto { 1, Sencha, 9 } (a new object)
+`with` makes a **copy** with one property changed. `a` is untouched.
+@4 | | > OrderDto { Id = 1, Tea = Sencha, Total = 6 }
+The generated `ToString` shows the data. That's useful in logs.
+@5 | | > True
+A separate object with the same values is `==`, because records compare by value.
+@6 | | > 6 → 9
+The original kept its 6, so a record is safe to pass around: nobody can change it under you.
+@7-8 | id = 1 ; tea = Sencha | > 1: Sencha
+Deconstruction pulls the values out into variables. `_` skips the one you don't need.
+:::
 
 | Use a **record** for | Use a **class** for |
 |---|---|
@@ -248,6 +335,7 @@ Some properties should be set exactly once, when the object is created, and some
 5. In short, **`init`** answers "*when* may this be set?" (only during creation), and **`required`** answers "*must* it be set?" (yes). Together they mean set once and never forgotten.
 :::
 
+:::walk Set once, and you can't forget
 ```csharp
 var req = new CreateOrderRequest { CustomerId = 42, Teas = ["Sencha"] };
 Console.WriteLine($"{req.CustomerId}: {string.Join(",", req.Teas)}, coupon {req.Coupon ?? "none"}");
@@ -262,6 +350,16 @@ class CreateOrderRequest
     public string? Coupon { get; init; }                     // optional, but still locked once set
 }
 ```
+@9-11 | -
+`required` means "you must set this when you create the object". `init` means "you can only set it then".
+@1 | req = → CreateOrderRequest { CustomerId = 42, Teas = [Sencha], Coupon = null }
+Both required properties are set. `Coupon` is optional, so it's left as `null`.
+@2 | | > 42: Sencha, coupon none
+@4 | ! CS9035: Required member 'CreateOrderRequest.Teas' must be set in the object initializer
+Forget `Teas` and the build fails. With a plain property, you'd find out from a customer whose order had no items. (Commented out so the rest runs.)
+@5 | ! CS8852: Init-only property 'CustomerId' can only be assigned in an object initializer
+And once the object exists, it's locked. A request can't be quietly changed halfway through handling it.
+:::
 
 - **`init`** decides *when* a property can be set: only while the object is being created.
 - **`required`** decides *whether* it must be set. Forget it and you get a **compile error**. `System.Text.Json` respects it too, so missing JSON fields become errors instead of silent defaults.
@@ -272,6 +370,7 @@ class CreateOrderRequest
 
 ## Tuples: quick multi-value returns {b}
 
+:::walk Return two things without a class
 ```csharp
 var teas = new[] { 6.50m, 4.25m, 9.00m };
 var (count, total) = Summarise(teas);              // deconstruct into two variables
@@ -283,6 +382,19 @@ Console.WriteLine($"{a} {b}");
 
 static (int Count, decimal Total) Summarise(decimal[] prices) => (prices.Length, prices.Sum());
 ```
+@1 | teas = [6.50, 4.25, 9.00]
+Three prices.
+@9 | -
+The return type `(int Count, decimal Total)` is a **tuple**: two values with names, no class needed.
+@2 | count = 3 ; total = 19.75
+Deconstruct the result straight into two variables.
+@3 | | > 3 teas, £19.75
+@5 | a = 1 ; b = 2
+Two variables.
+@6 | a = 2 ; b = 1
+Tuples also swap two variables in one line, without a temporary.
+@7 | | > 2 1
+:::
 
 A tuple is a mutable struct with no real name. That's great for a quick **private** return of two or three values. For anything public, persisted or sent over the wire, use a record: it gets real names and can evolve.
 
@@ -305,6 +417,7 @@ An **extension method** adds a method to a type you don't own. It's really a sta
 4. That's why an extension can't see private members: it's just an outside method that's handed the object. All of LINQ, and every `builder.Services.AddXyz()`, is this same trick.
 :::
 
+:::walk A method that looks built in, but isn't
 ```csharp
 var price = 12.5m;
 Console.WriteLine(price.AsPounds());            // reads like a built-in method
@@ -317,6 +430,17 @@ static class KettleExtensions
         string.Join(" ", s.Split(' ').Select(w => char.ToUpper(w[0]) + w[1..]));
 }
 ```
+@1 | price = 12.5
+A price.
+@2 | amount = 12.5
+`price.AsPounds()` looks like a method on `decimal`. The compiler rewrites it into `KettleExtensions.AsPounds(price)`.
+@7 | amount = 12.5 | > £12.50
+The `this` on the first parameter is what makes the dot syntax work. The method is ordinary static code outside the type, so it can't see `decimal`'s private members.
+@3 | s = "earl grey"
+Same trick on `string`.
+@8-9 | s = "earl grey" | > Earl Grey
+Split into words, capitalise each first letter, join again.
+:::
 
 You've used hundreds of them already. **All of LINQ** is extension methods on `IEnumerable<T>` ([Episode 6](ch:linq)). So is every `builder.Services.AddXyz()` and `app.MapXyz()` in ASP.NET Core. That's how libraries plug themselves in:
 
@@ -386,6 +510,7 @@ public class OrderEndpoints { }
 You'll see three shortcuts in almost every modern file. Constructor parameters written on the class line. One bracket syntax for building any collection. And strings that need no escaping.
 :::
 
+:::walk Three shortcuts in one file
 ```csharp
 var checkout = new CheckoutService(new FixedClock());
 Console.WriteLine(checkout.Stamp());
@@ -411,6 +536,20 @@ class CheckoutService(IClock clock)          // primary constructor: clock is in
 interface IClock { DateTime Now { get; } }
 class FixedClock : IClock { public DateTime Now => new(2026, 11, 27, 9, 30, 0); }
 ```
+@18-21 | -
+A **primary constructor**: the parameter `clock` is written on the class line and is usable in every member. No field, no constructor body.
+@1-2 | checkout = → CheckoutService (clock = FixedClock) | > checked out at 09:30
+`Stamp` reads `clock` directly.
+@4-6 | prices = [6, 9, 4] ; teas = [Sencha] ; more = [6, 9, 4, 12]
+**Collection expressions**: the same `[ ]` makes an array or a list, decided by the variable's type. `..` spreads another collection in.
+@7 | | > 4 prices, 1 tea
+@9-11 | json = { "tea": "Sencha", … }
+A **raw string**: everything between the `"""` lines is taken exactly as written, quotes included. The indentation of the closing `"""` is removed from every line.
+@12 | | > { "tea": "Sencha", "price": 6.50, "tags": ["green", "japanese"] }
+@14-15 | id = 42 ; template = { "orderId": 42, … }
+With `$$`, it takes **two** braces to interpolate (`{{id}}`), so single braces stay literal. That's handy for JSON.
+@16 | | > { "orderId": 42, "note": "braces { } are literal here" }
+:::
 
 - **Primary constructors** (C# 12): the parameters are in scope for the whole class, which makes them ideal for injected services. They are **not** `readonly` ([Episode 2](ch:oop#primary-constructors-the-modern-shorthand)).
 - **Collection expressions** (C# 12): `[...]` builds any collection type. The compiler picks the right construction from the target type.
