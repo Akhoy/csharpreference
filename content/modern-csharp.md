@@ -502,6 +502,27 @@ namespace Kettle.Api.Orders;
 public class OrderEndpoints { }
 ```
 
+You can prove the generated `Main` is there, from inside it:
+
+:::walk Ask the code where it is
+```csharp
+using System.Reflection;
+
+Console.WriteLine("Hello from Kettle");
+var method = MethodBase.GetCurrentMethod()!;
+Console.WriteLine($"this code is in method {method.Name}, in class {method.DeclaringType!.Name}");
+Console.WriteLine($"args exists too: {args.Length} arguments");
+```
+@3 | | > Hello from Kettle
+This file has no class and no method. It's just statements.
+@4 | method = <Main>$
+Ask the runtime which method is running right now.
+@5 | | > this code is in method <Main>$, in class Program
+The compiler wrapped your lines in a method called `<Main>$` (a name you couldn't type yourself, so it can't clash) inside a class called `Program`.
+@6 | | > args exists too: 0 arguments
+That's also where `args` comes from: it's the generated method's parameter.
+:::
+
 `<ImplicitUsings>enable</ImplicitUsings>` in the project file adds the common ones (`System`, `System.Linq`, `System.Threading.Tasks` and so on) for you.
 
 ## Primary constructors, collection expressions, raw strings {i}
@@ -567,6 +588,35 @@ Constructor parameters declared on the type (`class Svc(IRepo repo)`) that are i
 
 :::plain
 None of these is a big idea. Learn to recognise them so they don't slow you down when you read other people's code.
+:::
+
+:::walk Six small features in eight lines
+```csharp
+using OrderMap = System.Collections.Generic.Dictionary<int, string>;
+
+OrderMap orders = new();
+orders[1] = "Sencha"; orders[2] = "Assam"; orders[3] = "Chai";
+string[] teas = [.. orders.Values];
+Console.WriteLine($"{teas[^1]} / {string.Join(",", teas[..2])} / {nameof(orders)}");
+
+Func<int, int> twice = static x => x * 2;
+Console.WriteLine($"{Label(twice(21))}");
+
+string Label(int id) => $"ORD-{id}";
+```
+@1 | -
+A **type alias**: `OrderMap` is now another name for `Dictionary<int, string>`.
+@3 | orders = OrderMap { }
+**Target-typed `new`**: the type is on the left, so `new()` on the right doesn't repeat it.
+@4-5 | orders = { 1 → Sencha, 2 → Assam, 3 → Chai } ; teas = [Sencha, Assam, Chai]
+Fill it, then spread its values into an array.
+@6 | | > Chai / Sencha,Assam / orders
+`^1` is the last item. `..2` is a range: items 0 and 1. `nameof(orders)` is the variable's name as a string, checked by the compiler, so it updates if you rename the variable.
+@8 | twice = static x => x * 2
+A **static lambda** promises not to capture anything. If it accidentally used a local variable, that would be a compile error, so it can never allocate a closure.
+@9 | | > ORD-42
+@11 | -
+`Label` is a **local function**: a helper declared inside the code that uses it, invisible to the rest of the program.
 :::
 
 | Feature | Example |

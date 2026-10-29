@@ -231,7 +231,7 @@ function buildChapter(id, meta, body, ctx) {
           else if (x.startsWith('>')) st.out.push({ t: x.slice(1).replace(/^ /, '') });
           else if (x.startsWith('!')) st.err = x.slice(1).trim();
           else if (x === '-') st.vars = [];
-          else if (x) st.vars = x.split(/\s;\s/).map(v => { const i = v.indexOf('='); return [v.slice(0, i).trim(), v.slice(i + 1).trim()]; });
+          else if (x) st.vars = x.split(/\s;\s/).map(v => { const i = v.indexOf('='); if (i < 1) throw new Error(`${id}: walk "${title}": variable "${v}" needs name = value`); return [v.slice(0, i).trim(), v.slice(i + 1).trim()]; });
         }
         steps.push(st);
       } else if (steps.length && l.trim()) steps[steps.length - 1].say += (steps[steps.length - 1].say ? ' ' : '') + l.trim();

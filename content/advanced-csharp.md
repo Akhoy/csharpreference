@@ -77,7 +77,7 @@ foreach (var line in lines)
     total += decimal.Parse(line.Split(',')[2], CultureInfo.InvariantCulture);   // the "obvious" way
 var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
 
-Console.WriteLine($"20,000 lines: £{total:N2}, {bytes:N0} bytes of garbage created");
+Console.WriteLine($"20,000 lines: £{total:N2}, {bytes / 1_048_576.0:N1} MB of garbage created");
 Console.WriteLine($"2,000,000 lines would be ~{bytes * 100 / 1_000_000:N0} MB of garbage, every night");
 ```
 @3 | lines = 20,000 lines like "2026-11-27,TEA-00000,6.50,GBP"
@@ -86,9 +86,9 @@ A scaled-down night: 20,000 lines instead of 2 million. They're already in memor
 Read the allocation counter.
 @7-8 | line = "2026-11-27,TEA-00000,6.50,GBP" ; Split gives = new string[4] + "2026-11-27" + "TEA-00000" + "6.50" + "GBP"
 For each line, `Split(',')` builds a **new array** and **four new strings**, copying every character. We use one field (the price) and throw the other four objects away.
-@9 | total = 170,000.00 ; bytes = 3,048,120
+@9 | total = 170,000.00 ; bytes = about 3,048,000
 Three megabytes of objects nobody needed. That's about 150 bytes of garbage per line.
-@11-12 | | > 20,000 lines: £170,000.00, 3,048,120 bytes of garbage created | > 2,000,000 lines would be ~304 MB of garbage, every night
+@11-12 | | > 20,000 lines: £170,000.00, 2.9 MB of garbage created | > 2,000,000 lines would be ~304 MB of garbage, every night
 Scale it up to the real file and the GC has to find and free hundreds of megabytes of tiny strings, at the same time as the import is trying to run.
 :::
 
@@ -114,7 +114,7 @@ var before = GC.GetAllocatedBytesForCurrentThread();
 decimal total = 0;
 foreach (var line in lines) total += PriceOf(line);
 var bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-Console.WriteLine($"20,000 lines: £{total:N2}, {bytes:N0} bytes of garbage created");   // almost nothing
+Console.WriteLine($"20,000 lines: £{total:N2}, {(bytes < 1024 ? "less than 1 KB" : $"{bytes:N0} bytes")} of garbage created");
 
 static decimal PriceOf(string line)
 {
@@ -137,10 +137,10 @@ Past the second comma.
 Up to the next comma: a window over exactly the four price characters.
 @17 | price = window over "6.50" → 6.50
 `decimal.Parse` accepts a span, so it reads the digits straight out of the original line.
-@8 | total = 170,000.00 ; bytes = 824
-After all 20,000 lines: **824 bytes**, and those are the stopwatch and the string formatting, not the parsing. The parser itself allocated nothing.
-@9 | | > 20,000 lines: £170,000.00, 824 bytes of garbage created
-Same answer, about 3,700 times less garbage.
+@8 | total = 170,000.00 ; bytes = a few hundred
+After all 20,000 lines: **a few hundred bytes**, and those come from the runtime itself, not the parsing. The parser itself allocated nothing.
+@9 | | > 20,000 lines: £170,000.00, less than 1 KB of garbage created
+Same answer, thousands of times less garbage.
 :::
 
 A span can view almost any memory: part of an array, part of a string, or memory on the **stack** that the GC never sees.
@@ -394,6 +394,7 @@ C# needs to hand that function a **pointer to raw bytes**. But C# objects live o
 5. In practice, `[LibraryImport]` (a source generator) writes the pinning and conversion code for you. You pass a span, and the `unsafe` code stays in generated, reviewed code.
 :::
 
+:::walk Pin, point, print
 ```csharp norun
 // The hand-written version: needs <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 static unsafe int Print(byte[] zpl)
@@ -412,6 +413,19 @@ internal static partial class Printer
 var zpl = "^XA^FO50,50^ADN,36,20^FDSencha 100g^FS^XZ"u8;   // UTF-8 bytes, no allocation
 Printer.PrintLabel(zpl, zpl.Length);
 ```
+@2 | zpl = → byte[] on the managed heap (the GC may move it)
+The label is an ordinary `byte[]`. The GC is free to move it while compacting the heap.
+@4 | zpl = → byte[] (PINNED) ; p = address of zpl[0]
+`fixed` pins the array for the length of the block, and gives you a raw pointer to its first byte. Inside this block the GC promises not to move it.
+@5 | p = address of zpl[0] ; native code = reading bytes at p
+The C function receives the pointer and the length, and reads the bytes directly. It knows nothing about .NET.
+@6 | zpl = → byte[] (unpinned)
+The block ends and the pin is released. Keep pins this short: a pinned object is a rock the GC has to compact around.
+@11-12 | -
+The modern way. `[LibraryImport]` is a source generator: you declare the method with no body, and the build writes the pinning and marshalling code for you.
+@15-16 | zpl = UTF-8 bytes (a span over the program's data, no allocation)
+You just pass a span. The `unsafe` code exists, but only in generated, reviewed code, not in yours.
+:::
 
 Rules for this territory:
 

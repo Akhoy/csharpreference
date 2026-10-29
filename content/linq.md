@@ -111,7 +111,7 @@ This builds a **query**: a description of the work. No order has been looked at 
 The `foreach` asks for results, so now the work happens. Here's what each line does with the data.
 @2 | after Where = [#1 Ada 30, #2 Bob 12, #4 Cy 55, #5 Bob 25, #6 Di 9]
 `Where` keeps the orders for which your lambda says `true`. Order #3 is dropped.
-@3 | after GroupBy = Ada [30] ; Bob [12, 25] ; Cy [55] ; Di [9]
+@3 | after GroupBy = Ada [30], Bob [12, 25], Cy [55], Di [9]
 `GroupBy` sorts them into piles, one per customer. Each pile's label is its `Key`.
 @4 | after Select = [Ada 30, Bob 37, Cy 55, Di 9]
 `Select` turns each pile into one small object: the name and the pile's total.
@@ -257,7 +257,7 @@ Console.WriteLine(string.Join("; ", rows));
 record Order(int Id, int CustomerId, string[] Teas);
 record Customer(int Id, string Name);
 ```
-@1-7 | orders = [#1 (cust 10): Sencha, Assam ; #2 (cust 20): Rooibos ; #3 (cust 10): Sencha] ; customers = [10 Ada, 20 Bob]
+@1-7 | orders = [#1 (cust 10): Sencha, Assam / #2 (cust 20): Rooibos / #3 (cust 10): Sencha] ; customers = [10 Ada, 20 Bob]
 Three orders, each with a list of teas, and two customers.
 @10 | | > Sencha, Assam, Rooibos, Sencha
 `SelectMany` takes each order's tea list and **flattens** them into one sequence. `Select` would have given three separate lists.
@@ -447,6 +447,7 @@ Which `Where` you get depends only on the **declared type of the variable**. The
 4. Now the same code with the variable typed **`IEnumerable<Order>`**. `Where` is now the in-memory version, so EF has to fetch **the whole table**. A million rows cross the network, then your app throws away all but 20.
 :::
 
+:::walk Same LINQ, two very different trips
 ```csharp norun
 IQueryable<Order> q = db.Orders;
 var page = await q.Where(o => o.Status == OrderStatus.Paid)   // → WHERE
@@ -458,6 +459,19 @@ IEnumerable<Order> all = db.Orders;                             // ← same data
 var oops = all.Where(o => o.Status == OrderStatus.Paid).Take(20).ToList();
 // SELECT * FROM Orders: the WHOLE table, filtered in memory
 ```
+@1 | q = IQueryable<Order> (a query over the Orders table, not run)
+`db.Orders` is an `IQueryable`. Nothing has been fetched.
+@2 | q = query: WHERE Status = Paid
+This `Where` is `Queryable.Where`. It takes an **expression tree**, so it adds a description to the query instead of running anything.
+@3-4 | q = query: WHERE Status = Paid ORDER BY CreatedAt, TOP 20
+More description: an ORDER BY and a TOP.
+@5 | SQL sent = SELECT TOP(20) … WHERE Status = 1 ORDER BY CreatedAt ; rows back = 20
+`ToListAsync` finally runs it. EF Core translates the whole tree into **one** SQL query, and the database sends back 20 rows.
+@7 | all = IEnumerable<Order> (the same table)
+Now the same table, but the variable is typed `IEnumerable<Order>`. That one word changes which `Where` the compiler picks.
+@8 | SQL sent = SELECT * FROM Orders ; rows back = every order (1,000,000) ; kept = 20
+This is `Enumerable.Where`, which takes a compiled delegate. EF Core can't read a delegate, so it can only fetch **the whole table** and let your C# filter it in memory. Same result, a million rows over the network.
+:::
 
 :::gotcha The silent full-table scan
 Four things quietly switch a query from SQL to in-memory, with no compiler warning. Assigning it to an `IEnumerable<T>` variable. Calling `.AsEnumerable()`. Calling `.ToList()` before you've finished filtering. Or a repository method that returns `IEnumerable<T>`. Keep queries as `IQueryable` until the very last call, and `Select` only the columns you need.

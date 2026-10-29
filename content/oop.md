@@ -655,6 +655,42 @@ Who is allowed to see a member? Think of it as rings, from the tightest to the w
 5. Start in the smallest ring and widen only when you need to. Making something more visible later is easy. Making it less visible breaks whoever started using it.
 :::
 
+:::walk Which line may touch which member?
+```csharp norun
+// in Kettle.Core.dll
+public class Order
+{
+    private decimal _total;                 // only Order's own code
+    protected void Recalculate() { }        // Order and its subclasses
+    internal void MarkImported() { }        // anything inside Kettle.Core.dll
+    public decimal Total => _total;         // everyone
+}
+
+// in Kettle.Api.dll, a different project
+class Endpoint
+{
+    void Show(Order o)
+    {
+        Console.WriteLine(o.Total);
+        o.MarkImported();
+        o._total = 0;
+    }
+}
+```
+@2-8 | -
+`Order` lives in the `Kettle.Core` project. Each member has a different ring of visibility.
+@11-14 | -
+`Endpoint` lives in **another project**, `Kettle.Api`, which references `Kettle.Core`.
+@15
+`Total` is `public`, so any code anywhere may read it. This compiles.
+@16 | ! CS0122: 'Order.MarkImported()' is inaccessible due to its protection level
+`MarkImported` is `internal`: only code inside `Kettle.Core.dll` may call it. `Endpoint` is in a different assembly, so it's refused. That's how a library keeps helpers for itself.
+@17 | ! CS0122: 'Order._total' is inaccessible due to its protection level
+`_total` is `private`: only `Order`'s own code may touch it. This is the wall from the start of the episode, enforced by the compiler.
+@5
+`Recalculate` is `protected`, so a class that inherits from `Order` may call it, even in another project. `Endpoint` doesn't inherit, so it can't.
+:::
+
 The full list, including two rarer combinations:
 
 | Modifier | Visible to |

@@ -683,6 +683,42 @@ await using var writer = new BlobBatchWriter();
 Almost every disposal bug is one of two things: something you created was never disposed, or something you *didn't* create was disposed by you.
 :::
 
+The sneakiest one combines this episode with LINQ's laziness from [Episode 6](ch:linq#deferred-execution-a-recipe-not-a-meal):
+
+:::walk A lazy query outlives its reader
+```csharp
+var names = ReadNames();
+try { foreach (var n in names) Console.WriteLine(n); }
+catch (ObjectDisposedException) { Console.WriteLine("ObjectDisposedException: the reader closed before the loop ran"); }
+
+static IEnumerable<string> ReadNames()
+{
+    using var reader = new StringReader("Sencha\nAssam");
+    return Lines(reader);                    // a lazy query over the reader
+}
+
+static IEnumerable<string> Lines(TextReader r)
+{
+    string? line;
+    while ((line = r.ReadLine()) != null) yield return line;
+}
+```
+@1
+Ask for the names. Jump in.
+@7 | reader = open StringReader
+Open a reader. Think of it as a database connection or a file.
+@8 | reader = open StringReader ; result = a lazy query over reader (nothing read yet)
+`Lines` uses `yield return`, so calling it **reads nothing**. It just returns a recipe that will read from `reader` later.
+@9 | reader = disposed ; names = a lazy query over a disposed reader
+The method ends, and `using` disposes the reader. The recipe still points at it.
+@2 | names = a lazy query over a disposed reader
+Now the caller loops, and only now does the recipe run.
+@15 | ! ObjectDisposedException: Cannot read from a closed TextReader.
+Its first `ReadLine` hits a closed reader.
+@3 | | > ObjectDisposedException: the reader closed before the loop ran
+The fix is to finish reading **before** the resource closes: `return Lines(reader).ToList();`. With EF Core, it's the same bug with a `DbContext`.
+:::
+
 | Mistake | What happens | Fix |
 |---|---|---|
 | `new HttpClient()` per request | Socket exhaustion | `IHttpClientFactory` ([HttpClient](ch:http-client)) |

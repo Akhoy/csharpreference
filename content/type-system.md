@@ -195,6 +195,7 @@ So here's the precise rule:
 - **Reference-type objects always live on the heap.**
 - **Value types live wherever their container lives.** A local `int` lives in the stack frame. An `int` field of a class lives inside that object on the heap. The `int`s in an `int[]` live inside the array, on the heap.
 
+:::walk Where each piece of data actually lives
 ```csharp norun
 class Order
 {
@@ -208,6 +209,19 @@ void M()
     int[] nums = { 1, 2, 3 }; // array object on the heap, ints inside it
 }
 ```
+@1-4 | -
+`Order` is a class, so every `Order` object lives on the heap. Its `Quantity` field is an `int`, a value type, and it lives **inside** the object.
+@6-7 | stack (M's frame) = { }
+Calling `M()` pushes a new frame onto the stack for its local variables.
+@8 | stack (M's frame) = { local = 5 }
+`local` is a value type in a method, so the 5 sits right in the frame.
+@9 | stack (M's frame) = { local = 5, order = → } ; heap = Order { Quantity = 0 }
+`new Order()` puts the object on the heap. The frame holds only the arrow. And `Quantity`, an `int`, is on the heap too, because its container is.
+@10 | stack (M's frame) = { local = 5, order = →, nums = → } ; heap = Order { Quantity = 0 }, Int32[] { 1, 2, 3 }
+An array is an object, so it's on the heap, and its three `int`s are stored **inside** it, side by side.
+@11 | stack = M's frame is gone ; heap = Order { … }, Int32[] { … } (nothing points at them)
+`M` returns and its frame vanishes instantly, `local` included. The two heap objects stay until the GC notices nothing points at them, and then frees them.
+:::
 
 Two exceptions are worth knowing now. A local variable **captured by a lambda**, or used inside an **`async` method**, gets moved into a hidden heap object so it can outlive the frame. You'll see why in [Delegates](ch:delegates-events#closures-a-lambda-packs-a-backpack) and [async](ch:async-await).
 
@@ -841,6 +855,29 @@ Three ways to avoid writing a type name. They're not the same thing:
 | `dynamic` | "Don't check anything until it runs." Errors become runtime exceptions. | Runtime |
 
 Use `var` freely. Almost never use `dynamic` in backend code.
+
+:::walk var is still typed, object has to be unwrapped
+```csharp
+var a = 5;                      // the compiler writes: int a = 5;
+object b = 5;                   // an int, boxed, and seen only as "some object"
+Console.WriteLine($"{a.GetType().Name}, {b.GetType().Name}");
+Console.WriteLine(a + 1);
+// Console.WriteLine(b + 1);    // compile error: object has no + operator
+Console.WriteLine((int)b + 1);  // cast it back first
+```
+@1 | a = 5 (type: int)
+`var` doesn't mean "any type". The compiler looks at the right-hand side, sees an `int`, and makes `a` an `int`, exactly as if you'd written it.
+@2 | a = 5 (int) ; b = → box holding 5 (type: object)
+`object` really is "any type". The `int` is boxed, and the variable only promises "this is some object".
+@3 | | > Int32, Int32
+At runtime both values are `Int32`. The difference is what the **compiler** knows about each variable.
+@4 | | > 6
+The compiler knows `a` is an `int`, so `+` works.
+@5 | ! CS0019: Operator '+' cannot be applied to operands of type 'object' and 'int'
+For `b` it only knows "object", and objects can't be added. (Commented out so the rest runs.)
+@6 | | > 6
+Cast it back to `int` (unboxing) and it works. `dynamic` would skip this check entirely and look up `+` at runtime, so a typo becomes a crash for a customer instead of an error for you.
+:::
 
 :::qa What is the difference between var and dynamic?
 `var` is compile-time type inference: the variable is still statically typed. `dynamic` defers all member lookups to runtime, so mistakes show up as runtime exceptions and you lose IntelliSense and speed.

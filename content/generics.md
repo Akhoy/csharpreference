@@ -393,6 +393,32 @@ Once you know `T` is "the blank", ASP.NET Core code becomes much easier to read:
 | `services.AddScoped<IRepo, Repo>()` | Interface → implementation |
 | `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))` | An **open generic**, which covers every `IRepository<X>` at once |
 
+`ILogger<OrderService>` is the strangest-looking one, because the `T` isn't stored or returned. It's just a label. Here's a tiny version that shows the trick:
+
+:::walk A type parameter used as a label
+```csharp
+var orders = new Logger<OrderService>();
+var pay = new Logger<PaymentService>();
+orders.Info("order 42 placed");
+pay.Info("card charged");
+
+class Logger<T>
+{
+    public void Info(string message) => Console.WriteLine($"[{typeof(T).Name}] {message}");
+}
+class OrderService { }
+class PaymentService { }
+```
+@6-9 | -
+`Logger<T>` never stores a `T`. It only asks `typeof(T).Name` for the type's name.
+@1-2 | orders = Logger<OrderService> ; pay = Logger<PaymentService>
+Two loggers, labelled with the class that uses them.
+@3 | | > [OrderService] order 42 placed
+Generics are real at runtime, so `typeof(T)` knows which type filled the blank. Every log line says where it came from.
+@4 | | > [PaymentService] card charged
+That's why services ask for `ILogger<TheirOwnClass>`: you can filter the logs by the class that wrote them.
+:::
+
 `IRepository<>`, with the brackets left empty, is an **open** generic: the template with its blank still unfilled.
 
 :::scene visuals/scenes/gen-open.svg | One registration for every entity

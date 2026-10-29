@@ -479,6 +479,53 @@ await foreach (var p in GetAllAsync(ct)) { /* handle each product as it arrives 
 
 ASP.NET Core streams an `IAsyncEnumerable` response as a JSON array without buffering it all in memory.
 
+Here's the same shape with two "pages" that arrive when we say so. Watch each product appear as soon as its page lands, instead of all at the end:
+
+:::walk Results that arrive over time
+```csharp
+var pages = new[] { new TaskCompletionSource<string[]>(), new TaskCompletionSource<string[]>() };
+Task done = ShowAsync(Products());
+Console.WriteLine("waiting for page 1…");
+pages[0].SetResult(["Sencha", "Assam"]);
+Console.WriteLine("waiting for page 2…");
+pages[1].SetResult(["Rooibos"]);
+Console.WriteLine($"all done: {done.IsCompleted}");
+
+async IAsyncEnumerable<string> Products()
+{
+    foreach (var page in pages)
+        foreach (var p in await page.Task) yield return p;
+}
+
+async Task ShowAsync(IAsyncEnumerable<string> items)
+{
+    await foreach (var p in items) Console.WriteLine($"  showing {p}");
+}
+```
+@1 | pages = [page 1: not arrived, page 2: not arrived]
+Two fake API pages, finished by hand.
+@2 | done = Task (running)
+Start showing products. `await foreach` asks the stream for its first item.
+@12 | page = page 1 (not arrived)
+The stream `await`s page 1. It hasn't arrived, so both methods pause and control returns to the caller.
+@3 | | > waiting for page 1…
+Nothing is shown yet, and no thread is blocked.
+@4 | pages = [page 1: Sencha, Assam / page 2: not arrived]
+Page 1 arrives. The stream resumes.
+@12 | p = Sencha
+`yield return` hands Sencha to the `await foreach`…
+@17 | | >   showing Sencha
+…which shows it right away…
+@12-17 | p = Assam | >   showing Assam
+…then Assam. Then the stream awaits page 2 and pauses again.
+@5 | | > waiting for page 2…
+@6 | pages = [page 1 ✓ / page 2: Rooibos]
+Page 2 arrives.
+@12-17 | p = Rooibos | >   showing Rooibos
+@7 | done = Task (finished) | > all done: True
+No more pages, so the stream ends and so does the loop. The user saw the first products while the second page was still on its way.
+:::
+
 ## Under the hood: the state machine {a}
 
 :::plain
@@ -662,6 +709,7 @@ For hot-path methods that usually complete synchronously, such as cache hits or 
 Starting a task and not waiting for it seems harmless. But its errors vanish, it can be killed halfway through, and it may use objects that are thrown away when the request ends.
 :::
 
+:::walk Three ways a forgotten task goes wrong
 ```csharp norun
 app.MapPost("/signup", async (User u, IEmailSender email) =>
 {
@@ -670,6 +718,15 @@ app.MapPost("/signup", async (User u, IEmailSender email) =>
     return Results.Ok();
 });
 ```
+@3 | request = in progress
+Save the user and wait for it. Good.
+@4 | request = in progress ; email task = running, nobody holding it
+Start the welcome email and **throw the task away**. `_ =` says "I don't care about the result", so nobody will ever await it.
+@5 | request = finished (200 OK) ; email task = still running
+The response goes out. ASP.NET Core now ends the request and **disposes its scoped services**, including any `DbContext` the email code is using.
+@4 | email task = Faulted (ObjectDisposedException), and nobody looks
+If the email code touches the disposed `DbContext`, it fails. The exception is stored in a task nobody holds, so no log line is written. Or the app restarts for a deploy, and the email is silently lost. Hand it to a background queue instead.
+:::
 
 Three things go wrong. Its exceptions are never seen. It's killed if the app shuts down. And any per-request service it uses (like `DbContext`) is **disposed** when the request ends, possibly while it's still running. Put the work on a **background queue** (`Channel<T>` plus a hosted service) or a durable message queue ([Background work](ch:background-work)).
 
@@ -688,8 +745,18 @@ You can't `await` inside a `lock` block. The compiler forbids it, and the reason
 4. `SemaphoreSlim` counts permits instead of remembering a thread, so any thread may release it, and it has an async `WaitAsync`.
 :::
 
+:::walk The lock the compiler refuses, and the one that works
 ```csharp norun
+private readonly object _lockGate = new();
 private readonly SemaphoreSlim _gate = new(1, 1);
+
+public async Task RefreshBrokenAsync(CancellationToken ct)
+{
+    lock (_lockGate)
+    {
+        _token = await FetchTokenAsync(ct);
+    }
+}
 
 public async Task RefreshTokenAsync(CancellationToken ct)
 {
@@ -698,6 +765,19 @@ public async Task RefreshTokenAsync(CancellationToken ct)
     finally { _gate.Release(); }
 }
 ```
+@6 | key held by = thread 7
+Kettle refreshes its payment API token, and two requests mustn't do it at once. `lock` takes the key, and the key belongs to **thread 7**.
+@8 | ! CS1996: Cannot await in the body of a lock statement
+After this `await`, the rest of the method may run on a different thread, which would then try to give back a key it never took. So the compiler refuses outright.
+@2 | -
+`SemaphoreSlim(1, 1)` is a counter with one permit. It doesn't care **which** thread returns the permit.
+@14 | permits = 0 (taken by this request)
+`WaitAsync` takes the permit. If another request has it, this one waits *asynchronously*, without blocking a thread.
+@15 | permits = 0 ; token = refreshing…
+Awaiting inside is fine now. Whichever thread resumes the method can carry on.
+@16 | permits = 1
+`Release` in a `finally` gives the permit back even if the fetch throws, so the next request can go in.
+:::
 
 More in [Threading & concurrency](ch:threading-concurrency).
 

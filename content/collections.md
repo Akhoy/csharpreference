@@ -452,6 +452,36 @@ The subtle part is the one even careful code gets wrong:
 5. The fix is to make check-and-add **one step**: `GetOrAdd`. Under a race the loading code may still *run* twice, but only one result is ever stored. Wrap it in `Lazy<T>` (as in the code above) to make it run once.
 :::
 
+The browser runner has only one thread, but you can replay the race by hand. Here the steps of two requests, A and B, are written in the order two real threads could run them:
+
+:::walk Replay the race, one step at a time
+```csharp
+var cache = new Dictionary<string, string>();
+int loads = 0;
+
+bool aFound = cache.ContainsKey("GB");      // request A checks: not there
+bool bFound = cache.ContainsKey("GB");      // request B checks too: not there either
+if (!aFound) cache["GB"] = Load("rates v1"); // A loads and stores
+if (!bFound) cache["GB"] = Load("rates v2"); // B loads again and overwrites
+
+Console.WriteLine($"loaded {loads} times; cache now holds {cache["GB"]}");
+
+string Load(string v) { loads++; return v; }
+```
+@1-2 | cache = { } ; loads = 0
+An empty cache of exchange rates, and a counter for how many times we load them.
+@4 | cache = { } ; aFound = false
+Request A checks for "GB". It isn't there.
+@5 | cache = { } ; aFound = false ; bFound = false
+Before A gets any further, request B checks too. On a real server this is just two threads a microsecond apart. B also sees "not there".
+@6 | cache = { GB → rates v1 } ; loads = 1
+A loads the rates and stores them.
+@7 | cache = { GB → rates v2 } ; loads = 2
+B already decided, on line 5, that the rates were missing. So it loads them **again** and overwrites A's value. Anyone holding v1 now disagrees with the cache.
+@9 | | > loaded 2 times; cache now holds rates v2
+Each line on its own was fine. The bug lives in the **gap** between checking and acting. `GetOrAdd` closes the gap by making "check and add" one step.
+:::
+
 More on races in [Threading](ch:threading-concurrency#race-conditions-when-it-depends-on-timing-becomes-a-bug).
 
 :::qa How do you make a Dictionary thread-safe?
