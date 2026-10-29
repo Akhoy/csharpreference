@@ -47,7 +47,9 @@ decimal Total(decimal subtotal)
 }
 ```
 
-Every new promotion means editing `Total`, testing checkout again and redeploying. Checkout shouldn't need to know about promotions at all. It should just say "apply *whatever the current rule is*".
+Every new promotion means editing `Total`, testing checkout again and redeploying. The Tuesday rule went live on a Wednesday because the deploy queue was full, and the shop owner had promised it in a newsletter. Worse, checkout is the most important code in the shop, and it's being edited every week for marketing reasons.
+
+Checkout shouldn't need to know about promotions at all. It should just say "apply *whatever the current rule is*".
 
 So the question is: can you pass a *rule*, a piece of behaviour, into a method the same way you pass a number?
 
@@ -65,6 +67,7 @@ That kind of variable has a name: a **delegate**. Its *type* describes the shape
 5. A method with the wrong shape, like `string SayHello(int)`, doesn't fit the slot. The compiler rejects it, so delegates are fully type-checked.
 :::
 
+:::walk Pass the rule in, like any other value
 ```csharp
 var subtotal = 50m;
 
@@ -80,6 +83,25 @@ static decimal Total(decimal subtotal, Func<decimal, decimal> rule) => rule(subt
 static decimal TenPercentOver50(decimal s) => s >= 50 ? s * 0.9m : s;
 static decimal ChristmasSpecial(decimal s) => s * 0.8m;
 ```
+@10 | -
+`Total` takes a `rule` parameter of type `Func<decimal, decimal>`: "any method that takes a decimal and returns a decimal". All it does is call it.
+@12-13 | -
+Two rules, written as ordinary static methods. Both have the right shape: decimal in, decimal out.
+@1 | subtotal = 50
+A £50 basket.
+@3 | subtotal = 50 ; rule = TenPercentOver50
+Pass the **method itself** (no brackets, so it isn't called here). Inside `Total`, `rule` now refers to `TenPercentOver50`.
+@12 | s = 50 | > 45.0
+`rule(subtotal)` calls it. 50 qualifies, so 10% comes off.
+@4 | subtotal = 50 ; rule = ChristmasSpecial | > 40.0
+Same `Total`, different rule. Checkout's code didn't change, only the value passed in.
+@5 | subtotal = 50 ; rule = s => s >= 30 ? s - 5 : s | > 45
+A **lambda** writes the rule inline. `s =>` means "given `s`, return…". It compiles into a hidden method with the same shape.
+@7 | current = TenPercentOver50
+A delegate is a value, so you can store it in a variable, or a field, or a dictionary of promotions loaded at startup.
+@8 | current = TenPercentOver50 | > 72.0
+And call it like a method.
+:::
 
 Now the current promotion can be loaded from config or a database and handed to checkout, and checkout never changes again.
 
@@ -102,6 +124,7 @@ You *can* declare your own delegate type (`delegate decimal DiscountRule(decimal
 | `Action<T1, …>` | inputs → returns nothing | `Action<string> log = Console.WriteLine;` |
 | `Predicate<T>` | one input → `bool` | `Predicate<int> isEven = n => n % 2 == 0;` |
 
+:::walk The ready-made delegate types
 ```csharp
 Func<int, int, int> add = (a, b) => a + b;        // two ints in, int out
 Action<string> log = Console.WriteLine;            // a "method group": just the method's name
@@ -113,6 +136,20 @@ log($"4 even? {isEven(4)}");
 var prices = new List<int> { 5, 12, 8, 30 };
 log(string.Join(", ", prices.Where(p => p > 10)));   // LINQ's Where takes a Func<int, bool>
 ```
+@1 | add = (a, b) => a + b
+`Func<int, int, int>`: two ints in, and the **last** type is what comes out.
+@2 | add = (a, b) => a + b ; log = Console.WriteLine
+`Action<string>`: a string in, nothing out. `Console.WriteLine` without brackets is the method itself (a "method group"), so no lambda is needed.
+@3 | add = (a, b) => a + b ; log = Console.WriteLine ; isEven = n => n % 2 == 0
+`Predicate<int>`: an int in, a `bool` out.
+@5 | | > 2 + 3 = 5
+Call `add`, then pass the text to `log`.
+@6 | | > 4 even? True
+@8 | prices = [5, 12, 8, 30]
+A list of prices.
+@9 | | > 12, 30
+LINQ's `Where` takes a `Func<int, bool>`. `p => p > 10` is that delegate, and `Where` calls it once per price. You've been using delegates every time you wrote LINQ.
+:::
 
 `Console.WriteLine` on its own, without parentheses, is a **method group**: the method itself rather than a call to it. If you find yourself writing `x => int.Parse(x)`, you can just write `int.Parse`.
 
@@ -128,6 +165,7 @@ A lambda can keep using the local variables around it, even after the method tha
 
 Here's something that looks impossible. This lambda keeps using `count` **after** `MakeCounter` has returned, even though `count` was a local variable that should have vanished with the stack frame:
 
+:::walk A local variable that outlives its method
 ```csharp
 var next = MakeCounter();
 next(); next();
@@ -139,6 +177,19 @@ static Func<int> MakeCounter()
     return () => ++count;       // ...used by a lambda that outlives the method
 }
 ```
+@1
+Call `MakeCounter`.
+@7 | count = 0 (moved into a hidden heap object)
+`count` looks like an ordinary local. But the compiler saw that a lambda uses it, so it put `count` in a small hidden object on the heap instead of on the stack. That object is the "backpack".
+@8 | count = 0 (in the backpack)
+Return a lambda. The delegate holds a reference to the backpack.
+@1 | next = → the lambda + its backpack { count = 0 }
+`MakeCounter` has returned and its stack frame is gone. But `count` wasn't in the frame. It's in the backpack, and `next` is holding the backpack.
+@2 | next = → the lambda + its backpack { count = 2 }
+Call it twice. Each call does `++count` on the backpack's copy.
+@3 | next = → the lambda + its backpack { count = 3 } | > 3
+The third call returns 3. The local survived, because it was never really a local.
+:::
 
 A lambda that uses a variable from the surrounding method is said to **capture** it. The lambda plus the variables it captured is called a **closure**. To make it work, the compiler quietly moves `count` off the stack into a small **hidden class on the heap**. Think of it as a backpack the lambda carries.
 
@@ -174,6 +225,7 @@ Because closures capture the *variable* itself, not a snapshot of its value, thi
 4. Fix: `var copy = i;` inside the loop body declares a **new** variable on every pass, so each lambda gets its own backpack and you get `012`. A `foreach` loop does this for you automatically.
 :::
 
+:::walk Three lambdas, one variable
 ```csharp
 var actions = new List<Action>();
 for (int i = 0; i < 3; i++)
@@ -189,6 +241,21 @@ for (int i = 0; i < 3; i++)
 }
 actions.ForEach(a => a());                    // 012
 ```
+@2 | i = 0 (one variable for the whole loop)
+A `for` loop has **one** `i` for the whole loop, not one per pass.
+@3 | i = 0 ; actions = [λ → i]
+The lambda captures **the variable `i`**, not the number 0.
+@2-3 | i = 3 ; actions = [λ → i, λ → i, λ → i]
+All three lambdas capture the same variable. The loop ends when `i` reaches 3.
+@4-5 | i = 3 | > 333
+Now run them. Each one reads `i` *now*, and it's 3 now.
+@8-10 | copy = 0 (a new variable each pass)
+The fix. `var copy = i;` is inside the loop body, so each pass declares a **brand-new** `copy`.
+@11-12 | actions = [λ → copy₀ = 0, λ → copy₁ = 1, λ → copy₂ = 2]
+Each lambda captures its own `copy`, with its own value.
+@13 | | > 012
+Now each prints its own number. (`foreach` makes a fresh variable each pass for you, which is why this trap is mostly a `for` problem.)
+:::
 
 :::gotcha Capturing something that gets disposed
 Suppose a lambda captures a per-request object, such as a `DbContext` or an `HttpContext`. If the lambda outlives the request (in a background task, say, or a cached delegate), it ends up holding a **disposed** object. You get `ObjectDisposedException`, or a memory leak. Pass the *data* you need into background work, not the request's objects.
@@ -210,6 +277,7 @@ A delegate can hold a whole list of methods instead of just one. Calling it call
 
 A delegate can hold a **list** of methods. `+=` adds one, `-=` removes one, and calling the delegate calls them all, in order:
 
+:::walk One delegate, a list of methods
 ```csharp
 Action<string> notify = msg => Console.WriteLine($"email: {msg}");
 notify += msg => Console.WriteLine($"sms:   {msg}");
@@ -219,6 +287,17 @@ Func<int> answer = () => 1;
 answer += () => 2;
 Console.WriteLine(answer());   // 2: only the LAST return value survives
 ```
+@1 | notify = [email]
+A delegate holding one method.
+@2 | notify = [email, sms]
+`+=` builds a **new** delegate whose list has both methods, and stores it back in `notify`.
+@3 | | > email: Your tea has shipped | > sms:   Your tea has shipped
+One call runs the whole list, in the order they were added.
+@5-6 | answer = [() => 1, () => 2]
+A list of methods that each **return** a value.
+@7 | | > 2
+Both run, but a call can only return one value, so you get the **last** one. The 1 is thrown away. That's why events return `void`.
+:::
 
 ![A multicast delegate's invocation list running in add order; only the last subscriber's return value survives](visuals/multicast-invocation-list.svg)
 
@@ -242,6 +321,7 @@ That's an **event**. Underneath it's a multicast delegate field, with a lock on 
 5. The safety lock: outside code **can't raise** the event and **can't wipe** the list with `=`. A plain delegate field would allow both.
 :::
 
+:::walk Announce once, let anyone listen
 ```csharp
 var checkout = new Checkout();
 checkout.OrderPlaced += (_, e) => Console.WriteLine($"email: order {e.OrderId} confirmed");
@@ -270,6 +350,19 @@ class Checkout
     }
 }
 ```
+@19 | -
+`event` declares the subscriber list. From outside `Checkout`, the only things you can do with it are `+=` and `-=`.
+@1 | checkout.OrderPlaced = (no subscribers)
+`Checkout` knows nothing about email, stock or analytics.
+@2-4 | checkout.OrderPlaced = [email, stock, stats]
+Three listeners subscribe. In a real app, each would be in a different class, and none knows about the others.
+@6 | orderId = 42 ; total = 18.50
+Complete an order.
+@24 | orderId = 42 ; total = 18.50 | > email: order 42 confirmed | > stock: reserve items for 42 | > stats: +£18.50
+Checkout **raises** the event once. `?.` means "only if anyone subscribed". Each subscriber is called in turn, with the order's details.
+@8-9
+The safety lock. Outside `Checkout`, `= null` (wiping everyone's subscriptions) and `Invoke` (faking an order) are both compile errors. With a plain public delegate field, both would compile.
+:::
 
 | | Plain delegate field | `event` |
 |---|---|---|
@@ -286,6 +379,62 @@ Subscribing has a side effect people forget. When you `+=`, the publisher stores
 2. Every page that opens subscribes too, and none of them ever unsubscribes.
 3. The user closes the pages, but the GC **can't free them**: the feed still points at every one. Memory creeps up for as long as the app runs. That's a leak.
 4. The fix: unsubscribe when the subscriber's life ends, usually in `Dispose`. Then nothing points at the page, and the GC can free it.
+:::
+
+You can watch this leak happen. A `WeakReference` lets you ask "is this object still alive?" without keeping it alive yourself. `GC.Collect()` forces a garbage collection, so anything unreachable is freed on the spot:
+
+:::walk Watch an event keep a closed page alive
+```csharp
+var feed = new PriceFeed();
+var leaked = OpenAndClosePage(feed, unsubscribe: false);
+var freed  = OpenAndClosePage(feed, unsubscribe: true);
+
+GC.Collect();
+Console.WriteLine($"page that forgot to unsubscribe still alive? {leaked.IsAlive}");
+Console.WriteLine($"page that unsubscribed still alive? {freed.IsAlive}");
+GC.KeepAlive(feed);
+
+static WeakReference OpenAndClosePage(PriceFeed feed, bool unsubscribe)
+{
+    var page = new Page(feed);
+    if (unsubscribe) page.Dispose();
+    return new WeakReference(page);
+}
+
+class PriceFeed { public event Action<decimal>? PriceChanged; }
+
+class Page : IDisposable
+{
+    private readonly PriceFeed _feed;
+    public Page(PriceFeed feed) { _feed = feed; _feed.PriceChanged += OnPrice; }
+    private void OnPrice(decimal p) { }
+    public void Dispose() => _feed.PriceChanged -= OnPrice;
+}
+```
+@1 | feed = → PriceFeed (subscribers: none)
+A long-lived price feed. In a real app it would be a singleton, alive for as long as the app runs.
+@2 | feed = → PriceFeed (subscribers: none)
+Open the first page. Jump in.
+@12 | page = → page #1
+Create the page.
+@22 | page = → page #1 ; feed = → PriceFeed (subscribers: page #1)
+The page's constructor subscribes. `+= OnPrice` stores a delegate in the feed, and that delegate holds a reference **to the page**, so it can call `OnPrice` on it.
+@13-14 | feed = → PriceFeed (subscribers: page #1) ; leaked = weak link to page #1
+This page "closes" without unsubscribing. The method returns, and the local `page` variable is gone. The only things still pointing at the page are the feed's subscriber list and a weak link, which doesn't count.
+@3 | feed = → PriceFeed (subscribers: page #1) ; leaked = weak link to page #1
+Open a second page, but this one cleans up properly.
+@13 | feed = → PriceFeed (subscribers: page #1) ; leaked = weak link to page #1
+`Dispose()` is called before the page closes.
+@24 | feed = → PriceFeed (subscribers: page #1) ; leaked = weak link to page #1 ; freed = weak link to page #2
+`-= OnPrice` takes page #2 out of the feed's list. Now nothing points at page #2.
+@5 | feed = → PriceFeed (subscribers: page #1) ; leaked = weak link to page #1 ; freed = weak link to page #2 (freed)
+Force a garbage collection. The GC frees every object that nothing points at. Page #2 goes. Page #1 is still in the feed's list, so the GC **must** keep it.
+@6 | | > page that forgot to unsubscribe still alive? True
+The closed page that forgot to unsubscribe is still in memory. On a server this happens on every page view, and the memory graph climbs until the app is restarted.
+@7 | | > page that unsubscribed still alive? False
+The page that unsubscribed was freed. One line, `-=` in `Dispose`, is the whole fix.
+@8
+(This line keeps `feed` alive until the end, as a real singleton would be. Without it the runtime could free the feed too, and the demo would prove nothing.)
 :::
 
 C# events are **in-process and synchronous**: the publisher calls each subscriber directly and waits. The word "event" also appears later in this book for different things: **domain events** ([DDD](ch:ddd)) and **integration events** sent through a message broker ([Messaging](ch:messaging-events)). It's the same idea ("something happened"), but the machinery is different.
@@ -329,6 +478,50 @@ A **middleware** is a delegate that receives the *next* `RequestDelegate` and wr
 5. The response travels back out through the same layers in reverse, so Logging can write "done in 12 ms". It's the same wrapping trick as `Retry(Logging(Email))` in [Episode 2](ch:oop#inheritance-and-when-it-goes-wrong).
 :::
 
+Here's the whole idea in a few lines you can run. A "request" is just a string here, and each middleware is a method that takes the next step and returns a new delegate that wraps it:
+
+:::walk A tiny middleware pipeline made of delegates
+```csharp
+Func<string, string> endpoint = req => $"tea list for {req}";
+Func<string, string> pipeline = Logging(Auth(endpoint));
+Console.WriteLine(pipeline("/teas"));
+
+static Func<string, string> Logging(Func<string, string> next) => req =>
+{
+    Console.WriteLine($"log: start {req}");
+    var res = next(req);
+    Console.WriteLine($"log: done {req}");
+    return res;
+};
+
+static Func<string, string> Auth(Func<string, string> next) => req =>
+{
+    Console.WriteLine("auth: user ok");
+    return next(req);
+};
+```
+@1 | endpoint = the endpoint delegate
+The endpoint is a delegate: a request goes in, a response comes out.
+@2 | endpoint = the endpoint delegate ; pipeline = Logging → Auth → endpoint
+Build the pipeline inside out. `Auth(endpoint)` returns a new delegate that remembers `endpoint` as its `next` (a closure). `Logging(...)` wraps that one. Nothing has run yet: you've only built a chain.
+@3 | req = "/teas"
+Send one request into the outermost delegate.
+@7 | req = "/teas" | > log: start /teas
+Logging does its "before" work…
+@8 | req = "/teas"
+…then calls `next`, which is the Auth delegate.
+@15 | req = "/teas" | > auth: user ok
+Auth checks the user (a real one could stop here and return 401 without calling `next`)…
+@16 | req = "/teas"
+…then calls *its* `next`: the endpoint.
+@1 | req = "/teas" ; res = "tea list for /teas"
+The endpoint makes the response, and it travels back **outwards**.
+@9-10 | res = "tea list for /teas" | > log: done /teas
+Back in Logging, after `next` returned, it does its "after" work. This is where a real logger measures how long the request took.
+@3 | | > tea list for /teas
+The response reaches the caller. ASP.NET Core's pipeline is this pattern, with `HttpContext` instead of a string.
+:::
+
 [Middleware](ch:middleware) covers the real pipeline in full.
 
 :::qa How does ASP.NET Core use delegates?
@@ -350,6 +543,7 @@ One last twist. A lambda doesn't *always* become runnable code. The type you ass
 4. EF Core asks for the second kind. It walks the tree and writes SQL from it: `WHERE Total > @p0`.
 :::
 
+:::walk Same lambda, code vs data
 ```csharp
 using System.Linq.Expressions;
 
@@ -360,6 +554,17 @@ Console.WriteLine(asCode(150m));                  // True
 Console.WriteLine(asData.Body);                   // (total > 100)
 Console.WriteLine(asData.Body.NodeType);          // GreaterThan
 ```
+@3 | asCode = compiled code (a delegate)
+Assigned to a `Func`, the lambda is compiled into a hidden method, ready to run. Nothing can look inside it.
+@4 | asCode = compiled code (a delegate) ; asData = tree: GreaterThan(total, 100)
+**The same characters**, assigned to an `Expression<Func<...>>`. Now the compiler builds a tree of objects that *describes* the lambda instead of compiling it.
+@6 | | > True
+Run the code version.
+@7 | | > (total > 100)
+Read the data version. It can print itself, because it's a description.
+@8 | | > GreaterThan
+And a program can walk it node by node. EF Core does exactly this and writes `WHERE Total > 100`.
+:::
 
 `asData` isn't code. It's an **expression tree**: an object graph that says "a greater-than comparison of `total` and `100`". Something else can read that graph and translate it, and that's exactly how EF Core turns your C# `Where` into SQL. [LINQ](ch:linq#expression-trees-how-c-becomes-sql) shows the translation step by step.
 
