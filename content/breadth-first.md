@@ -1068,3 +1068,1145 @@ Layer 4: how you organise your own code so that change stays cheap as the system
   - no observability;
   - microservices first (a new product, one team, 15 services).
 - **Readiness checklist**: CI/CD and infrastructure as code per service, containers and an orchestrator or PaaS, centralised logs, metrics and **distributed tracing**, resilience on every outbound call, a broker with outbox and idempotency practices, API versioning and contract tests, health checks with autoscaling and graceful shutdown, service-to-service identity (managed identity, client credentials, mTLS) and clear on-call ownership.
+
+## Part VI · Testing
+
+Layer 8, first concern: proving the code does what you think, in a way that survives refactoring.
+
+### 6.1 · Unit testing and test doubles
+
+[Full chapter →](ch:unit-testing)
+
+- **What is "one unit"?** The **classical** (Detroit) school says a unit is a *behaviour*: use real collaborators and replace only shared or out-of-process ones (database, network, clock). The **mockist** (London) school says a unit is *one class*, with every collaborator mocked: precise failure locations, but tests coupled to implementation. Current guidance (Khorikov) leans classical, because when you refactor internals without changing behaviour, behaviour tests survive and mock-everything tests break.
+- **FIRST**: Fast (milliseconds), Isolated (no order dependence or shared state), Repeatable (no real time, randomness or network), Self-validating (pass or fail, no inspection), Timely (written with the code).
+- **xUnit** (v3 is current) is the mainstream framework. `[Fact]` is a single test; `[Theory]` with `InlineData`, `MemberData`, `ClassData` or `TheoryData` is parameterised. Setup is the **constructor**, teardown is `Dispose` or `IAsyncLifetime`. xUnit creates a **new instance per test**, so leftover state can't leak between tests by construction. `IClassFixture` shares expensive setup across a class, and collection fixtures share across classes (a database container). Collections run in parallel; tests within one run sequentially. NUnit and MSTest v3 are equally fine; consistency matters most.
+- **Naming and structure**: names state behaviour and condition (`Cancel_WhenOrderShipped_ReturnsAlreadyShippedError`, or plain English like `Shipped_order_cannot_be_cancelled`). Test one behaviour per test (several asserts are fine if they check one outcome), put **no logic in tests** (they must be obviously correct by inspection), and use Arrange-Act-Assert with a single Act. Assertion libraries: built-in `Assert` (including `Equivalent` for structural comparison), Shouldly (MIT), FluentAssertions (commercial since v8; v7 stays Apache), the AwesomeAssertions fork, and **Verify** for snapshot testing.
+- **Test doubles (Meszaros)**: a **dummy** fills a parameter and is never used; a **stub** returns canned answers to feed inputs; a **fake** is a working lightweight implementation (in-memory repository, `FakeTimeProvider`); a **spy** records calls for later assertions; a **mock** has expectations that are verified. Stubs support **state verification** (check the result); mocks support **behaviour verification** (check an interaction happened). **Verify interactions only for outgoing side effects at the system boundary**: an email sent, a message published, a payment charged, or "the order was *not* saved when payment was declined". Never verify queries or internal calls. NSubstitute and Moq are the common libraries; FakeItEasy and hand-written fakes are often clearer.
+- **Over-mocking makes tests brittle.** Mock every collaborator, verify every call, and any refactor breaks tests even though behaviour didn't change; the tests just restate the implementation. **Don't mock types you don't own with complex behaviour** (`HttpClient`, `DbContext`, `IQueryable`), because the mock won't behave like the real thing. Wrap them behind your own interface and integration-test the wrapper, or use a stub `HttpMessageHandler` or a real database container.
+- **Non-determinism must be injected.** `DateTime.UtcNow`, `Guid.NewGuid()` and `Random` make a test pass today and fail tomorrow. Inject **`TimeProvider`**, and in tests `FakeTimeProvider` sets and `Advance`s time, which also drives timers and `PeriodicTimer` with no real waiting. Async tests are `async Task` (never `.Result`) with `Assert.ThrowsAsync`. `FakeLogger<T>` captures log records.
+- **Test data builders** (the Builder pattern in tests) provide valid defaults, so each test states only what matters to it (`new OrderBuilder().Placed().Build()`). AutoFixture and Bogus generate anonymous or realistic data.
+- **What's worth testing**: domain logic (invariants, calculations, state transitions), handlers' decision logic with fakes at the edges, algorithms, parsers, mappers with logic, edge cases and error paths, and regression tests for bugs. Not worth it: trivial properties, pass-through code, framework behaviour, private methods (test them through public behaviour). **Coverage is a diagnostic, not a goal**: a test can run every line and assert nothing. **Mutation testing** (Stryker.NET flips `>` to `>=` and checks a test fails) measures whether tests actually catch bugs.
+- **TDD**: **Red** (a failing test for the next small behaviour) → **Green** (the simplest code that passes) → **Refactor** (improve the design under the tests' safety net), in minutes-long cycles. You get tests by construction and usage-driven, testable APIs. It can feel slow during exploratory design and is awkward around heavy framework code, so many teams use it selectively for domain logic and bug fixes, where the failing reproduction test is both the diagnosis and the regression guard. **BDD** (Given-When-Then, Reqnroll) writes executable specifications with business stakeholders.
+
+### 6.2 · Integration, end-to-end testing and strategy
+
+[Full chapter →](ch:integration-testing)
+
+- **Integration tests catch what unit tests structurally can't**, because those bugs live *between* components: wrong middleware order (everything returns 401), missing DI registrations or captive dependencies, route and binding mismatches, JSON casing and enum differences, EF mapping errors, missing migrations, LINQ that can't translate or is slow in real SQL, unapplied authorization policies, and configuration binding failures.
+- **Pyramid vs trophy vs honeycomb.** The classic pyramid (many unit, fewer integration, very few E2E tests) made sense when higher-level tests were slow and flaky. **Containers and in-memory hosting changed that calculation**: many .NET teams now put **most confidence in integration tests** for APIs, keep unit tests for complex domain logic and run a few E2E smoke tests. The real rule was always confidence per minute of effort. Also in the mix: **contract tests** (Pact, OpenAPI diffing, schema registries), **E2E** (Playwright; highest confidence but flaky and costly) and **load tests** (k6, NBomber, Azure Load Testing).
+- **`WebApplicationFactory<Program>`** boots your **real `Program.cs`** in memory on a `TestServer` (no ports) and hands you an `HttpClient` wired into the pipeline. Configuration, DI, middleware order, routing, binding, validation, filters, serialization and ProblemDetails all run for real. Add `public partial class Program;` so the test project can see the generated `Program` class.
+- **Replace only what's external, slow, non-deterministic or costly** (payment providers, email and SMS, third-party APIs, the clock) in `ConfigureTestServices`. Keep your own code, database and broker real; replacing more turns the test back into a unit test in disguise. **Fake authentication**: a test `AuthenticationHandler` builds the principal from a header, while your **real authorization policies still run**, so you can prove a customer gets 403 on an admin endpoint. Alternatively, mint real JWTs with a test signing key.
+- **Testcontainers** starts throwaway Docker containers from test code: SQL Server, Postgres, Redis, RabbitMQ, Azurite, the Service Bus and Cosmos emulators, Kafka. Containers take seconds to start, so **share one per run or collection** and **reset data between tests**:
+  - **Respawn** deletes all rows in foreign-key order: fast and the most popular;
+  - a rolled-back transaction per test: very fast, but breaks if the code manages its own transactions;
+  - unique data per test: no reset needed, and tests can run in parallel;
+  - template database clones: strong isolation at a cost.
+
+  One such test proves binding, real handler logic, database state and a side effect fired, together. **Never use the EF InMemory provider here.**
+- **Dependencies you don't own**: **WireMock.Net** for third-party HTTP (realistic responses, delays and faults), real brokers in containers or library test harnesses (MassTransit's `ITestHarness` asserts what was published), Azurite, the Cosmos emulator, and a fake auth handler or test token issuer for identity.
+- **Contract and architecture tests**: **consumer-driven contracts** (Pact) record what each consumer requests and expects, and the provider's CI verifies it still honours every contract, catching breaking changes without deploying both services together. Lighter options are OpenAPI diffing or schema-registry compatibility checks. **Snapshot** the generated OpenAPI document or message types with Verify so contract changes show up in review. Architecture tests enforce layering.
+- **E2E, smoke, load and chaos**: keep E2E tests **few**, on critical paths (sign-up, checkout), and tolerant of async processing (poll with timeouts, never fixed sleeps). Run **smoke tests** after each deploy to gate promotion. Use load tests to set p50/p95/p99, throughput and error-rate baselines against production-like data. Chaos testing (Azure Chaos Studio, Polly chaos strategies) injects faults to verify resilience.
+- **Tests in CI**: unit tests on every commit, integration tests on every PR (GitHub-hosted Ubuntu runners have Docker, so Testcontainers just works). Quarantine and fix **flaky tests** immediately, because they destroy trust in the whole suite. Keep the suite fast with parallel collections, shared containers and Respawn. Publish results and coverage, and make the test run a required merge check.
+
+## Part VII · Distributed Systems
+
+### 7.1 · Messaging and events
+
+[Full chapter →](ch:messaging-events)
+
+- **What a broker buys you.** With synchronous HTTP the caller waits, so a slow or down callee becomes the caller's failure, and latency adds up along the chain. A **broker** in the middle lets the sender hand off a message and move on. You get:
+  - **temporal decoupling**: producer and consumer needn't be up at the same time;
+  - **load levelling**: a spike of 10,000 orders queues up, and consumers work through it at their own pace;
+  - **fault isolation**: Email being down doesn't stop checkout;
+  - **extensibility**: a new subscriber (Analytics) reacts to an existing event without the publisher changing, which is the Observer pattern at the scale of services;
+  - **scale-out** by adding competing consumers.
+
+  The costs are eventual consistency, more infrastructure, harder debugging (you need tracing), duplicates, out-of-order delivery and message versioning. The rest of the chapter deals with each of these.
+- **Commands, events, queries.** A **command** ("please do X", imperative name like `ChargePayment`) has **exactly one** handler, the sender knows who it is, and it **can be rejected**, so it goes on a **queue**. An **event** ("X happened", past tense like `OrderPlaced`) has **zero or many** subscribers that the publisher doesn't know about, and it **can't be rejected** because it already happened, so it goes on a **topic**. Queries ("tell me X") usually stay on HTTP/gRPC. Events come thin (**notification**: `OrderPlaced { OrderId }`, consumers call back for details) or fat (**event-carried state transfer**: the data travels with the event). Fat events remove the runtime callback but couple consumers to the schema.
+- **Queue vs topic mechanics.** On a queue, each message goes to **one** consumer instance (competing consumers), so adding instances adds throughput without double processing. On a topic, each **subscription** gets its **own copy**, and within one subscription the instances compete again.
+- **Broker choice comes down to whether messages are consumed or retained.**
+  - **Azure Service Bus** removes a message once it's completed: messages are *work*. It has sessions (FIFO per session), dead-letter queues, scheduled messages, duplicate detection, transactions and filters, which suits business commands and workflows.
+  - **RabbitMQ** routes through exchanges (direct, topic, fanout, headers) and is common on-premises or multi-cloud.
+  - **Kafka / Azure Event Hubs** is a partitioned **append-only log**. Messages are **retained** (for days, or forever with compaction), and each consumer group tracks its own **offset**, so messages are a **replayable history**. That's why Kafka suits event streaming, telemetry and event-sourcing pipelines and Service Bus doesn't: replay only works if nothing was removed. Ordering is per partition.
+  - **Storage Queues** are cheap and basic. **Event Grid** is push-based notification fan-out (a blob was created), not a work queue.
+- **Delivery is at-least-once, so duplicates are normal.** Exactly-once isn't achievable end to end across independent systems, and it isn't a broker bug. Three ordinary ways a message arrives twice:
+  - a consumer **finishes the work, then crashes before acknowledging**; the broker can't know the work happened, so it redelivers;
+  - a producer **times out waiting for an ack** and republishes a message that had actually landed;
+  - a **lock expires** during slow processing and a second instance picks the message up.
+
+  The conclusion drives the rest of the chapter: **every consumer must be idempotent**, which gets you *effectively-once*.
+- **The dual-write problem.** `SaveChangesAsync` then `bus.Publish` are two systems with no shared commit. Crash between them and the order exists with no event. Swap the order and you can publish an event for an order whose save then fails. Reordering only changes which failure you get.
+- **Transactional outbox fixes it.** Insert the message into an `OutboxMessages` table **in the same database transaction** as the business change, so either both commit or neither does. A separate **relay** (a `BackgroundService` polling with `PeriodicTimer`, or change data capture such as Debezium) publishes unsent rows and marks them processed. The relay can still fail and retry, and that's fine: it publishes from committed, durable data, and a repeated publish is just at-least-once again. Multiple relay instances need row locking (`UPDLOCK, READPAST` so they skip each other's rows). In production, prefer a library outbox: MassTransit, NServiceBus, Wolverine and Brighter all ship EF Core outboxes.
+- **Making consumers idempotent.** The aim is to make the second arrival a no-op, because you can't prevent it. Techniques:
+  - **naturally idempotent writes** (`SET status = 'Paid'` rather than `balance = balance - 10`; upserts);
+  - an **inbox table**: record the message ID **in the same transaction** as the handler's changes, with a unique key, and skip IDs already present;
+  - **business-key unique constraints** (one `Payment` per `OrderId`);
+  - **version checks**;
+  - **broker duplicate detection** (Service Bus, by `MessageId` within a window). This only catches producer retries, not consumer crashes.
+
+  The subtle part: the inbox protects **your database only**. If the consumer charges a card and crashes before the inbox row commits, redelivery charges again, because the payment provider can't see your inbox. External side effects need **their own idempotency key** passed to the provider, because your transaction can't roll back a card charge.
+- **Retries, poison messages, DLQ.** Use immediate retries for brief glitches (deadlocks), then **delayed redelivery** with backoff (1 min → 5 → 30) for longer outages. After N attempts, move the message to a **dead-letter queue** so one bad message doesn't block the queue or burn resources. Alert on DLQ depth, inspect, fix and **resubmit**. Permanent errors (validation, unknown entity) should be dead-lettered immediately with no retries. In MassTransit that's `UseMessageRetry(...).Ignore<ValidationException>()` plus `UseDelayedRedelivery`.
+- **Ordering is mostly not guaranteed.** Even if messages arrive in order, two competing consumers can finish them in either order, and retries reorder further. Options:
+  - **partition by key**: Service Bus `SessionId = orderId` or a Kafka partition key gives FIFO **per entity**, with one consumer per session or partition at a time. You give up global order but keep it where it matters, within one entity's history;
+  - **design for disorder**: carry a version or sequence number and drop stale updates (`if (msg.Version <= entity.Version) return;`);
+  - make events **commutative** where you can, and avoid needing order across entities.
+- **Sagas.** A business process across services (reserve stock → charge → ship) can't be one ACID transaction; it's the DDD "one transaction, one aggregate" rule applied across services. A saga is a chain of **local transactions**. When a step fails, **compensating actions** undo earlier steps *semantically* (refund, release stock), because there's nothing to roll back.
+  - **Choreography**: services react to each other's events with no coordinator. It's loosely coupled, but the flow is implicit, scattered and hard to change, and it risks cycles.
+  - **Orchestration**: a **state machine** (a MassTransit `MassTransitStateMachine<OrderState>` persisted with EF Core) sends commands, reacts to replies and owns timeouts ("15 minutes in any state → compensate → Cancelled"). It's the State pattern driven by messages. You pay for a central component, and in return you can see exactly where an order is stuck at 3 a.m.
+
+  Alternatives for long-running workflows: Durable Functions, Temporal, Dapr Workflows.
+- **Raw SDK vs library.** `Azure.Messaging.ServiceBus`, `RabbitMQ.Client` and `Confluent.Kafka` are fine for simple cases. The key discipline with a raw processor is `AutoCompleteMessages = false` and calling `CompleteMessageAsync` **only after** the handler succeeds (ack after processing), which turns a crash into a safe redelivery rather than a lost message. Set `MessageId`, `SessionId` and `CorrelationId` on send. Libraries add serialization, topology, retries, outbox/inbox, sagas, test harnesses and OpenTelemetry:
+  - **MassTransit**: most popular; v9+ is commercial, v8 stays open source;
+  - **NServiceBus**: commercial, very mature tooling;
+  - **Wolverine**: MIT;
+  - **Rebus**, **Brighter**;
+  - **Dapr pub/sub**: a sidecar abstraction over many brokers.
+- **Contracts are APIs.** Publish them as a small contracts package or a schema (Avro/Protobuf with a registry). Carry `MessageId`, `CorrelationId` (or trace context), `CausationId` (which message caused this one), `OccurredAt`, type and version; **CloudEvents** is a standard envelope. Evolve by **adding optional fields**. For breaking changes, run **v2 alongside v1** until consumers migrate. Consumers should be **tolerant readers**: ignore unknown fields and cope with missing optional ones. Large payloads use **claim-check**: store the blob and send a reference. Map internal **domain events** to stable **integration events** so your domain model doesn't leak across service boundaries.
+- **Event sourcing.** Store the **sequence of events**, not the current state. State is a **left fold** over them: start blank, apply each event in order, like a bank statement's running balance. The benefits are a complete audit trail ("what did we know on 1 March?"), rebuilding or adding read models from history, and debugging by replay. The costs:
+  - queries need CQRS projections;
+  - schema evolution needs **upcasting** (converting old stored event shapes to the current shape when you read them, since history can't be edited);
+  - long streams need **snapshots**, so replay starts from a saved state instead of event #1;
+  - projections are eventually consistent.
+
+  Tools: Marten (on PostgreSQL), EventStoreDB/KurrentDB, Cosmos DB change feed. Use it where history *is* the product (ledgers, compliance), not as a default.
+
+### 7.2 · Resilience
+
+[Full chapter →](ch:resilience)
+
+- **Failure is normal in the cloud**: deployments restart instances, networks blip, databases fail over, dependencies throttle you (429) and noisy neighbours add latency. The goal is to turn a 2-second blip into a degraded experience, not an outage. **Match the response to the fault type**:
+  - **transient** (timeouts, resets, 503, 429, 408, deadlock victims, SQL failover): **retry** with backoff;
+  - **prolonged** (a dependency down for minutes): **stop calling** (circuit breaker), fall back and degrade;
+  - **permanent** (400, 401/403, 404, validation, bugs): **don't retry**; fail fast and surface the error;
+  - **slowness** (10 s instead of 100 ms): **timeout**, limit concurrency, hedge.
+- **The toolbox:**
+  - **Timeout**: a slow call otherwise holds threads, sockets and the user's patience indefinitely;
+  - **Retry** with **exponential backoff and jitter**;
+  - **Circuit breaker**: fail fast for a break period instead of hammering a failing dependency;
+  - **Fallback**: cached, default or degraded value;
+  - **Hedging**: after a delay, send a second request and take whichever answers first, which cuts tail latency;
+  - **Rate and concurrency limiters**: protect yourself or the dependency from overload;
+  - **Bulkhead**: separate pools or limits per dependency, so one can't exhaust shared resources (watertight compartments in a ship).
+- **Retry, done properly.** Exponential backoff (200 ms → 400 → 800) gives the dependency time to recover. **Jitter** randomises delays so thousands of clients don't retry in synchronised waves (the thundering herd, the same stampede as expiring cache keys). Limit attempts (2–5) and the **total time**. Retry only transient faults and honour **`Retry-After`**. Retry only **idempotent** operations (GET, PUT, DELETE), or POSTs that carry an **idempotency key**, because a timed-out POST may have succeeded and a blind retry can charge a card twice.
+- **Retry storms.** If gateway, API, service and database client each retry 3 times, one failure becomes **3 × 3 × 3 = 27** attempts on the bottom layer, exactly when it's struggling. Retry at **one layer** (usually closest to the failing dependency), keep counts low, add circuit breakers, and propagate **shrinking timeout budgets** down the call chain.
+- **Circuit breaker states.**
+  - **Closed**: calls flow and failures are counted.
+  - **Open**: when the failure ratio passes a threshold (say 50%) within a sampling window, *with a minimum throughput so 2 failures out of 3 calls don't trip it*, calls fail immediately with `BrokenCircuitException` for the break duration.
+  - **Half-open**: after that, one trial call is allowed. Success closes the breaker; failure re-opens it.
+
+  Why: waiting on timeouts to a dead dependency wastes threads and connections, adds latency, and piles load on a service that needs quiet to recover. Open is deliberate rest. Log state changes and expose them as metrics; a breaker opening is worth paging someone over.
+- **Two timeouts.** A **per-attempt** timeout (2 s) bounds one try; a **total** timeout (10 s) bounds the whole operation including retries and must fit inside the caller's own deadline. Always flow `CancellationToken`s: a timeout that only stops *waiting* leaves the dependency doing work for a caller who has gone. `HttpClient.Timeout` defaults to **100 s**; with a resilience pipeline, let the pipeline own timeouts.
+- **Polly v8 and `Microsoft.Extensions.Http.Resilience`.** `.AddStandardResilienceHandler()` on an `IHttpClientFactory` registration stacks, from outermost to innermost: **rate limiter → total timeout → retry → circuit breaker → attempt timeout → the HTTP call**. Defaults retry 5xx, 408, 429, `HttpRequestException` and timeouts with exponential backoff and jitter, and honour `Retry-After`. Tune via options (`Retry.MaxRetryAttempts`, `AttemptTimeout`, `CircuitBreaker.FailureRatio`). The breaker's `SamplingDuration` must be at least **2× the attempt timeout**, or a window can close before a single timed-out attempt is counted. `AddStandardHedgingHandler()` gives hedging. For non-HTTP code, `AddResiliencePipeline("inventory-db", p => p.AddTimeout(...).AddRetry(new() { ShouldHandle = ..., BackoffType = Exponential, UseJitter = true }).AddCircuitBreaker(...))`, then resolve it with `ResiliencePipelineProvider<string>`.
+- **Strategy order matters**, because each strategy wraps the next like middleware: outermost runs first.
+  - A **total timeout outside the retry** bounds everything; an **attempt timeout inside** bounds each try.
+  - A **circuit breaker inside the retry** counts every attempt, and once it's open, the retry should treat `BrokenCircuitException` as non-retryable (or delay) so it stops quickly.
+  - **Fallback goes outermost** so it catches everything below it.
+
+  Pre-v8 syntax (`Policy.Handle<>().WaitAndRetryAsync`, `AddPolicyHandler`, Microsoft.Extensions.Http.Polly) is deprecated but uses the same concepts.
+- **Resilience beyond HTTP.**
+  - EF Core: `EnableRetryOnFailure()`. Wrap manual transactions in `CreateExecutionStrategy().ExecuteAsync(...)` so the *whole* transaction retries.
+  - Azure SDK clients: `ClientOptions.Retry`.
+  - Brokers: redelivery and DLQ.
+  - StackExchange.Redis: `AbortOnConnectFail = false` with reconnect backoff.
+  - gRPC: retry and hedging policies in the channel's service config.
+- **Graceful degradation is a design choice, not a library.**
+  - **Fallbacks**: cached recommendations, hide the reviews widget, use the last known exchange rate and say so.
+  - **Asynchronous by default**: accept the order and charge via a queue, so checkout works while Payments is down.
+  - **Bulkheads**: a separate HttpClient, pool and concurrency limit per dependency, so slow reporting can't starve checkout.
+  - **Load shedding**: reject early with 429/503 rather than collapse.
+  - **Static stability**: keep working on the last known good config or identity metadata if the control plane is down.
+  - **Timeouts and idempotency everywhere**.
+- **Liveness vs readiness.** **Liveness** asks "is the process stuck?" and failing it **restarts** the instance. **Readiness** asks "can it serve traffic now (dependencies reachable, warm-up done)?" and failing it **removes the instance from the load balancer** without restarting it. Tag checks (`"live"` and `"ready"`) and map `/health/live` and `/health/ready` with predicates. **Never put dependencies in liveness**: if the database blips, the orchestrator restarts *every* instance and a hiccup becomes a full outage.
+- **Chaos engineering** proves the strategies work before an outage does. **Polly chaos strategies** (v8.3+: `AddChaosLatency`, `AddChaosFault`, `AddChaosOutcome`, `AddChaosBehavior`) are switched on by configuration in test environments. **Azure Chaos Studio** injects platform faults (VM shutdown, network latency, AKS pod chaos). **Game days** are planned exercises to watch alerts and recovery.
+
+### 7.3 · Observability and .NET Aspire
+
+[Full chapter →](ch:observability-aspire)
+
+- **Monitoring vs observability.** Monitoring answers questions you **knew to ask in advance** (CPU above 80%? error rate above 1%?) and drives dashboards and alerts. Observability lets you answer **new** questions from the data the system already emits, without shipping code ("why is checkout slow for mobile users in Germany since 14:05?"). When one click touches 8 services, nobody can pre-build a dashboard for every incident question, so you need both.
+- **Three signals, correlated.**
+  - **Logs**: detailed, structured, discrete events. They tell you *what happened*.
+  - **Metrics**: cheap, pre-aggregated numbers over time. They tell you *how much, how often, how fast*.
+  - **Traces**: the path of *one request* as a tree of timed spans. They tell you *where the time went*.
+
+  Linked by **TraceId**, they chain: a metric spike says *that* something is wrong → exemplar traces say *where* → that trace's logs say *why*. Profiles and exceptions are increasingly treated as further signals.
+- **.NET's APIs are already OpenTelemetry-shaped.** Logs use `ILogger`. Metrics use `System.Diagnostics.Metrics` (`Meter`, `Counter<T>`, `Histogram<T>`, `UpDownCounter<T>`, `ObservableGauge<T>`). Traces use `ActivitySource`/`Activity`, where **an `Activity` is an OTel span**. ASP.NET Core, HttpClient, SqlClient, EF Core, Azure SDKs, gRPC and MassTransit already emit through these, and the runtime publishes GC, thread pool and exception metrics. The **OpenTelemetry .NET SDK** just *listens* to these APIs and exports via **OTLP** (optionally through a Collector for batching, filtering, tail sampling and routing) to Azure Monitor, Grafana (Tempo/Loki/Prometheus), Jaeger, Datadog, Honeycomb or the Aspire dashboard. Emitting code never knows the backend.
+- **Setup.** Call `AddOpenTelemetry()` with these pieces:
+  - `.ConfigureResource(r => r.AddService("shop-api", serviceVersion: ...))`;
+  - `.WithTracing(...)` with ASP.NET Core (filter out `/health`), HttpClient and EF Core instrumentation, plus `.AddSource("Shop.Checkout")` for your own spans;
+  - `.WithMetrics(...)` with the ASP.NET Core, HttpClient and runtime instrumentation, plus `.AddMeter(...)`;
+  - `.UseOtlpExporter()`.
+
+  Endpoints come from `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES`.
+- **Distributed tracing.** Every span shares the **TraceId** and has its own SpanId, a parent SpanId, a name, timing, **attributes**, **events** and a **status**. The waterfall makes the cause obvious: of a 1.8 s checkout, one SQL span takes most of it, not the pricing call. Without the trace you'd investigate five services. **Context propagation** uses the W3C **`traceparent`** header: `00-<32-hex traceid>-<16-hex parent span id>-<flags, 01 = sampled>`. `tracestate` carries vendor data, and **`baggage`** carries app key/values (`tenant=acme`) downstream. ASP.NET Core reads the header, HttpClient and gRPC write it, and messaging libraries put it in message headers. `Activity.Current` flows through `await` via **`AsyncLocal`** (the same mechanism as log scopes), so every log line in a request carries TraceId and SpanId automatically.
+- **Sampling.** **Head sampling** decides at the start (`TraceIdRatioBasedSampler`, keep 10%). It's cheap but blind: it may drop the one failing request. **Tail sampling** (in the Collector) decides after the trace completes, so it can **keep all errors and slow traces** and sample the boring ones, which keeps exactly what you need in an incident. **Never sample metrics**: they're already aggregates, and sampling only makes them less accurate without saving much.
+- **Custom telemetry.** Use a static `ActivitySource` and `Meter` per component. `using var activity = Source.StartActivity("checkout.place-order")` returns **null when nobody is listening**, so use `activity?.SetTag(...)` and the cost is near zero. Record failures with `SetStatus(ActivityStatusCode.Error)`. Pick the instrument by shape:
+  - `Counter<T>` for monotonic counts (orders, errors);
+  - `UpDownCounter<T>` for values that rise and fall (active checkouts, queue depth);
+  - `Histogram<T>` for distributions (durations, amounts), which is what gives you percentiles;
+  - `ObservableGauge<T>` for a value sampled via callback (pool usage).
+
+  Use the **semantic conventions** for names (`http.request.method`, `db.system`, `messaging.system`) so backends build standard views.
+- **Cardinality is the cost trap.** Every unique combination of tag values is a separate time series. Tag a metric with `userId`, `orderId` or a raw URL and you get millions of series, huge bills or a crashed backend. Keep metric tags **low-cardinality** (status code, route *template*, payment method, region). Put IDs on **traces and logs**, which are per-event anyway.
+- **What to measure.**
+  - **RED** for request-driven services: Rate, Errors, Duration.
+  - **USE** for resources: Utilisation, Saturation (queueing), Errors.
+  - **Google's four golden signals**: latency, traffic, errors, saturation.
+
+  Use **percentiles (p50/p95/p99), never averages**: an average of 100 ms can hide 5% of users waiting 4 s, because the many fast requests drag it down. For .NET, also watch GC pause time and heap size, **thread pool queue length and thread count** (starvation from sync-over-async), exception rate, connection pool usage, and outbox or queue lag.
+- **SLIs, SLOs, error budgets.**
+  - **SLI**: a measured ratio ("share of checkout requests under 1 s with a non-5xx status").
+  - **SLO**: the target ("99.5% over 30 days").
+  - **Error budget**: the 0.5% you're allowed to miss. When it's spent, reliability work beats features.
+
+  **Alert on symptoms users feel** (SLO burn rate, error rate, latency), not on causes (one CPU spike). Every page must be actionable and link to a dashboard and a runbook.
+- **Azure Monitor / Application Insights.** Data lands in a **Log Analytics** workspace, queried with **KQL**: `requests | where timestamp > ago(1h) | summarize percentile(duration, 95) by name`, or `union requests, dependencies, traces, exceptions | where operation_Id == "<traceid>"` to see everything for one trace. Features include the application map, end-to-end transaction view, live metrics, availability tests, profiler and snapshot debugger. In new code use the **Azure Monitor OpenTelemetry Distro** (`UseAzureMonitor()`); the classic SDK is in maintenance.
+- **.NET Aspire** is development and deployment tooling, **not a production runtime**.
+  - **AppHost**: a C# project that *describes the system* (`AddSqlServer("sql").AddDatabase("shopdb")`, `AddRedis`, `AddRabbitMQ`, `AddProject<Projects.Shop_Catalog>().WithReference(db).WaitFor(db)`). `dotnet run` starts the containers and projects, **injects connection strings and service URLs** as configuration, and opens the dashboard. It replaces docker-compose, README steps and tribal knowledge about environment variables.
+  - **ServiceDefaults**: one shared `builder.AddServiceDefaults()` that configures OpenTelemetry, health checks (`/health`, `/alive`), service discovery and HttpClient resilience the same way in every service, so they don't drift.
+  - **Integrations**: packages like `AddSqlServerDbContext<ShopDb>("shopdb")` and `AddAzureServiceBusClient("bus")` that register a client with health checks, telemetry and retries pre-wired.
+  - **Dashboard**: logs, structured logs, traces and metrics over OTLP, so you have distributed tracing on your laptop from day one. It's also usable standalone.
+  - **Deployment**: `azd up` provisions Azure Container Apps plus backing services, and tooling generates Kubernetes manifests, Compose and Bicep.
+- **Incident workflow**, which walks the three signals in order:
+  1. An SLO burn-rate alert fires.
+  2. The dashboard shows which endpoint, since when, and whether it correlates with a deployment.
+  3. Exemplar slow or failing traces show which span and which dependency.
+  4. The **logs for that TraceId** show the exception and context.
+  5. The service's runtime metrics show GC, thread pool, CPU and pool state.
+  6. **Mitigate first** (roll back, scale, fail over, flip a feature flag), then find the root cause and hold a blameless post-mortem.
+  7. Add the signal or alert you wished you'd had.
+
+## Part VIII · Cloud and DevOps
+
+### 8.1 · Cloud fundamentals and the Azure map
+
+[Full chapter →](ch:cloud-azure-overview)
+
+- **What "cloud" means**: renting compute, storage, databases and managed services **on demand, paying for what you use**. NIST names five characteristics: self-service (a database in minutes from code), broad network access, multi-tenant **resource pooling**, **rapid elasticity** and **measured service**.
+- **Service models are a line of responsibility.** Read the stack from the top down (application, data, runtime, OS, virtualisation, hardware) and see where your job ends:
+  - **IaaS** (VMs): you own the OS and everything above it, including patching.
+  - **PaaS** (App Service, Azure SQL): the line moves above the *runtime*. Azure patches the OS and keeps .NET current, and you own the app and its configuration.
+  - **Containers-as-a-service**: you own the image.
+  - **Serverless** (Functions): pay per execution and scale to zero, at the cost of cold starts and time limits.
+  - **SaaS**: you only use it.
+
+  **Default for .NET backends: PaaS and managed services.** Every VM is patching, monitoring, backup and hardening work that buys little unless you specifically need OS control.
+- **Shared responsibility.** The provider secures the cloud *itself* (datacentres, hardware, hypervisor). You secure what you put *in* it (code, data, identities, access policies, network rules, configuration), and **identities, data and access are always yours**, even in SaaS. Most cloud breaches are customer misconfigurations (public storage containers, leaked keys, over-privileged identities), not provider failures.
+- **Regions and zones.** A **region** is a geographic area; you choose it for latency, data residency (GDPR), service availability and price. **Availability zones** are physically separate datacentres in one region with independent power, cooling and network, so **zone-redundant** deployments survive losing a datacentre. **Region pairs** are used for disaster recovery and staggered platform updates. The resilience ladder, each step costing more:
+  1. Single instance: any deploy or failure is downtime.
+  2. Multiple instances across zones: the production baseline.
+  3. Multi-region **active-passive**: fail over to a standby region.
+  4. Multi-region **active-active**: Front Door routing globally over replicated data (Cosmos multi-region writes, SQL geo-replication). It's the most available and the most complex.
+
+  Size it with **RTO** (how long you may be down) and **RPO** (how much data, measured in time, you may lose). Pick the tier the requirement justifies, not the top one.
+- **Scale up vs scale out.** **Up** means a bigger SKU: there's a ceiling, it usually needs a restart, and it's still one instance. **Out** means more instances behind a load balancer: effectively unlimited and it survives instance loss, **but only if the app is stateless** and keeps shared state in shared stores. **Autoscaling** works on metrics (CPU, requests/s, or **queue length via KEDA**, which scales on signals from outside the cluster) or on a schedule. **Elasticity** includes scaling *down*, so you stop paying for idle capacity.
+- **Twelve-factor app**, the checklist that makes scale-out and redeploys safe. The three that matter most in ASP.NET Core:
+  - **Config in the environment**: `IConfiguration` env vars, Key Vault, App Configuration;
+  - **stateless processes**: no in-memory session, no local files;
+  - **disposability**: fast start and **graceful shutdown** on SIGTERM via `stoppingToken`.
+
+  The others: one codebase with many deploys; declared dependencies (lock files, images); backing services attached by URL; strictly separate build/release/run (an immutable image plus config); port binding (Kestrel on `ASPNETCORE_HTTP_PORTS`); concurrency via processes (separate web and worker); dev/prod parity (containers, Aspire, Testcontainers, IaC); **logs as stdout streams**; and admin tasks as separate processes (migration bundles).
+- **"Works with one instance" bugs** all appear the first time you run 2 replicas:
+  - in-memory sessions or caches assumed to be shared;
+  - files written to local disk;
+  - scheduled jobs running on **every** replica;
+  - **Data Protection keys** not shared, so users get logged out and antiforgery fails;
+  - SignalR without a backplane;
+  - sticky-session assumptions.
+
+  Design for N from day one.
+- **Azure resource hierarchy**: **Entra tenant** (identity boundary) → **management groups** (policy and RBAC inherited across many subscriptions) → **subscriptions** (billing, quota and access boundary, often one per environment) → **resource groups** (things deployed and deleted together, like `rg-shop-prod-weu`) → resources. **ARM** is the control plane every tool goes through: portal, `az`, SDKs, Bicep, Terraform.
+  - **RBAC** at any scope says *who can do what*. There are control-plane roles (Owner, Contributor, Reader) and separate **data-plane** roles such as *Storage Blob Data Reader*.
+  - **Azure Policy** enforces rules ("no public storage", "only these regions").
+  - **Tags** (`env`, `owner`, `costCenter`) drive cost reporting.
+- **The Azure map for a .NET backend:**
+  - **Compute**: App Service, Container Apps, AKS, Functions.
+  - **Images**: ACR.
+  - **Data**: Azure SQL (or PostgreSQL), Cosmos DB, Blob Storage, Azure Managed Redis.
+  - **Messaging**: Service Bus, Event Grid, Event Hubs.
+  - **Secrets and identity**: Key Vault, Entra ID and managed identities, App Configuration with feature flags.
+  - **Gateway and edge**: API Management; Front Door (global edge, CDN, WAF) → Application Gateway (regional L7 + WAF) or Load Balancer (L4).
+  - **Monitoring**: Azure Monitor, App Insights, Log Analytics.
+  - **IaC**: Bicep, Terraform, azd.
+- **Networking.** A **VNet** is your private network, split into subnets with **NSGs** filtering traffic. **Private Endpoints** give a PaaS service (SQL, Storage, Key Vault, Service Bus) a **private IP inside your VNet**, so you can then **disable public network access**. That's the usual production security bar, and it needs **Private DNS zones** so the normal hostname resolves to the private IP. **VNet integration** is the *outbound* side, letting App Service, Functions or Container Apps reach private resources. **Hub-and-spoke** puts shared firewall and gateways in a hub VNet with workloads in peered spokes.
+- **Cost levers.** Costs grow from many individually reasonable choices. The levers:
+  - **right-size** (a P3v3 at 10% CPU becomes a P1v3);
+  - **autoscale and scale to zero**;
+  - **reservations or savings plans** for steady load (1–3 year commitments);
+  - serverless or auto-pause database tiers;
+  - small dev SKUs that shut down at night;
+  - blob lifecycle tiers (Hot → Cool → Cold → Archive);
+  - **egress** (data leaving Azure or crossing regions costs money);
+  - **telemetry ingestion** (sampling, log levels, retention), often a surprise line item.
+
+  Tools: Cost Management budgets and alerts, Advisor, the Pricing Calculator.
+- **Well-Architected Framework**: five pillars, used as the lens in system-design interviews:
+  - **Reliability**: zones, redundancy, retries, health probes, backups, DR, chaos.
+  - **Security**: Entra and managed identity, least privilege, Key Vault, private endpoints, WAF, encryption, Defender.
+  - **Cost Optimization**: right-sizing, autoscale, reservations, tiering, tags.
+  - **Operational Excellence**: IaC, CI/CD, observability, runbooks, safe deployments (slots, canaries).
+  - **Performance Efficiency**: scale-out, caching, CDN, async processing, partitioning, load tests.
+
+### 8.2 · Docker and containers
+
+[Full chapter →](ch:docker)
+
+- **A container is an isolated process that shares the host's kernel.** **Namespaces** give it its own filesystem, network and process view, and **cgroups** cap its CPU and memory. Because there's no guest OS or kernel, it's MBs not GBs, starts in seconds or less, and packs hundreds to a host. The same fact explains the weakness: isolation is good but **weaker than a VM's**, since a kernel exploit crosses containers. Why containers won: **one immutable image** runs identically on a laptop, in CI and in prod. Dependencies are explicit, rollback means redeploying the previous tag, and every platform accepts the image, which becomes the contract between dev and ops.
+- **Image, layer, container, registry.**
+  - An **image** is a read-only stack of **layers** (filesystem diffs, one per `FROM`/`COPY`/`RUN`, **cached** and shared between images) plus metadata: entrypoint, env, ports, user.
+  - A **container** is a running instance with one thin **writable layer** on top. Many containers share one image.
+  - **Registries**: Docker Hub, **ACR**, GHCR, and **MCR** for official .NET images.
+  - A **tag** (`:1.4.2`, `:latest`) is a mutable label. A **digest** (`@sha256:…`) is immutable content addressing, which is what you pin for true reproducibility.
+- **The .NET images** (mcr.microsoft.com/dotnet):
+  - `sdk`: ~800 MB, **build stage only**;
+  - `aspnet`: web apps;
+  - `runtime`: console apps and workers;
+  - `runtime-deps`: native OS libraries only, for **self-contained or Native AOT** apps;
+  - variants: `-alpine` (small, but musl libc, so check native dependencies like ICU), `-noble` (Ubuntu 24.04), `-azurelinux3.0`, **`-noble-chiseled`** (distroless: **no shell, no package manager, non-root by default**, the smallest attack surface) and `-composite` (composite ReadyToRun for faster startup).
+
+  **Since .NET 8**, ASP.NET Core images listen on **8080** (`ASPNETCORE_HTTP_PORTS`) instead of 80, because binding below 1024 needs root, and they ship a non-root **`app`** user (UID 1654).
+- **The production Dockerfile, technique by technique:**
+  1. **Multi-stage**: `FROM sdk AS build` to restore, build and publish, then `FROM aspnet` and `COPY --from=build` only the publish output. The final image has no SDK, source or tools.
+  2. **Layer-cache ordering**: copy `Directory.Build.props`, `Directory.Packages.props`, `global.json` and the `.csproj` files, **run `dotnet restore`, and only then copy the source**. Docker reruns a layer, and everything after it, only when that layer's inputs change. So a `.cs` edit reuses the slow restore layer, because the slow, rarely changing work comes first.
+  3. **`.dockerignore`** excludes `bin/`, `obj/`, `.git`, `.vs`, `node_modules` and local settings files. Builds get faster and you don't leak files.
+  4. **Non-root** (`USER app`) on a **chiseled** base.
+  5. **Exec-form `ENTRYPOINT ["dotnet", "Shop.Api.dll"]`**, not the shell form. Exec form makes `dotnet` **PID 1**, and `docker stop` and Kubernetes send `SIGTERM` to PID 1. With the shell form, `/bin/sh` is PID 1, it doesn't forward the signal, and your app never starts its graceful shutdown; it gets SIGKILLed after the grace period instead.
+  6. **Pin versions** and **rebuild regularly** to pick up base-image security patches.
+- **No Dockerfile needed for standard apps**: `dotnet publish -t:PublishContainer -p ContainerFamily=noble-chiseled -p ContainerRegistry=shopacr.azurecr.io` builds an OCI image with **no Docker daemon** and can push it straight to a registry, configured with `<ContainerRepository>` and `<ContainerPort>` in the csproj. Use a Dockerfile when you need extra OS packages or complex builds.
+- **Configuration and state in containers.**
+  - Config comes from **environment variables set at runtime** (`ConnectionStrings__Shop`), so **one image is promoted through every environment**.
+  - **Never `COPY` secrets or pass them as build args**: they persist in image layers and anyone who pulls the image can read them. Use the platform secret store or, better, **managed identity**, so there's no secret at all.
+  - The **filesystem is ephemeral** and vanishes when the container is replaced. Use Blob Storage or a database, and volumes only where truly needed.
+  - **Persist Data Protection keys** (Blob + Key Vault) for multi-instance apps.
+  - **Log to stdout**, and expose health endpoints for probes.
+- **Local dev**: `compose.yaml` runs the API plus SQL, Redis and RabbitMQ (`docker compose up -d --build`, `down -v`), with `depends_on` (plus a health condition) for startup ordering. **Aspire's AppHost** solves the same problem in C#, adding connection-string wiring and a dashboard.
+- **Size, startup and security.**
+  - **Shrink the image**: chiseled or distroless (fewer packages means fewer CVEs and no shell for an attacker); Alpine; `InvariantGlobalization=true` to drop ICU; trimming plus self-contained on `runtime-deps`; **Native AOT** (tens of MB, millisecond startup); ReadyToRun or composite images for startup.
+  - **Security practice**: scan images in CI (Trivy, Grype, Docker Scout, Defender for Containers); run non-root with a **read-only root filesystem**; drop Linux capabilities; never run privileged; **sign images** (Notation or cosign) and admit only signed images; produce an **SBOM**; let Dependabot or Renovate bump base images.
+- **.NET is container-aware.** The GC and thread pool read the container's **cgroup limits**, not the host's RAM and cores, so a 2-CPU container doesn't size its thread pool for the host's 64 cores.
+  - With a memory limit, the **GC heap hard limit defaults to 75%** of the container limit (`DOTNET_GCHeapHardLimitPercent`). The rest is left for native memory, thread stacks and the runtime.
+  - **Server GC** is the ASP.NET Core default, and it used to make one heap per core and be memory-hungry in small containers. **.NET 9+ enables DATAS** (Dynamic Adaptation To Application Sizes), which grows and shrinks the heap count with load.
+  - Set realistic Kubernetes **requests and limits**: too low gives **OOMKilled** restarts. `DOTNET_PROCESSOR_COUNT` overrides the detected CPU count.
+
+### 8.3 · Azure compute: App Service, Functions, Container Apps, AKS
+
+[Full chapter →](ch:azure-compute)
+
+- **It's one spectrum: control versus operations work.** VMs (any software, you patch everything) → **AKS** (full Kubernetes; high ops) → **Container Apps** (serverless containers on managed K8s + KEDA + Envoy; low-medium) → **App Service** (classic managed web hosting; low) → **Functions** (event-driven code; lowest). Choose by how much operational burden you want, not by which sounds most powerful.
+- **App Service.** It hosts web apps, APIs and WebJobs from code or a container, on Windows or Linux. An **App Service plan** is the shared compute (VM size × instance count) that one or more apps run on, and its tier sets the features. Free and Shared are dev only; **Basic** has no slots or autoscale; **Standard and Premium v3** add autoscale, **slots**, VNet integration and (Premium) zone redundancy; **Isolated v2** (an App Service Environment) is single-tenant and network-isolated.
+- **Deployment slots.** A slot is a **live app with its own hostname** (`shop-api-staging.azurewebsites.net`) on the same plan. Deploy to `staging`, **warm it up** and smoke-test, then **swap**: production traffic moves to already-warm instances, so there are no cold-start errors. Rollback is swapping back. Mark settings **slot-specific ("sticky")**, like a staging connection string, so they stay with the slot and don't travel in the swap.
+- **App Service configuration and features.**
+  - **App settings become environment variables** (`Payments__ApiKey`). **Key Vault references** (`@Microsoft.KeyVault(SecretUri=...)`) resolve secrets at runtime, so they never appear in the settings.
+  - **Managed identity** gives passwordless access to SQL, Storage and Key Vault.
+  - Autoscale rules (CPU > 70% → +1 instance) or Premium's HTTP-based automatic scaling.
+  - A **health check path**: unhealthy instances are pulled from the load balancer and replaced.
+  - VNet integration for outbound traffic, private endpoints for inbound.
+  - **Always On** stops idle unloading. **ARR affinity** (sticky sessions) should be **turned off** for stateless apps, or load spreads badly.
+  - Easy Auth, Kudu, log streaming.
+- **Azure Functions: triggers and bindings.** **Triggers** start a function: HTTP, **Timer** (CRON), Service Bus, Storage Queue, Blob, Event Grid, Event Hubs, the **Cosmos DB change feed**, Kafka, SQL change tracking. **Bindings** read or write Blob, Cosmos, Service Bus or SQL declaratively without SDK boilerplate. Use the **isolated worker model**: your code runs in **its own process**, separate from the Functions host, so you choose the .NET version and dependencies and get **normal DI, middleware and configuration** (`FunctionsApplication.CreateBuilder(args)`, `ConfigureFunctionsWebApplication()` for ASP.NET Core-style HTTP). The legacy in-process model is being retired. A Service Bus trigger **settles messages for you**: it completes on success, and on an exception it retries and eventually dead-letters by max delivery count.
+- **Functions hosting plans.**
+  - **Flex Consumption** (recommended): event-driven scale to zero, fast scale-out, optional **always-ready** instances to cut cold starts, VNet support, per-function scaling.
+  - **Classic Consumption**: cold starts and a 5–10 minute timeout. Linux Consumption is being retired.
+  - **Premium**: **pre-warmed instances, so no cold start**, plus VNet and long runs; you always pay for the minimum.
+  - **Dedicated**: runs on an App Service plan for predictable cost.
+  - **On Container Apps**.
+
+  **Pitfalls**: cold starts for latency-sensitive HTTP; execution time limits; **no in-memory state** (instances come and go); triggers are at-least-once, so **be idempotent**; **share `HttpClient` and SDK clients as singletons** via DI rather than creating them per invocation (socket exhaustion); cap concurrency so a burst doesn't overwhelm the database.
+- **Durable Functions** run stateful workflows in code. An **orchestrator** calls **activities**, and every step's result is appended to a **history** of events (event sourcing applied to workflow progress). After a restart, the orchestrator **replays** from the top, and completed `await`s return their recorded results instead of re-running. That's how it survives restarts and can wait **days** for a timer or a human approval while holding no resources. It's also why **orchestrator code must be deterministic**: no `DateTime.Now`, `Guid.NewGuid()`, random numbers or direct I/O, only `ctx.CurrentUtcDateTime`, `ctx.NewGuid()` and activities. Otherwise a replay takes a different path than the recorded history. `catch (TaskFailedException) { await ctx.CallActivityAsync(nameof(ReleaseStock), ...) }` is a saga compensation. Patterns: chaining, **fan-out/fan-in**, async HTTP APIs (202 plus a status URL built in), monitors, human interaction, durable entities. The **Durable Task Scheduler** is a managed backend.
+- **Container Apps**: Kubernetes capability without running a cluster.
+  - **Environment**: the shared VNet and Log Analytics boundary; apps inside it talk internally.
+  - **Container app**: main container plus sidecars, with ingress, scale rules, secrets and identity.
+  - **Revisions**: immutable versions that can run side by side with **traffic splitting** (90/10 canary, blue/green).
+  - **Ingress**: external or internal.
+  - **KEDA scale rules**: HTTP concurrency, CPU, **Service Bus queue length** (`messageCount: 50`, `minReplicas: 0`, so a worker scales to zero when idle), Kafka lag, cron.
+  - **Jobs**: run-to-completion, manual, **scheduled** or **event-driven**.
+  - Optional **Dapr** sidecars (service invocation, pub/sub, state); consumption or dedicated **workload profiles** (including GPUs).
+
+  It's the sweet spot for .NET microservices (API, worker, outbox relay and cron jobs together), and **Aspire deploys here with `azd up`**.
+- **AKS**: Azure runs the control plane; **you** own node pools and everything deployed. Choose it only when you need the full Kubernetes API and ecosystem (Helm, operators, service meshes, custom controllers), a shared multi-team platform, multi-cloud consistency or fine scheduling and network control, **and** you have platform engineers. Integrations: **Workload Identity** (pods get Entra identities), the Key Vault CSI driver, ACR pull, Azure CNI, KEDA and the cluster autoscaler, managed NGINX ingress, Container Insights and managed Prometheus/Grafana, and **AKS Automatic** for a more managed mode.
+- **VMs** are for lift-and-shift of IIS/.NET Framework apps, special OS needs or licensing, and you own patching, hardening, backups and scaling. Also: **Static Web Apps** for SPAs with Functions APIs, **Batch** for parallel compute.
+- **Decision guide and interview comparisons.**
+  - Small, event- or timer-triggered, spiky → **Functions (Flex)**.
+  - Long stateful workflows → **Durable Functions** (or sagas).
+  - A simple web app or API → **App Service**.
+  - Several containerised services, workers and jobs with scale-to-zero and no cluster ops → **Container Apps**.
+  - Full Kubernetes and the team for it → **AKS**.
+  - Legacy → **VMs**.
+
+  The comparisons interviewers ask about:
+  - **App Service vs Container Apps**: slots and always-on plans vs KEDA, scale to zero, revisions and Dapr.
+  - **Container Apps vs AKS**: hidden Kubernetes (no cluster upgrades, no K8s API) vs the full API with full responsibility.
+  - **Functions vs Container Apps**: a trigger/binding programming model with per-execution billing vs any container with KEDA scaling.
+  - **Consumption vs Premium**: scale to zero with cold starts and time limits vs pre-warmed instances, VNet and always paying for the minimum.
+
+### 8.4 · Azure data and messaging services
+
+[Full chapter →](ch:azure-data-messaging)
+
+- **These are managed versions of things covered earlier.** What changes in Azure is operations: HA, backups, scaling, identity and networking are configuration you set, not work you do yourself.
+- **Azure SQL deployment options.**
+  - **Single database**: the default.
+  - **Elastic pool**: many databases sharing resources, the usual way to do SaaS **database-per-tenant**, where tenants peak at different times.
+  - **SQL Managed Instance**: near-complete SQL Server compatibility (SQL Agent, cross-database queries, CLR) for lift-and-shift.
+  - SQL Server on a VM, if you need full control.
+- **Azure SQL purchasing.** Use the **vCore** model.
+  - **General Purpose**: remote storage, balanced.
+  - **Business Critical**: local SSD, a built-in **readable replica**, lowest latency.
+  - **Hyperscale**: up to 128 TB, fast scaling, multiple read replicas, near-instant backups.
+  - **Serverless**: auto-scales compute and **auto-pauses** when idle, so the first query after a pause waits. Good for dev and intermittent load.
+
+  DTU is the legacy bundled model.
+- **Azure SQL availability and DR.**
+  - 99.99% HA built in, plus zone redundancy.
+  - **Point-in-time restore** (7–35 days) and long-term retention (up to 10 years).
+  - **Active geo-replication** gives readable secondaries in other regions.
+  - **Failover groups** add automatic geo-failover behind a **stable listener endpoint**, so connection strings don't change after failover.
+  - **Read scale-out** sends `ApplicationIntent=ReadOnly` connections to a replica.
+- **Azure SQL security.** Use **passwordless Entra auth**: `Authentication=Active Directory Default` in the connection string, then `CREATE USER [app-shop-api-prod] FROM EXTERNAL PROVIDER` and grant `db_datareader`/`db_datawriter`, or narrower roles. Disable public access in favour of a private endpoint. Encryption and auditing:
+  - **TDE** encrypts at rest and is on by default;
+  - **Always Encrypted** encrypts columns client-side, so even DBAs can't read them;
+  - **dynamic data masking** and **row-level security**;
+  - auditing, Defender for SQL and the **ledger** (tamper evidence).
+- **Azure SQL behaves differently from on-premises.** Failovers and reconfigurations are **normal transient faults**, so **always enable retries** (`EnableRetryOnFailure`). **RCSI is on by default**: readers see the last committed version instead of blocking on writers, which changes locking behaviour compared with an on-premises default. Query Store is on, and automatic tuning can create and drop indexes.
+- **PostgreSQL Flexible Server**: managed Postgres with zone-redundant HA, read replicas, **built-in PgBouncer** connection pooling, extensions (**pgvector** for embeddings, PostGIS, pg_cron), Entra auth, and stop/start for dev. With Npgsql and EF Core it's first-class for .NET and often cheaper than SQL Server licensing.
+- **Cosmos DB essentials.**
+  - The hierarchy is account → database → **container** → items. The container is the unit of scale, and its **partition key** is the decision you can't easily undo.
+  - Throughput is in **Request Units**: provisioned manually, autoscale, or serverless.
+  - Five **consistency levels**: Strong, Bounded staleness, **Session** (the default: you read your own writes within your session), Consistent prefix, Eventual.
+  - One-click global distribution with multi-region writes (99.999% SLA).
+  - The **change feed** is an ordered stream of changes per partition, used for materialised views, events and search sync.
+  - Everything is **auto-indexed** by default; tune the policy to cut write RU cost. There are vector indexes.
+  - TTL expiry; transactions only **within one logical partition**.
+
+  In code: a **singleton `CosmosClient`**, prefer **point reads** (id + partition key, the cheapest operation) over queries, log `RequestCharge`, and expect **429**s, which the SDK retries within limits.
+- **Storage accounts.** Redundancy options: **LRS** (3 copies in one datacentre), **ZRS** (across zones), **GRS/RA-GRS** (copied to the paired region, optionally readable), **GZRS**. **Blob access tiers** trade storage cost against access cost:
+  - **Hot**: frequent access;
+  - **Cool**: 30+ days;
+  - **Cold**: 90+ days;
+  - **Archive**: 180+ days, **offline, and rehydration takes hours**.
+
+  **Lifecycle policies** move blobs between tiers by age. **Soft delete**, versioning and **immutable (WORM) storage** protect against accidental and ransomware deletion. ADLS Gen2 adds a hierarchical namespace for data lakes.
+- **SAS and the valet key.** A **SAS** is a time-limited, permission-scoped signed URL. Prefer **user delegation SAS** (signed with Entra credentials, so it's revocable and audited) over account-key SAS, and **disable shared-key access** entirely in favour of RBAC (`Storage Blob Data Contributor`). The **valet key pattern** has the API hand out a short-lived SAS URL so clients upload and download **directly to Blob**, keeping large files off your API (the HTTP equivalent of claim-check).
+- **Other storage services.**
+  - **Storage Queues**: 64 KB messages, at-least-once, no topics, sessions or DLQ. Fine for simple work queues; use Service Bus for business messaging.
+  - **Table Storage**: PartitionKey + RowKey lookups.
+  - **Azure Files**: SMB/NFS shares for legacy apps.
+  - **Azurite**: the local emulator for Blob, Queue and Table.
+- **Azure Managed Redis** replaces Azure Cache for Redis, whose classic tiers are being retired. Use it as the `HybridCache`/`IDistributedCache` L2, for sessions, rate limiting, a SignalR backplane or output cache. Connect with **Entra auth** (`Microsoft.Azure.StackExchangeRedis`) over a private endpoint, and use zone redundancy, an eviction policy and TTLs.
+- **Service Bus vs Event Grid vs Event Hubs** (the classic interview question). They solve different problems:
+  - **Service Bus**: **reliable business messaging**. **Peek-lock** (receive → complete, abandon or dead-letter), DLQ, sessions for FIFO, scheduled and deferred messages, duplicate detection, transactions; 256 KB messages (Standard) or 100 MB (Premium). Use it for orders, payments, workflows and sagas.
+  - **Event Grid**: **push-based routing of discrete "something happened" events** to Functions, webhooks or queues, with retries up to 24 h and dead-lettering to Blob. No ordering. Use it for "a blob was created → resize the image".
+  - **Event Hubs**: a **partitioned log for firehose ingestion** (millions of events/s). Consumers **pull** and track offsets; retention is 1–90 days and you can **replay**; there's a Kafka endpoint and Capture to Blob. Use it for telemetry, clickstreams, IoT and event-sourcing pipelines.
+
+  They're often combined: Event Grid routes `BlobCreated` into a Service Bus queue for a worker. Service Bus tiers: Basic (queues only), Standard (topics, shared capacity), **Premium** (dedicated capacity, private endpoints, large messages, geo-replication; the production choice). There's a local **emulator**.
+- **Using Azure SDK clients well.** All `Azure.*` clients follow the same rules:
+  - **They're thread-safe; register them as singletons** via `AddAzureClients` (Microsoft.Extensions.Azure). They hold connections, which is the `HttpClient` lesson again.
+  - Authenticate with `Azure.Identity` credentials.
+  - They have **built-in retries** (`ClientOptions.Retry`), so **don't stack Polly retries on top** or you build a retry storm.
+  - They emit `ILogger` and OpenTelemetry through `Azure.*` ActivitySources.
+  - They're async throughout, with `CancellationToken`, and page with `AsyncPageable<T>` (`await foreach`).
+
+  Aspire integrations (`AddAzureServiceBusClient("bus")`) wire all of this up with health checks.
+
+### 8.5 · Azure identity and secrets
+
+[Full chapter →](ch:azure-identity-secrets)
+
+- **The order of preference.** Secrets leak: they get committed, logged, pasted in chat and rarely rotated.
+  1. **No secret at all**: the app authenticates **as an identity** that Entra issues (a managed identity), and access is granted by RBAC.
+  2. If a secret is unavoidable (a third-party API key), put it in **Key Vault**, read it via managed identity and rotate it.
+  3. **Never** in source control, images or config files.
+- **Entra ID vocabulary.**
+  - **Tenant**: the identity boundary.
+  - **App registration**: the app's **definition** (client ID, redirect URIs, exposed scopes, app roles, credentials).
+  - **Service principal** (an "enterprise application"): the app's **instance in a tenant**, the security principal that actually receives permissions. One multi-tenant registration has a service principal in every tenant that uses it.
+  - **Managed identity**: a service principal Azure manages *for a resource*.
+  - **Scopes** (`orders.read`, delegated user permissions) vs **app roles** (`Orders.Admin`, which can be assigned to users or to apps).
+  - **Conditional Access/MFA**: sign-in policies.
+  - **Entra External ID**: customer identity (CIAM), succeeding Azure AD B2C.
+- **Two permission systems people confuse.** **Azure RBAC** controls access to **Azure resources** ("app-shop-api can read blobs in stshopprod"). **Entra roles and app permissions** control **Entra itself, Microsoft Graph and your own APIs** ("Global Administrator", "can call Graph `User.Read.All`", "client may call `api://shop` `orders.write`").
+- **Managed identities.** Your code asks a **local platform endpoint** for a token, and Azure holds and rotates the underlying credential. There is **no secret anywhere** for an attacker to find. That's not just harder to steal; nothing exists to steal.
+  - **System-assigned**: tied to one resource and deleted with it.
+  - **User-assigned**: a standalone resource shared by many apps. Use it to pre-provision access before the app exists, for blue/green, and for AKS workload identity.
+
+  Grant **data-plane roles at narrow scope**: `Storage Blob Data Contributor` on just the `invoices` container, `Azure Service Bus Data Sender` on the namespace, `Key Vault Secrets User` on the vault. Supported by SQL, Postgres, Storage, Service Bus, Event Hubs, Cosmos, Key Vault, App Configuration, Redis, Azure OpenAI, ACR and more.
+- **`DefaultAzureCredential`** tries a chain and uses the first credential that works: **Environment** variables → **WorkloadIdentity** (Kubernetes) → **ManagedIdentity** (Azure hosts) → Visual Studio and VS Code → **Azure CLI** (`az login`) → PowerShell, azd → interactive (off by default). The payoff is that the **same code** runs as *you* on your laptop and as the *managed identity* in Azure, with no `#if DEBUG`. **Production caveats**: the chain can be **slow to fail** while it tries every option, and it can pick up an **unexpected credential**, such as a stray env var on a host. Use a deterministic credential instead: `new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(id))`, a `ChainedTokenCredential` of exactly what you expect, or exclusions in options. Give developers the same RBAC roles on dev resources so local runs work.
+- **RBAC in practice.** A role assignment is **principal + role definition + scope**, and it inherits downward from management group to subscription, resource group, resource and sub-resource. **Control plane vs data plane** is the key distinction: *Contributor* on a storage account lets you reconfigure the account but **doesn't let you read its blobs**, which needs a data role. Giving an app Contributor "to be safe" is a textbook least-privilege violation. Practices: data roles at the narrowest scope, groups for humans, **one identity per app per environment**, **PIM** for just-in-time admin elevation, and regular access reviews.
+- **Key Vault** holds three kinds of object:
+  - **secrets**: versioned, with expiry, and rotation events via Event Grid;
+  - **keys**: RSA/EC keys that **never leave the vault or HSM**; the vault signs and decrypts for you. Used for customer-managed encryption, JWT signing and **protecting the Data Protection key ring**. Premium is HSM-backed, and Managed HSM is single-tenant;
+  - **certificates**: auto-renewed, used by App Service, App Gateway and Front Door.
+
+  Use RBAC access (`Key Vault Secrets User`), **soft delete plus purge protection**, a private endpoint and access logging. Four ways to consume it:
+  1. **The config provider** `AddAzureKeyVault` (`Payments--ApiKey` becomes `Payments:ApiKey`, with an optional `ReloadInterval`), bound to validated options.
+  2. **`SecretClient`** for on-demand reads.
+  3. **Data Protection**: `PersistKeysToAzureBlobStorage(...).ProtectKeysWithAzureKeyVault(...)`, the shared key ring that multi-instance cookie auth needs.
+  4. **Platform references** (`@Microsoft.KeyVault(SecretUri=...)` in App Service, Functions or Container Apps settings), with no code at all.
+
+  **Key Vault is throttled** (thousands of operations per 10 s per vault), so **load at startup and cache**; never call `GetSecretAsync` per request.
+- **Workload identity federation** gives "no secret" to things that aren't Azure resources. An external IdP's token is **exchanged** for an Entra token. Example: a GitHub Actions job gets an OIDC token whose subject is `repo:org/shop:environment:prod`, and Entra has a **federated credential trusting exactly that subject**, so `azure/login` with only a client ID, tenant ID and `id-token: write` gets an access token, and **no client secret is stored in GitHub**. **AKS Workload Identity** works the same way: a Kubernetes service account is federated with a user-assigned identity, and pods get tokens via `WorkloadIdentityCredential`. It also covers Azure DevOps service connections, other clouds and Arc.
+- **Protecting your own API with Entra.**
+  1. Register the API (`api://shop-api`), **expose scopes** (`orders.read`) and **define app roles** (`Orders.Reader`).
+  2. The SPA gets a **delegated** permission to `orders.read`, which acts on behalf of the user and arrives in the `scp` claim.
+  3. The billing worker's managed identity is assigned the **application** role, with no user involved, which arrives in the `roles` claim.
+  4. The API validates issuer and audience with `AddMicrosoftIdentityWebApi`, and a policy accepts **either** `scp` contains `orders.read` **or** the role `Orders.Reader`.
+
+  To call another API **as the service**, use client credentials via managed identity: `GetTokenAsync(new(["api://inventory-api/.default"]))`. `.default` means "all application permissions granted to me".
+
+### 8.6 · CI/CD and infrastructure as code
+
+[Full chapter →](ch:cicd-iac)
+
+- **CI, continuous delivery, continuous deployment.**
+  - **Continuous integration**: merge to main at least daily, and every push builds and tests; a broken build is fixed immediately.
+  - **Continuous delivery**: every passing change *is releasable*, but going to production is a **business decision** (an approval).
+  - **Continuous deployment**: every passing change ships automatically, which demands strong tests, monitoring and progressive delivery.
+
+  Small, frequent, automated releases are **less risky** than big, rare ones: each change is small enough to understand and roll back, and the process is identical every time. **DORA metrics** measure this: deployment frequency, lead time for changes, change failure rate, time to restore (*Accelerate*).
+- **Branching.** **Trunk-based** development (branches that live hours, with **feature flags** hiding unfinished work) is what the DORA research favours. **GitHub Flow** (main is always deployable; PR → checks → merge → deploy) suits most service teams. **GitFlow** (develop, release and hotfix branches) is heavyweight and suits versioned products. Release branches suit libraries and on-premises software. Protect `main` with required reviews and checks (build, tests, analyzers, security scans), keep PRs small, and automate dependency bumps.
+- **Pipeline anatomy.** **CI**: restore → build with **warnings as errors** → unit tests → integration tests (Testcontainers) → analyzers and format → coverage → SCA/SAST → report status on the PR. **CD**: **build the image once** and push to ACR **tagged with the git SHA** → deploy to dev → smoke → staging (slot or revision) → **migrations** → smoke/E2E → **approval** → prod (swap or canary) → monitor. **Build once, deploy many**: the same artefact (image digest) is promoted, and only configuration differs, so what you tested is exactly what runs.
+- **GitHub Actions concepts.**
+  - Workflows are YAML in `.github/workflows`, started by `on:` triggers.
+  - **Jobs** run in parallel unless they declare `needs:`, and each job is a list of steps.
+  - Steps use marketplace **actions**, and run on GitHub-hosted or self-hosted **runners**.
+  - **Environments** carry protection rules, required approvers and scoped secrets.
+  - Also: **matrix** builds, caching, and **reusable workflows** and composite actions to share pipelines across repos.
+
+  The example pipeline makes `deploy-staging` run the **EF migration bundle and curl the readiness endpoint** before `deploy-prod` can start, so the pipeline enforces "migrate, verify, promote" instead of trusting someone following a runbook under pressure.
+- **Azure DevOps Pipelines**: **stages → jobs → steps**, with **tasks** instead of actions, **service connections** (use workload identity federation), environments with approvals and checks, **variable groups** (which can be Key Vault-linked) and templates.
+- **Deployment strategies**, in order of shrinking blast radius:
+  - **Recreate**: downtime.
+  - **Rolling**: replace instances gradually (Kubernetes Deployments).
+  - **Blue/green**: run the new version alongside and switch **all** traffic at once, with instant switch-back (an **App Service slot swap**, a 100% Container Apps revision switch).
+  - **Canary**: a small percentage first, increased while metrics stay healthy (**Container Apps traffic splitting**, Front Door weights, Argo Rollouts/Flagger).
+  - **Feature flags**: deploy dark, enable per user or percentage, and roll back by turning the flag off (App Configuration + `Microsoft.FeatureManagement`).
+  - **Rings**: internal users → early adopters → everyone.
+
+  **Progressive delivery** adds automated health analysis against SLOs, so promotion or rollback happens without a human.
+- **Database changes in a continuous pipeline.** During a rolling or blue/green deploy, **old and new code run against the same schema at once**, so every migration must work with both. **Expand → migrate → contract**:
+  1. Add the new column or table nullable or with a default, so old code is unaffected.
+  2. Deploy code that **writes both** shapes and reads the new one.
+  3. Backfill.
+  4. In a **later** release, drop the old shape.
+
+  **Never rename or drop a column in the same release that stops using it.** Run migrations as a pipeline step **before** the app deploys, with **idempotent scripts or EF migration bundles** and a **separate migration identity with DDL rights**; the app's identity gets DML only. DBA-owned schemas use DACPAC, DbUp, Flyway or Liquibase. Verify point-in-time restore and test against a production-like copy before risky changes.
+- **Versioning and supply chain.** Use **SemVer** for libraries and public APIs, and **git-SHA image tags** for services (immutable and traceable). MinVer or Nerdbank.GitVersioning derive the version from git; stamp `AssemblyInformationalVersion` with the SHA and expose it on `/version` and as `service.version` in telemetry. **Never deploy anything the pipeline didn't build.** Supply-chain hygiene: SBOMs, signed images and provenance (SLSA), **third-party actions pinned by commit SHA** (a tag can be moved to malicious code), least-privilege workflow `permissions:`, and secret scanning with push protection.
+- **Infrastructure as Code.** IaC gives you reproducible environments (dev = staging = prod with different parameters), infrastructure changes reviewed in PRs, **drift detection** (`what-if`/`plan` shows manual portal changes), disaster recovery by re-applying, and code that *is* the documentation. Prefer **declarative and idempotent** tools: describe the end state and let the tool compute the diff, so applying twice changes nothing.
+- **Bicep vs Terraform vs Pulumi.**
+  - **Bicep**: Azure-only, compiles to ARM, **no state file** because Azure itself is the state, day-zero support for new features. `az deployment group what-if` previews changes; use modules, **Azure Verified Modules**, `.bicepparam` files per environment, and deployment stacks.
+  - **Terraform**: multi-cloud plus SaaS providers, HCL, and a **state file** you must store remotely with locking (an Azure Storage backend). `plan` then `apply`; there's some provider lag, which AzAPI bridges.
+  - **Pulumi**: IaC in **C#** or another general-purpose language.
+- **azd and GitOps.** **azd** ties templates, IaC and deploy together: `azd up` provisions and deploys, and `azd pipeline config` generates CI with federated credentials. For Aspire, it **generates the infrastructure from the AppHost model**. **GitOps** (Argo CD, Flux) makes a Git repo the source of truth for cluster state. CI only bumps the image tag in the config repo; an in-cluster agent **pulls** and reconciles, which gives drift correction, an audit trail and rollback by `git revert`.
+
+### 8.7 · Kubernetes
+
+[Full chapter →](ch:kubernetes)
+
+- **Desired state plus reconciliation.** You declare "3 replicas of shop-api:1.4.2, 0.5 CPU each, reachable at orders.shop.com", and **controllers** loop forever (observe → compare with desired → act) to make it true. That loop handles:
+  - **scheduling** onto nodes with capacity;
+  - **self-healing**: restart crashed containers, replace pods on dead nodes, kill pods failing liveness;
+  - **scaling**;
+  - **service discovery and load balancing**;
+  - **rolling updates and rollbacks**;
+  - config and secret injection, and volume attachment.
+
+  The win is a portable, standard platform with a huge ecosystem. The cost is **complexity**: networking, security, upgrades and YAML need platform engineers. Container Apps gives most of the benefit with none of the cluster management.
+- **Architecture.** The **control plane** (managed in AKS) has:
+  - **kube-apiserver**: everything talks to it;
+  - **etcd**: the state store;
+  - the **scheduler**: assigns pods to nodes;
+  - the **controller-manager**: the reconcile loops;
+  - the cloud-controller-manager.
+
+  Each **node** runs a **kubelet** (starts pods and reports status), kube-proxy or a CNI dataplane, and a container runtime. Everything is an **API object** in YAML, `kubectl apply`'d, stored in etcd and acted on by controllers.
+- **Core objects.**
+  - **Pod**: the smallest unit. Containers in it share localhost and volumes; it has its own IP and is **ephemeral**.
+  - **ReplicaSet**: keeps N pods running.
+  - **Deployment**: pods + replicas + **rolling update** strategy, with one ReplicaSet per version (that's how `rollout undo` works). This is how you run a stateless API or worker.
+  - **Service**: a stable virtual IP and DNS name (`shop-api.shop.svc.cluster.local`) that load-balances across pods **selected by labels**. Types: ClusterIP, NodePort, LoadBalancer.
+  - **Ingress / Gateway API**: external HTTP routing (hosts, paths, TLS) via a controller.
+  - **ConfigMap**: env vars or a mounted `appsettings.Production.json`.
+  - **Secret**: **base64-encoded, not encrypted** by default.
+  - **Namespace**: isolation, quotas and RBAC.
+  - **StatefulSet**: stable identity and storage, for databases (usually better as PaaS).
+  - **DaemonSet**: one pod per node, for agents.
+  - **Job / CronJob**: run to completion, or on a schedule (migrations, batch).
+  - **HPA**, **PVC**, and **ServiceAccount** (pod identity, and the hook for workload identity).
+- **Probes, mapped to the two health endpoints.**
+  - **startup**: "finished starting?" Liveness waits until it passes, so slow starters aren't killed mid-boot.
+  - **liveness** (`/health/live`): "deadlocked?" On failure the container is **restarted**. **Never check dependencies here**, or a database blip restarts every pod.
+  - **readiness** (`/health/ready`): "can it serve now?" On failure the pod is **removed from Service endpoints**. Don't make it so strict that every pod goes unready together.
+- **Termination sequence, and the race in it.** When a pod is deleted (rolling update, scale-in, node drain):
+  1. It's marked Terminating, **removed from Service endpoints (asynchronously)**, and any `preStop` hook runs.
+  2. **SIGTERM** reaches PID 1, and the .NET host stops accepting connections, drains in-flight requests and stops hosted services.
+  3. After `terminationGracePeriodSeconds` (default 30 s), **SIGKILL**.
+
+  Because endpoint removal propagates asynchronously to every node and load balancer, a pod can **still receive new requests after SIGTERM**. Mitigate with `preStop: sleep 5`, so traffic stops arriving before the app stops accepting it. Keep `HostOptions.ShutdownTimeout` below the grace period so draining finishes before SIGKILL.
+- **Requests, limits, QoS.** **Requests** reserve capacity for scheduling; **limits** cap usage. Over the **memory** limit the container is **OOMKilled**. Over the **CPU** limit it's **throttled** for the rest of each CFS period, so you get latency spikes rather than a crash. That's why many teams set CPU *requests* but **no CPU limit** on latency-sensitive .NET services. QoS classes: **Guaranteed** (requests = limits), Burstable, **BestEffort** (no requests, evicted first). .NET reads the cgroup limits (GC heap about 75% of the memory limit, CPU count from the quota), and **DATAS** keeps Server GC memory proportional to load.
+- **Autoscalers.**
+  - **HPA**: replicas on CPU, memory or custom metrics.
+  - **KEDA**: replicas **including down to zero**, driven by events (Service Bus queue length, Kafka lag, Prometheus queries, cron), via a `ScaledObject`.
+  - **VPA**: right-sizes requests; recommendation mode is the safe one.
+  - **Cluster autoscaler** and node auto-provisioning: add **nodes** when pods are stuck Pending.
+- **Config, secrets, identity.** ConfigMaps become **env vars** (`Payments__BaseUrl`) or **mounted files** (with `reloadOnChange`, or `AddKeyPerFile` for one file per key). Native Secrets are only base64, so prefer the **Key Vault Secrets Store CSI driver**, External Secrets Operator, or best of all **Workload Identity**: annotate a ServiceAccount with a user-assigned identity's client ID, pods get federated tokens, and `DefaultAzureCredential` reaches SQL, Service Bus and Key Vault with **no secrets in etcd**.
+- **Packaging and delivery.** **Helm** charts are templated manifests with a `values-<env>.yaml` per environment (`helm upgrade --install`); Helm also installs third-party software like ingress-nginx, cert-manager and KEDA. **Kustomize** uses template-free base-plus-patch overlays (`kubectl apply -k`). **GitOps** (Argo CD, Flux) gives pull-based reconciliation from Git with drift correction and rollback by revert. **Argo Rollouts / Flagger** run canaries with automated metric analysis.
+- **Operating it.** Everyday commands: `kubectl get pods -o wide`, **`describe pod`** (events show scheduling failures, probe failures, OOMKilled and image pull errors), `logs -f deploy/...`, `rollout status`, `rollout undo`. Chiseled images have no shell, so use **`kubectl debug` with an ephemeral SDK container** to attach dotnet-trace or dotnet-counters. Failure states to recognise:
+  - **CrashLoopBackOff**: the app exits on start; check logs, config and missing env vars.
+  - **ImagePullBackOff**: wrong tag, or no `AcrPull`.
+  - **OOMKilled**: raise the limit or fix a leak.
+  - **Pending**: no capacity, or unsatisfiable affinity or taints.
+  - **Not ready**: a dependency is down, or the probe path is wrong.
+- **AKS specifics.** The control plane is free; the Standard tier adds an SLA, and **AKS Automatic** is a more managed mode.
+  - **Node pools**: system vs user, spot, GPU, Windows, with auto-upgrade channels and maintenance windows.
+  - **Networking**: Azure CNI Overlay, network policies (Calico/Cilium), private clusters, App Gateway for Containers, and the managed NGINX routing add-on.
+  - **Identity and secrets**: Entra-integrated kubectl RBAC, Workload Identity, ACR attach, the Key Vault CSI add-on.
+  - **Scaling**: KEDA add-on, cluster autoscaler.
+  - **Observability**: Container Insights, managed Prometheus/Grafana.
+  - **Security**: Defender for Containers, Azure Policy for Kubernetes.
+  - **Mesh**: an Istio-based mesh add-on.
+
+## Part IX · Performance and Internals
+
+### 9.1 · Memory and garbage collection
+
+[Full chapter →](ch:memory-gc)
+
+- **Why a GC.** In C and C++ you free memory by hand, which gives you **leaks**, **use-after-free** (a security hole) and **double free** (memory corruption). The .NET GC frees an object once it can **prove nothing can reach it**, so the last two bug classes essentially disappear. The price is CPU time and **pauses**. The thread running through all .NET performance work: **allocation rate drives GC frequency, and GC frequency drives latency**. Tuning usually means allocating less, not making the GC faster.
+- **Stack vs managed heap.**
+  - The **stack** belongs to one thread (about 1 MB on Windows, 8 MB for Linux's main thread) and holds method frames: locals, parameters, return addresses. It's freed the instant the method returns. Overflowing it gives `StackOverflowException`, which **you can't catch**; the process dies.
+  - The **heap** is shared by the whole process and holds reference-type objects, boxed values, arrays, closures and **suspended async state machines**.
+
+  Surprise: heap allocation is *also* cheap. Each thread has an **allocation context**, a reserved chunk where a new object is mostly a pointer bump. The cost isn't the allocation; it's **how often filling that space forces a collection**.
+- **Generations** follow the *generational hypothesis*: **most objects die young**. A request's temporary strings, DTOs and enumerators are garbage within milliseconds, while caches and singletons live forever.
+  - New objects start in **Gen0**, which is small and so fast to scan (often under 1 ms), and mostly garbage by the time it's collected, so a Gen0 GC reclaims a lot for little work.
+  - Survivors are **promoted** to **Gen1** (a buffer), then to **Gen2** (long-lived).
+  - A Gen1 GC collects 0+1. A **Gen2 (full) GC** collects everything **including the LOH**, and is the expensive one the design tries to keep rare.
+
+  How does a Gen0 GC know whether an old Gen2 object points at a young one without scanning all of Gen2? A **write barrier**: every time you store a reference into an object, a little code marks the matching entry in a **card table**, and a Gen0 GC checks only the marked cards.
+- **The "mid-life crisis".** Gen0 garbage is cheap. The expensive pattern is objects that live **just long enough to be promoted and then die in Gen2**, forcing full GCs. Examples: per-request objects kept alive across a slow `await` that spans a GC, caches with slightly too-long expiry, and anything **≥ 85,000 bytes**, which goes straight to the LOH and is only reclaimed by a full GC.
+- **What a collection does.**
+  1. **Suspend** threads at safe points.
+  2. **Mark**: from the **roots**, follow every reference and mark what's reachable.
+  3. **Sweep and compact**: reclaim unmarked objects and slide survivors together, fixing up references, so the heap doesn't fragment. The LOH is swept into free lists, not compacted.
+  4. **Resume**.
+
+  The key insight: an object is collected only if it's **unreachable**, not if it's *unused*. The **roots** are static fields, locals and parameters on thread stacks and in registers, GC handles (strong and pinned), the **finalization (f-reachable) queue**, and interop/COM references. The JIT tracks liveness precisely, so a local can become collectable **before its method returns**, once it's no longer used. That's why `GC.KeepAlive` exists.
+- **GC modes.**
+  - **Workstation**: one heap; collects on the triggering thread; favours low memory and responsiveness. The default for desktop and console apps.
+  - **Server**: **one heap and one GC thread per logical core**, collecting in parallel; more throughput, more memory. The **ASP.NET Core default**, because a server wants requests per second across all cores.
+  - **Background GC**: Gen2 runs **concurrently** with your threads, so you see short pauses instead of a full stop; Gen0 and Gen1 still pause. On by default.
+  - **DATAS** (default with Server GC since **.NET 9**): **adapts the number of heaps to the actual load** instead of always one per core.
+
+  Knobs: `<ServerGarbageCollection>`, and env vars `DOTNET_gcServer`, `DOTNET_GCHeapHardLimit(Percent)`, `DOTNET_GCHeapCount`, `DOTNET_GCConserveMemory`.
+- **The container trap DATAS fixed.** The GC is cgroup-aware and caps its heap at **75% of the container's memory limit**. But pre-DATAS Server GC counted **cores, not memory**: a 32-core node with a 512 MB container made **32 heaps**, blew through the limit and got **OOMKilled** with no leak at all. If you still see OOMKilled after .NET 9, check in this order: is the working set really over the limit, is *native* memory the GC can't see growing, is it a real leak. Only then reach for `GCHeapHardLimitPercent` or `GCConserveMemory`. For latency-critical niches there's `GCSettings.LatencyMode = SustainedLowLatency` (avoids blocking full GCs) and `GC.TryStartNoGCRegion(size)` (no GC at all within a pre-reserved allocation budget).
+- **LOH and POH.** Objects **≥ 85,000 bytes** (big arrays and strings) go to the **Large Object Heap**, because copying huge objects during compaction would be costly. Consequences:
+  - allocation is pricier, since the memory must be zeroed;
+  - it's **only collected with Gen2**;
+  - it's **not compacted by default**, so it **fragments**: plenty of free space in total, but in pieces too small for the next big request.
+
+  So **don't allocate large buffers per request**: use `ArrayPool<T>.Shared`, stream instead of loading whole files, `RecyclableMemoryStream`, `System.IO.Pipelines`. A one-off LOH compaction (`GCLargeObjectHeapCompactionMode.CompactOnce` + `GC.Collect()`) treats the symptom. **Pinning** (`fixed`, `GCHandle.Alloc(..., Pinned)`) stops the GC moving an object, which interop and I/O buffers need, but a long-lived pin is a boulder compaction has to work around. The **Pinned Object Heap** (`GC.AllocateArray<byte>(n, pinned: true)`) gives buffers that are pinned from birth in their own region, so they never fragment the normal heap.
+- **Finalizers are slow.** When an object with a `~T()` finalizer becomes unreachable:
+  1. The GC **can't free it**. It moves it to the **f-reachable queue**, which is itself a root, so the object is **re-rooted and promoted** a generation.
+  2. At some unpredictable time, the single **finalizer thread** runs `Finalize`.
+  3. Only a **later** GC frees the memory.
+
+  The result: an extra GC survived, early promotion, and no control over timing. That's why cleanup is `IDisposable` + `using`, why `Dispose` calls **`GC.SuppressFinalize(this)`** (cleanup already happened, so skip the finalizer and the generation hop), and why native handles should be wrapped in **`SafeHandle`** rather than a hand-written finalizer. And remember: **the GC doesn't release unmanaged resources promptly**. An undisposed `DbConnection` is a pool leak immediately, however much RAM is free.
+- **Weak references.** `WeakReference<T>` refers to an object without keeping it alive (`TryGetTarget` returns false once it's collected). `ConditionalWeakTable` attaches data to an object without extending its life. For caching, prefer **`MemoryCache` with size limits and expirations**: predictable eviction beats eviction on the GC's timing.
+- **Managed leaks are "reachable but useless".** Every leak is a root holding something it shouldn't. The usual suspects:
+  - **static collections that only grow**;
+  - **event handlers never unsubscribed** (a singleton's event keeps every transient subscriber alive);
+  - **captive dependencies** (a singleton holding a scoped `DbContext` whose change tracker grows forever);
+  - **unbounded channels** with a slow consumer;
+  - **undisposed timers**;
+  - closures capturing `this` or big objects;
+  - **disposable transients resolved from the root provider** (tracked until shutdown);
+  - long-lived DbContexts;
+  - `HttpClient` created per call;
+  - native buffers.
+
+  **The tell**: Gen2 size and working set **keep rising under steady load and never come back down**, even after full GCs. Healthy memory goes up and down with load; a leak's *floor* rises.
+- **Finding a leak.**
+  1. `dotnet-counters monitor --counters System.Runtime` shows whether you have a problem and how fast it grows: heap per generation, % time in GC, allocation rate, gen counts, LOH size.
+  2. Take two `dotnet-gcdump` snapshots minutes apart under steady load and **diff** them to see which **type's count keeps climbing**.
+  3. Take a `dotnet-dump`, then `dumpheap -stat`, `dumpheap -mt <type>`, and **`gcroot <address>`**, which prints the **chain of references keeping that instance alive**, back to its root. That tells you which leak pattern you have.
+
+  Also: Visual Studio's memory profiler, dotMemory, PerfView, and `kubectl debug` in a cluster. Numbers to watch: **% time in GC** (sustained over ~10% is a real problem), allocation MB/s, Gen2 count, **heap size right after a Gen2 GC** (the clearest leak signal; it should be flat), GC pause times (which directly hit p99), LOH size.
+- **Allocation-friendly code**, used only on hot paths that measurement found:
+  - `StringBuilder`, `string.Create` and interpolation handlers instead of `+=` in loops;
+  - `Span<T>`/`ReadOnlySpan<char>` slicing instead of `Substring` and `Split`;
+  - `ArrayPool` or a small `stackalloc` instead of `new byte[64K]`;
+  - `readonly struct` and `record struct` for tiny values;
+  - generics instead of boxing;
+  - pre-sized collections;
+  - **static lambdas** to avoid capture allocations;
+  - `ValueTask` for usually-synchronous methods;
+  - cached `JsonSerializerOptions`, JSON source generation and `[LoggerMessage]`;
+  - `AsNoTracking` with projections;
+  - streaming;
+  - `FrozenDictionary` and `ObjectPool<T>`.
+
+  Most business code is I/O-bound, so **measure first**. And **don't call `GC.Collect()`** in production: it promotes objects before they've earned it, wastes CPU and pauses at a moment you didn't choose. The only legitimate uses are tests, benchmarks and after a one-off huge batch cleanup.
+
+### 9.2 · Threading and concurrency
+
+[Full chapter →](ch:threading-concurrency)
+
+- **Three different words.**
+  - **Concurrency**: several things *in progress* at once, possibly interleaved.
+  - **Parallelism**: several things *executing at the same instant* on different cores, to speed up CPU work (`Parallel`, PLINQ).
+  - **Asynchrony**: not blocking a thread while waiting on I/O (`async`/`await`).
+
+  A web server is massively concurrent, mostly asynchronous, and only occasionally parallel. Multithreading is the underlying mechanism.
+- **Threads are expensive, hence the pool.** Each OS thread reserves about 1 MB of stack and takes milliseconds to create, and too many threads means the OS spends its time context-switching. The **thread pool** reuses workers, and in ASP.NET Core it runs everything: every request, every `await` continuation (there's no `SynchronizationContext`), `Task.Run`, `Parallel` and timers. **`TaskCreationOptions.LongRunning`** hints that a job needs a dedicated thread, so a forever-loop doesn't hog a pool thread.
+- **How starvation happens.** The pool starts at about **one thread per core** and grows **slowly**: a hill-climbing algorithm, plus starvation detection that injects roughly **one thread every 0.5–1 s**. Growth is slow on purpose, because eager growth wastes the resources the pool exists to save. Meanwhile `.Result`, `.Wait()`, `Thread.Sleep` and blocking I/O **hold a pool thread for the whole wait**. Under a burst, blocked threads pile up faster than the pool can add new ones, and requests queue behind them. That's **thread-pool starvation**.
+- **Race conditions.** `_count++` is **three steps**: read, add, write.
+  1. Thread A reads 5.
+  2. Thread B reads 5, because A hasn't written yet.
+  3. A writes 6.
+  4. B writes 6.
+
+  Two increments, final value 6: **an update vanished with no exception**. That's why races hide in tests and show up under production load. The same shape appears in **check-then-act** (`if (!dict.ContainsKey(k)) dict.Add(k, v)`: both threads pass the check), hand-rolled lazy init, and iterating while another thread mutates. A plain `Dictionary` can be **silently corrupted** by concurrent writes, not just throw.
+- **What's shared in a web app.** Locals, request-scoped services and `HttpContext` belong to one request, so they're safe. **Singletons, `static` fields, `IMemoryCache` entries, hosted services and `IOptionsMonitor` callbacks** are shared by every concurrent request. The rule: **every singleton must be thread-safe**.
+- **`Interlocked`**: `Increment`, `Add`, `Exchange` and **`CompareExchange`** (compare-and-swap: "set to 1 only if it's still 0", the basis of lock-free code). These don't make the three steps faster; they make them **one indivisible CPU instruction**, so there's no "in between" for another thread to slip into. It's the fastest tool because there's no lock or waiting, but it covers **one variable**. Keeping two related values consistent needs a lock.
+- **`lock` rules.** `lock (x)` compiles to `Monitor.Enter`/`Exit` in a `try/finally`, so the lock is released even on an exception. **C# 13 / .NET 9** adds a dedicated **`System.Threading.Lock`** type (`private readonly Lock _gate = new();`) that's faster; before that, use a private object. The rules:
+  - lock on a **private readonly** object, never `this`, `typeof(X)` or a string, because outside code can lock those too;
+  - keep the locked section **short**;
+  - **never call unknown code** (events, callbacks) while holding a lock;
+  - **never `await` inside a lock**.
+
+  The last rule is enforced by the compiler, for this reason: a `Monitor` is **thread-affine**, meaning the thread that acquired it must release it, but code after an `await` can resume on a **different pool thread**. A lock held across an `await` could never be correctly released.
+- **`SemaphoreSlim(1, 1)`** is the async-friendly lock: `await gate.WaitAsync(ct); try { ... } finally { gate.Release(); }`. The token-refresh example uses **double-checked locking**: check the fast path, acquire, **check again** (another caller may have refreshed while you waited), then do the work. `SemaphoreSlim(n)` with n > 1 isn't mutual exclusion; it's a **concurrency limiter** letting n callers in.
+- **The rest of the toolbox.**
+  - `ReaderWriterLockSlim`: many readers, one writer, sync only. An **immutable snapshot swapped with `Interlocked.Exchange`** is often simpler and faster.
+  - Named **`Mutex`**: across processes.
+  - `ManualResetEventSlim`, `CountdownEvent`, `Barrier`: signalling, mostly replaced by tasks and channels.
+  - `Lazy<T>`: thread-safe lazy initialisation.
+  - `AsyncLocal<T>` (per async flow) and `ThreadLocal<T>` (per thread).
+  - **Distributed locks** (Redis, SQL app locks, Blob leases): across **machines**, because a C# lock only protects one process.
+- **Deadlocks.** Thread 1 holds A and waits for B; thread 2 holds B and waits for A. Both are frozen forever, with no crash. **Coffman's four conditions** must all hold: mutual exclusion, hold-and-wait, no preemption, and a **circular wait**. **Break any one and deadlock is impossible.** In practice:
+  - **always acquire locks in the same global order** (this breaks circular wait and prevents most real deadlocks);
+  - **don't hold a lock while calling out**;
+  - **use timeouts** (`Monitor.TryEnter`, `WaitAsync(timeout)`) so a deadlock becomes recoverable;
+  - prefer lock-free designs (immutability, `Interlocked`, concurrent collections, channels);
+  - **never block on async** where a `SynchronizationContext` exists. It's the same circular wait: `.Result` holds the UI thread, and the continuation needs that same thread.
+- **Memory reordering.** Compilers, the JIT and CPUs may **reorder reads and writes** and **cache values in registers**, as long as **the running thread can't tell**. Nothing is promised about what *another* thread sees. Classic bug: `while (!_stop) { }`. The JIT sees nothing in the loop changes `_stop`, hoists the read into a register, and the loop **never sees another thread's `Stop()`**. Fixes: `volatile` or `Volatile.Read`/`Write` (force a real memory read or write), or locks and `Interlocked`, which are **full memory barriers** (another reason they fix more than the obvious bug). In practice, use a **`CancellationToken`** for stop signals, and leave hand-written lock-free code to experts.
+- **Concurrent collections.**
+  - `ConcurrentDictionary`: fine-grained locking with atomic `GetOrAdd`, `AddOrUpdate`, `TryUpdate`. **The value factory can run more than once** under a race (only one result is kept), so for expensive or side-effecting factories store **`Lazy<T>`** values.
+  - `ConcurrentQueue` and `ConcurrentStack`: lock-free.
+  - `ConcurrentBag`: thread-local optimised.
+  - `BlockingCollection`: synchronous producer/consumer.
+  - **`Channel<T>`**: async producer/consumer.
+  - Immutable collections with `ImmutableInterlocked`.
+  - `FrozenDictionary`: built once, read concurrently.
+- **The copy-on-write snapshot.** Readers do `_flags.TryGetValue(...)` with **no lock**, because reading a reference is atomic. The writer **builds a whole new `ImmutableDictionary`** and swaps the *reference* with `Interlocked.Exchange`. A reader holding the old reference keeps a consistent, slightly stale snapshot. Nobody ever sees a half-updated dictionary because nothing is ever updated in place, only replaced. It's ideal for read-heavy, rarely-written data like feature flags and config.
+- **Channels and backpressure.** `Channel.CreateBounded<T>(new(1_000) { FullMode = Wait, SingleWriter = true })`: when the channel is full, the **producer's `WriteAsync` awaits** until consumers make room. That's backpressure: the producer is automatically throttled to the consumers' speed. An **unbounded** channel with a slow consumer is a memory leak with extra steps. The pattern of one bounded queue, N workers using `ReadAllAsync`, `Complete()` and cancellation covers most in-process pipelines. **TPL Dataflow** handles branching multi-stage graphs.
+- **Data parallelism.** `Parallel.For` with `MaxDegreeOfParallelism` for CPU work, where each iteration writes its **own index** so there's no shared state. **`Parallel.ForEachAsync`** with a degree limit for **bounded I/O fan-out**. PLINQ (`AsParallel()`). Caveats:
+  - partitioning and merging have overhead, so trivial loops can get *slower*;
+  - shared mutable state brings races back, so accumulate per thread with `localInit`/`localFinally`;
+  - **avoid heavy parallel CPU work inside request handlers**, because it steals pool threads from other requests. Offload it to a background worker.
+- **PR checklist:**
+  - singletons hold only thread-safe or immutable state;
+  - no unsynchronised, unbounded static caches;
+  - **`DbContext` never shared across concurrent operations** (one per scope; `IDbContextFactory` for parallel work);
+  - `HttpContext` never used outside its request;
+  - no `.Result`, `.Wait()` or `Thread.Sleep` on request paths;
+  - `lock` sections short, with no awaits or external calls;
+  - background work bounded;
+  - cross-instance coordination through distributed locks or the database, never a C# `lock`.
+
+### 9.3 · Performance engineering
+
+[Full chapter →](ch:performance-engineering)
+
+- **Measure, don't guess.**
+  1. Set a concrete goal: "p95 of GET /products < 150 ms **at 500 RPS**", not "faster".
+  2. Measure a baseline in a production-like environment with production-like data.
+  3. Find **the one thing dominating the time**, with traces, then a profiler.
+  4. Change one thing, the cheapest fix for that bottleneck.
+  5. Measure again, watching for regressions elsewhere.
+  6. Stop when the goal is met, because more optimisation costs complexity.
+
+  Knuth's full quote: premature optimisation is the root of all evil, "yet we should not pass up our opportunities in that critical 3%". Measurement is how you find the 3%.
+- **Percentiles and Little's Law.** Out of 100 requests, if 98 take 50 ms and 2 take 5,000 ms, the **average is about 148 ms** and the **p99 is 5,000 ms**. The average describes nobody; p99 describes the unluckiest users. A page that fires 10 API calls hits that tail on nearly every load. **Little's Law**: **concurrency = throughput × latency**, so 500 RPS × 0.2 s = **100 requests in flight**. That's the number to size connection pools and thread budgets against.
+- **Where time goes**, roughly in order of how often each is the culprit:
+  1. **Database**: missing indexes, N+1, over-fetching, lock contention, chatty round trips.
+  2. **Remote calls**: sequential calls that could be concurrent, no caching, no timeouts.
+  3. **Thread-pool starvation**.
+  4. **Serialization**: huge payloads, reflection serializers, whole entity graphs.
+  5. **Allocations and GC**.
+  6. **Lock contention**: a global lock in a singleton serialises every request.
+  7. **Logging**: synchronous sinks, too much logging, interpolated messages.
+  8. **Pure CPU work**: rarely the cause.
+
+  **Look at a trace first** to see which category dominates before opening a profiler.
+- **BenchmarkDotNet, not `Stopwatch`.** A Stopwatch loop is skewed four ways:
+  - **JIT tiering**: early iterations run unoptimised Tier 0 code;
+  - GC pauses land at random;
+  - **dead-code elimination**: if the result is unused, the JIT may skip the work and you time nothing;
+  - CPU frequency scaling.
+
+  BenchmarkDotNet runs a separate Release process with warm-up, pilot runs, many iterations and statistics. Use `[MemoryDiagnoser]` and compare runtimes with `[SimpleJob(RuntimeMoniker.Net80)]` against a baseline job. In the example, `Split` takes 112 ns and **allocates 216 B** (the intermediate array), while `Span` takes 38 ns and allocates **zero**. On a path called a million times a minute, that's 216 MB of garbage. **Always look at the Allocated column.** Rules: Release mode, no debugger, **return the result** so the work can't be eliminated, realistic inputs. Remember a 70 ns win is invisible next to a 150 ms database call, so micro-benchmarks **verify a hypothesis about a hot path that profiling already found**; they're not where you start.
+- **Diagnostics toolbox.**
+  - **dotnet-counters**: live CPU, GC heap and gen counts, % time in GC, allocation rate, **thread-pool queue length and thread count**, exceptions/s, requests/s. The first look.
+  - **dotnet-trace**: an EventPipe trace with CPU samples, allocations, **contention** and exceptions; convert it to **Speedscope** for flame graphs.
+  - **dotnet-dump** with SOS: `clrstack -all` for hangs and deadlocks, `dumpheap`, `gcroot`, `syncblk` for lock owners.
+  - **dotnet-gcdump**: heap diffs.
+  - **dotnet-monitor**: a sidecar exposing all of these over HTTP, with **triggers** ("collect a trace when CPU > 80% for a minute"), for containers.
+  - VS Profiler, dotTrace/dotMemory, PerfView, continuous profilers (App Insights Profiler, Pyroscope).
+  - SQL tools: execution plans, Query Store, `SET STATISTICS IO`.
+- **Reading the symptoms.**
+  - **High latency, low CPU, thread count climbing** → **thread-pool starvation** or waiting on I/O or locks. Confirm with the ThreadPool Queue Length counter and threads blocked in `Wait`/`GetResult` in `clrstack -all`. This is the one people misread: "the server isn't even busy" is *evidence for* starvation, because requests are queued waiting for a thread, not computing.
+  - **High CPU that grows with load** → a hot path, GC, serialization or **regex backtracking**. Use a CPU trace and flame graph.
+  - **High % time in GC with saw-tooth memory** → allocation rate or LOH churn.
+  - **Memory that grows forever** → a leak (gcdump diff, then `gcroot`).
+  - **Slow only under concurrency** → lock contention, **connection-pool exhaustion** or DB locking.
+  - **One endpoint slow** → its trace spans.
+- **Load testing** asks a different question from benchmarks: the **system** under realistic concurrency, where a fast method can still collapse on a shared connection pool. A **k6** script ramps virtual users and asserts thresholds (`p(95)<150`, `http_req_failed rate<0.01`). Test types:
+  - **load**: expected peak against SLOs;
+  - **stress**: past peak, to see *how* it breaks. Correct is shedding with 429/503 while still serving what it can; falling over is a future incident;
+  - **spike**: does autoscaling react in time?
+  - **soak**: hours at steady load, which surfaces leaks;
+  - **capacity**: instances per N RPS, for cost planning.
+
+  Tools: k6, NBomber (C#), **Azure Load Testing** (CI-integrated), JMeter, Locust. Use production-like data, watch server metrics during the run, and make sure **the load generator isn't the bottleneck**.
+- **High-impact fixes, by layer, in order.**
+  - **Data** (the biggest wins, because a missing index is a 1000× gap): indexes, no N+1, projections, `AsNoTracking`, batching (`IN`, `ExecuteUpdate`, bulk copy), caching (HybridCache, output cache, CDN), read replicas, DbContext pooling.
+  - **Concurrency and I/O**: async all the way, `Task.WhenAll` for independent calls with timeouts, connection reuse (factory, singleton clients, HTTP/2 and HTTP/3), slow work moved off the request path (queue + 202), no global locks.
+  - **Payloads**: projections, paging, Brotli/gzip, `WhenWritingNull`, **JSON source generation**, cached options, streaming, gRPC internally.
+  - **CPU and allocations**: `ArrayPool`, spans, no boxing or captures, `StringBuilder`, `FrozenDictionary`, **`[GeneratedRegex]`**, `[LoggerMessage]`, **sealed classes** (the JIT can devirtualise calls on them), Dynamic PGO (on by default), SIMD-accelerated span APIs.
+  - **Platform**: **upgrade .NET** (every release brings large free gains), Server GC with DATAS, correct container requests, scale out on the right signal, CDN.
+- **Startup performance** matters for cold starts, scale-out speed and rolling deploys.
+  - **ReadyToRun** precompiles code, so less JIT at startup.
+  - **Native AOT** removes the JIT entirely: roughly **10× faster startup** and lower memory, because there's no Tier 0 → Tier 1 warm-up. The cost is AOT-compatible code, meaning no unbounded reflection.
+  - `CreateSlimBuilder`, trimming, EF **compiled models**, and source generators (JSON, config binding, RDG) remove reflection from startup.
+  - Defer warm-up work to a background service, and warm up before taking traffic (startup and readiness probes, slot `applicationInitialization`).
+- **Preventing regressions.** Performance decays by **many small, individually invisible regressions** that add up to "twice as slow" with no single guilty commit. Guard against it with:
+  - p95 budgets per critical endpoint, on dashboards with alerts;
+  - **BenchmarkDotNet in CI**, compared against main;
+  - **load tests in the pipeline** with pass/fail criteria;
+  - **canaries** with automated latency comparison;
+  - review checklists: async all the way, no N+1, projections, timeouts, pagination limits, no per-request large allocations.
+
+## Part X · Security
+
+### 10.1 · Web application security
+
+[Full chapter →](ch:web-security)
+
+- **Principles.** Security is principles you've already met, now organised around attacks.
+  - **Defence in depth**: independent layers (WAF + authentication + authorization + parameterised SQL + a least-privileged DB user + encryption), so one failure isn't fatal.
+  - **Least privilege**: `db_datareader`/`db_datawriter`, never `db_owner`; data roles scoped to one container.
+  - **Secure by default**: a fallback policy requiring authentication, HTTPS only, deny-by-default CORS.
+  - **Fail securely**: generic ProblemDetails, no stack traces, authorization errors deny.
+  - **Never trust input**, *including data from your own other services*.
+  - **Minimise attack surface**: remove unused endpoints, no Swagger UI in prod, chiseled images.
+  - **Assume breach**: detection, segmentation, short token lifetimes, backups.
+
+  **Threat-model at design time** with **STRIDE**: Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege.
+- **OWASP Top 10 (web) and API Security Top 10 (2023), mapped to .NET defences.**
+  - **Broken access control**: authorize every endpoint, resource-based checks, queries scoped to the caller.
+  - **Cryptographic failures**: TLS and HSTS, encryption at rest, a proper password hasher, the Data Protection API.
+  - **Injection**: parameterise.
+  - **Insecure design**: threat modelling, abuse cases.
+  - **Misconfiguration**: no debug pages in prod, Azure Policy, public access off.
+  - **Vulnerable components**: NuGet audit, Dependabot, image scanning.
+  - **Authentication failures**: an external IdP, MFA, lockout.
+  - **Integrity failures**: no `BinaryFormatter` (**removed in .NET 9**), signed packages and images, pinned CI actions.
+  - **Logging failures**: log auth failures and denials, and alert on them.
+  - **SSRF**: allow-list outbound destinations.
+  - API3, **mass assignment**: DTOs. API4, **unrestricted resource consumption**: rate, size and pagination limits.
+- **Broken access control / IDOR (BOLA) is #1.** `MapGet("/orders/{id}", (id, db) => db.Orders.FindAsync(id)).RequireAuthorization()` *does* have authorization, but only "is logged in". Any user can read **any** order by changing the ID. Fix it by **scoping the query to the caller** (`Where(o => o.Id == id && o.CustomerId == user.GetCustomerId())`) and returning **404, not 403**, so you don't reveal which IDs exist. Also:
+  - function-level checks, so `/admin/*` needs an admin policy, not just authentication;
+  - **multi-tenant isolation** with global query filters by TenantId *plus* database row-level security;
+  - **GUIDs aren't access control** (they leak in URLs and logs), and neither is hiding UI;
+  - test authorization explicitly in integration tests.
+- **Injection.** `"... WHERE Email = '" + email + "'"` with input `x' OR '1'='1` turns data into code. All these send values **as parameters**, never as command text:
+  - LINQ;
+  - `FromSql($"... {email}")`: the `FormattableString` becomes a parameter, whereas `FromSqlRaw` with concatenation does not;
+  - Dapper's `@email`.
+
+  **Identifiers can't be parameters** (a sort column, a table name), so **allow-list** them with a `switch`. Other forms:
+  - **OS command**: avoid `Process.Start` with input, or use `ArgumentList` and no shell;
+  - **NoSQL**: build queries with SDK APIs, not strings;
+  - **log forging**: structured logging encodes values, so never put raw multi-line input in the message template;
+  - **CRLF header injection**: ASP.NET Core validates headers.
+- **XSS vs CSRF need different, even opposite, defences.**
+  - **XSS** runs attacker script in a victim's browser. **Razor HTML-encodes by default**, and `Html.Raw`/`MarkupString` bypass that, so sanitise first (HtmlSanitizer). JSON APIs with `application/json` are safe; the risk moves to the SPA's `innerHTML`/`dangerouslySetInnerHTML`. Add **Content-Security-Policy** as a second layer. Keep tokens out of `localStorage`, because an **HttpOnly cookie can't be read by script**.
+  - **CSRF** makes the victim's browser send an authenticated request from a malicious site, because **cookies are attached automatically**. It affects **cookie-authenticated** apps (MVC, Razor Pages, BFFs), **not bearer-token APIs**, since an attacker's page can't set your Authorization header. Defences: **antiforgery tokens** (automatic with Razor form tag helpers; minimal-API form endpoints validate by default since .NET 8), **SameSite=Lax/Strict** cookies, and `Origin`/`Referer` checks.
+
+  So cookies trade XSS-theft risk for CSRF risk, and bearer tokens trade the other way. **Clickjacking** (your page framed invisibly): `X-Frame-Options: DENY` or CSP `frame-ancestors 'none'`.
+- **Passwords and authentication.** Prefer an **external IdP** with MFA and Conditional Access. If you do store passwords, use a **slow, salted, adaptive** hash: **PBKDF2** (`PasswordHasher<T>`: HMAC-SHA512, 100,000 iterations since .NET 7), **Argon2id**, bcrypt or scrypt. **Never** use MD5, SHA-1 or SHA-256. Slowness is the point: a stolen database hashed with SHA-256 can be guessed at **billions per second** on a GPU, and 100k iterations makes every guess 100,000 times more expensive. The salt defeats precomputed tables and makes identical passwords hash differently. `VerifyHashedPassword` returns `SuccessRehashNeeded` so you can upgrade old hashes at login. Also:
+  - **lockout** and rate limits against credential stuffing;
+  - **generic errors** ("invalid email or password"), so login, registration and reset can't enumerate users;
+  - check new passwords against breached-password lists (HIBP k-anonymity), and prefer length over complexity rules (NIST 800-63B);
+  - short access tokens, rotating refresh tokens, revocation on password change (the security stamp), and `HttpOnly; Secure; SameSite` cookies.
+- **Pick the right crypto primitive. Never invent crypto.**
+  - Data the app reads back (tokens, cookies) → the **Data Protection API** (authenticated encryption with a rotating key ring). `CreateProtector("Shop.Invites.v1").ToTimeLimitedDataProtector()` gives expiring invite tokens, and the purpose string isolates them from other protectors.
+  - At rest → TDE, Storage SSE, Always Encrypted, or `AesGcm` with Key Vault keys. Never ECB mode or hard-coded keys.
+  - Integrity → HMAC-SHA256 or RSA-PSS/ECDSA, not a bare hash.
+  - Random secrets → `RandomNumberGenerator.GetBytes(32)`, **never `System.Random` or `Guid.NewGuid()`**, which aren't designed to be unpredictable.
+  - Comparing secrets → **`CryptographicOperations.FixedTimeEquals`**. `==` returns at the first differing byte, so response timing leaks how many leading bytes matched (a timing attack).
+- **Transport and headers.** `UseHsts()` (browsers refuse plain HTTP for the max-age) and `UseHttpsRedirection()`. Set `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy` and a CSP. Use TLS 1.2+, managed auto-renewed certificates, TLS or mTLS between services, and `Encrypt=True` to SQL.
+- **SSRF.** Any feature where *your server* fetches a *user-supplied* URL (webhooks, "import from URL", image proxies, PDF renderers) can be pointed at internal targets. The prize is the **cloud metadata endpoint `169.254.169.254`**, which hands out **managed-identity tokens** to anything on the box. Defences:
+  - allow-list schemes and domains;
+  - **resolve DNS and block private, link-local and loopback ranges**, and **re-check after redirects** (or disable auto-redirect), because a harmless-looking host can redirect or rebind to an internal IP;
+  - run fetchers in an isolated subnet with egress rules;
+  - set timeouts and size limits;
+  - never echo the raw response or error back to the user.
+- **Mass assignment and data exposure.** Binding an entity (`MapPut(..., User input)`) lets a client post `{"isAdmin": true, "balance": 1000000}`. Bind a **request DTO** with only the allowed fields and map it explicitly; return a **response DTO** without `PasswordHash` or internal flags. A front end hiding a field protects nothing: **the raw API response is what an attacker reads**.
+- **Resource consumption.** Use **rate limits** per user, IP or key (stricter on login and expensive endpoints) plus edge limits (WAF, Front Door, APIM). Also:
+  - Kestrel `MaxRequestBodySize`, `[RequestSizeLimit]`, form and header limits;
+  - **max page size**, GraphQL depth and cost limits;
+  - timeouts everywhere;
+  - **ReDoS**: a backtracking regex over attacker input can take exponential time, so use `RegexOptions.NonBacktracking` or match timeouts (`[GeneratedRegex]` with a timeout);
+  - JSON `MaxDepth`, and no deserializing huge payloads into memory.
+- **File uploads**, step by step:
+  1. Size limits.
+  2. An **extension allow-list**.
+  3. **Check magic bytes**: the file content must actually start with PNG or PDF's signature, because renaming `evil.exe` to `.png` defeats an extension check.
+  4. **Never use the client's file name as a path** (path traversal); generate a GUID name.
+  5. Store **outside the web root** (Blob Storage), and never execute uploads.
+  6. Serve them with `Content-Disposition: attachment`, from a separate domain if users see them.
+  7. Scan for malware.
+- **Supply chain.**
+  - **NuGet audit** on restore (fail CI on high severity) and `dotnet list package --vulnerable --include-transitive`.
+  - **Package source mapping** against **dependency confusion**, where a public package with your internal name wins resolution. Lock files and Central Package Management.
+  - Image scanning, signing and SBOMs.
+  - OIDC instead of stored CI secrets, SHA-pinned actions, secret scanning.
+  - Unsafe deserializers: no `BinaryFormatter`, and **no Newtonsoft `TypeNameHandling.All`**, which lets the payload pick which type to instantiate (gadget chains → remote code execution). XML with DTDs disabled (XXE; .NET's defaults are safe).
+- **Security logging.** Log authentication failures, access denials, privilege changes and rate-limit hits with user and correlation IDs, and alert on spikes. **Never log** passwords, tokens, keys, card numbers or sensitive personal data; use `Microsoft.Extensions.Compliance.Redaction`. Protect the log store with RBAC and retention. **Defender for Cloud** handles posture management and threat detection.
+
+### 10.2 · OAuth 2.0, OpenID Connect and identity
+
+[Full chapter →](ch:oauth-oidc-identity)
+
+- **What OAuth solves.** Before OAuth, a printing app wanting your photos asked for your **photo-site password**: full access, forever, revocable only by changing the password. **OAuth 2.0** is **delegated authorization**: the app gets a **limited (scoped), revocable token** to act on your behalf **without seeing your password**. **OIDC** adds **authentication** on top: an **ID token** saying *who* signed in. **OAuth alone is not a login protocol.** An access token says "the bearer may call this API", and using it as proof of identity enables **token substitution**: a token issued to a *different* app for the same user would "log you in". You always use OIDC and OAuth together.
+- **Roles and client types.** There's the **resource owner** (the user), the **client** (an SPA, a web app, a worker), the **authorization server** or IdP (Entra ID, Auth0, Okta, Keycloak, Duende), and the **resource server** (your API). **Confidential clients** (server-side apps, workers) can keep a secret, certificate or federated credential. **Public clients** (SPAs, mobile, desktop) can't, because anyone can extract a secret from JavaScript or a binary, so they rely on **PKCE**.
+- **Three tokens, three jobs.**
+  - **Access token**: for the **API**. Often a JWT with `aud`, `scp`/`roles`, `sub` and `exp`; short-lived (5–60 min); sent as `Bearer`.
+  - **ID token**: for the **client**. Always a JWT (`sub`, `name`, `email`, **`nonce`**, `auth_time`, `amr`). **Never send it to an API.**
+  - **Refresh token**: for the **authorization server**. Opaque, long-lived and rotated; exchanged for new access tokens without user interaction, so it **must be stored securely**.
+
+  The **authorization code** is a one-time intermediate in the code flow, valid for a few minutes.
+- **Authorization code flow with PKCE**, the flow for anything with a user (mandatory in OAuth 2.1).
+  1. The client makes a random **`code_verifier`** and sends only its **hash** (`code_challenge`, S256) in the browser redirect to `/authorize`, along with `state`, `nonce` and scopes (`openid profile api://shop/orders.read offline_access`).
+  2. The user signs in (MFA) and consents.
+  3. The IdP redirects back with `?code=...&state=...`.
+  4. The client posts the code **plus the raw verifier** on a **back channel** to `/token`.
+  5. The IdP checks that SHA256(verifier) matches the challenge and returns the tokens.
+
+  Why each piece exists:
+  - **PKCE**: an attacker who steals the code from the redirect (a malicious app on the device, a logged referrer) **can't redeem it without the verifier**, which never crossed the front channel.
+  - **Back-channel exchange**: tokens never appear in URLs or history. The old **implicit flow** did exactly that and is deprecated.
+  - **`state`**: ties the response to the request, preventing CSRF on the callback.
+  - **`nonce`**: stops ID-token replay.
+  - **Exact redirect URI matching**: stops codes being delivered to an attacker's URL.
+
+  In ASP.NET Core you register a **cookie scheme as default plus an OIDC challenge scheme**: after the dance, the app issues its own session cookie and only re-runs OIDC when the session expires.
+- **Client credentials**: service-to-service, **no user**. `grant_type=client_credentials&scope=api://inventory-api/.default`. The token carries the **app's identity and application permissions** in `roles`, with no `scp` and no user. In Azure, use a **managed identity** (no secret), or a certificate or federated credential, rather than a client secret. Cache tokens in a `DelegatingHandler` until shortly before expiry.
+- **Refresh tokens.** Access tokens are short because **a JWT can't be revoked before `exp`**, and refresh tokens restore the UX. Best practices:
+  - **Rotation**: every use returns a *new* refresh token and invalidates the old one. **Reuse of an old token signals theft**, so the server revokes the whole token family.
+  - **Sender-constraining** (DPoP or mTLS), so a stolen token is useless without the client's key.
+  - Revocation on logout and password change.
+  - Server-side or OS-keychain storage, **never `localStorage`**.
+  - An absolute lifetime.
+- **Other flows.**
+  - **Device code**: TVs and CLIs (`az login --use-device-code`).
+  - **On-Behalf-Of** (token exchange, RFC 8693): API A swaps the user's incoming token for one to API B, **preserving the user's identity and permissions** downstream.
+  - **CIBA**: decoupled approval, like a bank app push.
+  - **JWT-bearer assertions**: workload identity federation.
+  - **Deprecated**: implicit (tokens in the URL fragment) and **ROPC** (the app collects the password, which breaks MFA and SSO).
+- **OIDC specifics.** It defines the `openid` scope (plus `profile` and `email`), standard claims, and **ID-token validation** (`iss`, **`aud` = the client ID**, `exp`, `nonce`, signature). **Discovery** at `{authority}/.well-known/openid-configuration` lists the endpoints and **`jwks_uri`**, the public signing keys. That's how ASP.NET Core configures itself from just `Authority`. OIDC also covers UserInfo and logout (RP-initiated, front-channel, back-channel). In Entra tokens, use **`oid`** (stable across apps in the tenant) or `sub` (pairwise per app) as the user key, never the email, which can change.
+- **Scopes vs roles vs audience.** A **scope** (`scp`) is what the **client** may do **on the user's behalf** (`orders.read`, consented). An **app role** (`roles`) is assigned to a user or group (`Orders.Admin`) **or to an application** (`Inventory.Read`). The **audience** (`aud`) says which API the token is for. **Effective delegated permission = the intersection** of what the app was granted and what the user may do. A policy typically accepts `scp` contains `orders.read` **or** `IsInRole("Orders.Reader")`, covering both delegated and daemon callers. **Scopes don't prevent IDOR**: `orders.read` proves the client may read *some* orders, not that this user may read *order 1042*, so resource-level checks are still required.
+- **Validating an access token.**
+  1. **Signature**, with a key from `jwks_uri` found by `kid` (cached, so rotation just works). Reject `alg: none` and unexpected algorithms.
+  2. **Issuer**.
+  3. **Audience = this API**. Skip this and a token minted for *another* API in the same tenant is accepted: the **confused deputy**.
+  4. **`exp`/`nbf`**, with small clock skew.
+  5. Scopes or roles, then resource authorization.
+
+  JwtBearer does steps 1–4 from `Authority` + `Audience`. **JWT vs reference tokens**: a JWT validates **locally** (fast, no network call) but **can't be revoked**, and anyone holding it can read its claims. An **opaque token** needs an **introspection** call (RFC 7662, cached) but can be **revoked instantly** and reveals nothing. Use opaque tokens for revocation-critical APIs or tokens leaving your boundary.
+- **SPAs: use a BFF.** A SPA is a public client in a hostile environment where **any XSS can read tokens** from JS memory or `localStorage`. Tokens in the browser (MSAL.js with code + PKCE) work, but XSS means token theft, so use short lifetimes and rotation. The **Backend-for-Frontend** is the IETF-recommended alternative: a thin ASP.NET Core app (often with **YARP**) does OIDC **as a confidential client**, **keeps tokens server-side**, gives the browser only an **HttpOnly, Secure, SameSite cookie**, and proxies API calls with the bearer token attached. Because it's cookie-based, it needs CSRF protection (SameSite plus antiforgery or a custom header). Libraries: Duende.BFF, or `AddOpenIdConnect` + YARP + Duende.AccessTokenManagement.
+- **Identity providers.**
+  - **Entra ID**: workforce and B2B (Microsoft.Identity.Web, MSAL).
+  - **Entra External ID**: customers (CIAM).
+  - **Auth0/Okta**: multi-cloud.
+  - **Keycloak**: open source, self-hosted.
+  - **Duende IdentityServer** (commercial licence for most companies) and **OpenIddict** (open source): frameworks to **build** your own OIDC server.
+  - **ASP.NET Core Identity**: a user store, **not** an OIDC server on its own.
+
+  **Don't build an authorization server unless you must.** It's specification-heavy and constantly attacked.
+- **Common mistakes**, each with its fix:
+  - not validating `aud` → always set the audience;
+  - APIs accepting ID tokens → access tokens only;
+  - long-lived access tokens → 5–60 min plus refresh;
+  - tokens in `localStorage` → a BFF, or in-memory with short lifetimes;
+  - implicit flow or ROPC → code + PKCE, client credentials for services;
+  - wildcard redirect URIs → exact, registered HTTPS URIs;
+  - client secrets in SPA or mobile apps → a public client with PKCE;
+  - checking only scopes → add resource-based authorization;
+  - **hand-rolled HS256 JWTs with a shared key**, where *any service holding the key can mint tokens* → asymmetric keys at a real IdP;
+  - sensitive data in claims (readable by anyone holding the token) → minimal claims, details looked up server-side.
+
+## Part XI · Interview Preparation
+
+### 11.1 · System design
+
+[Full chapter →](ch:system-design)
+
+- **What's being tested** is process, not a single right answer:
+  1. **clarify** ambiguous requirements;
+  2. structure the design from high level to detail;
+  3. **choose components with reasons and trade-offs** ("I'd use X because Y; the cost is Z");
+  4. find and fix bottlenecks;
+  5. **say what breaks and what happens then**;
+  6. communicate, by thinking out loud and taking hints.
+
+  For .NET roles, use concrete .NET and Azure picks (EF Core vs Dapper, Service Bus vs Event Hubs, Container Apps vs AKS) and code-level patterns (outbox, idempotency, caching strategy).
+- **A 45-minute framework.**
+  1. **Requirements** (5–8 min): functional (core use cases only), non-functional (scale, latency, availability, consistency, durability, security, cost), and an explicit **out of scope**.
+  2. **Estimates** (3–5 min): users, peak RPS, **read:write ratio**, item size, 5-year storage.
+  3. **API** (3–5 min).
+  4. **Data model** (5 min): entities, keys and **access patterns**, which decide the store and the partitioning.
+  5. **High-level boxes** (10 min).
+  6. **Deep dives** on the 2–3 hardest parts (10–15 min).
+  7. **Wrap up**: bottlenecks, monitoring, next steps.
+
+  The estimates come *before* the architecture because **the numbers decide it**: 100:1 reads to writes means caching and read replicas, while 1:1 means write-optimised storage.
+- **Numbers to know.**
+  - A day is ~86,400 s, about **10⁵**, so **1M requests/day ≈ 12 RPS average**. Peak is 2–10× that.
+  - Latencies: memory ~100 ns, SSD ~100 µs, **same-datacentre round trip ~0.5 ms**, **cross-region ~50–150 ms**, Redis GET under 1 ms, an indexed SQL point query 1–5 ms.
+  - One ASP.NET Core instance serves tens of thousands of RPS for trivial JSON, but **hundreds to a few thousand for realistic CRUD**. A SQL instance handles thousands to tens of thousands of simple queries a second.
+  - Worked example: 10M DAU × (20 reads + 1 write) ≈ 2,300 read RPS average (~10k peak) vs 115 write RPS. That's read-heavy, so cache before you shard.
+- **Building blocks and the Azure pick for each.**
+  - Edge (DNS, CDN, WAF): **Front Door**.
+  - Gateway: **APIM or YARP**.
+  - Stateless services: ASP.NET Core on Container Apps, App Service or AKS.
+  - Cache: **HybridCache + Managed Redis**, output caching.
+  - Relational: Azure SQL (Hyperscale) or PostgreSQL.
+  - Key-scale and global: **Cosmos DB**.
+  - Files: Blob + SAS + CDN.
+  - Queue: **Service Bus** (MassTransit, Wolverine).
+  - Stream: **Event Hubs**.
+  - Search: AI Search or Elasticsearch.
+  - Workers: worker services, Functions, Container Apps jobs.
+  - Real-time push: **SignalR Service**.
+  - Identity: Entra. Telemetry: OpenTelemetry + Azure Monitor.
+- **Design 1: URL shortener.** It's 100:1 read-heavy, redirects must take under 50 ms, and codes must never collide. 100M links a month is about 40 writes/s; 10B redirects a month is about 4k RPS (20k peak); storage is about 3 TB over 5 years.
+  - **Code generation**: hashing (MD5 → base62) needs collision handling. Better is a **counter + base62** with IDs handed out to each instance **in blocks** from a sequence (unique by construction, no coordination per request), or a random 7-character code (62⁷ ≈ 3.5 trillion) with a uniqueness check.
+  - **Store**: Cosmos with partition key = code, so each redirect is a ~1 RU **point read**.
+  - **Read path**: HybridCache L1 in memory → L2 Redis, plus **Front Door caching hot redirects**.
+  - **Analytics**: **publish click events asynchronously to Event Hubs**; never write to the database per redirect.
+  - Plus TTL for expiry, creation rate limits and malware URL scanning.
+  - **301 vs 302**: a 301 is cached by browsers and is cheapest, but you **lose click counts**; a 302 makes every click hit you. The redirect endpoint uses `.ShortCircuit()` to skip unneeded middleware on the hottest path.
+- **Design 2: checkout.** Correctness comes first (no overselling, no double charge), with p95 under 1 s, survival of payment-provider outages and 10× sale peaks. Start as a **modular monolith** and extract Payments and Inventory only with a concrete reason. The flow:
+  1. `POST /checkout` with an **Idempotency-Key** creates `Order(Pending)` and an `OrderSubmitted` **outbox** row in **one transaction**, and returns **202** plus a status URL.
+  2. The relay publishes to Service Bus, and an **orchestrated saga** sends `ReserveStock`. That's an **atomic conditional update**: `UPDATE Stock SET Reserved += @q WHERE Sku = @s AND Available >= @q`, and zero rows affected means out of stock. No read-then-write race.
+  3. `ChargePayment` calls the PSP with **idempotency key = orderId** and handles its webhooks.
+  4. Success → confirm → notify and ship. Failure or timeout → **ReleaseStock** (compensation) → Cancelled.
+
+  Deep dives:
+  - **no overselling**: conditional updates or optimistic concurrency, expiring reservations, and a single writer or queue per hot SKU for flash sales;
+  - **no double charge**: four layers (endpoint key, PSP key, consumer inbox, unique `Payments(OrderId)`);
+  - **resilience**: timeout, idempotent retry and a breaker on the PSP, and if it's down, accept the order and charge later;
+  - **peaks**: autoscale on RPS and **KEDA on queue length**, cache the catalog, a waiting room for extreme sales;
+  - **data**: SQL for orders, payments and stock; Redis or Cosmos for carts (high write rate, TTL); AI Search for the catalog;
+  - **observability**: cross-service traces, orders/min, payment failure rate, alerts on saga timeouts and DLQ depth.
+- **Design 3: notifications** (50M a day with campaign bursts). Producers publish `notification-requested` to a topic. The service:
+  1. checks idempotency with an **inbox keyed by NotificationId**;
+  2. applies **cached preferences** (opt-outs, quiet hours);
+  3. renders localised templates;
+  4. fans out to **separate email, SMS and push queues**.
+
+  Separate queues are **bulkheads**: a rate-limited SMS provider can't back up email, and each channel scales and **rate-limits per provider** (token bucket) independently, with a DLQ per channel. **Campaigns go through a low-priority queue** so password resets are never stuck behind a marketing blast. Add versioned, cached templates, GDPR (unsubscribe, retention), and metrics per provider plus end-to-end latency.
+- **Trade-offs to name explicitly.**
+  - Consistency vs availability: strong for money and stock, eventual for feeds, counts and search.
+  - SQL vs NoSQL, decided by access patterns.
+  - Sync for reads that need an immediate answer vs async (202) for side effects.
+  - Monolith vs microservices: split only for team, deployment or scaling reasons.
+  - Cache freshness vs load: TTLs, event-driven invalidation, stampede protection.
+  - Latency vs cost.
+  - **Build vs buy**: buy identity, payments, email and search; build the core domain.
+  - Push vs pull: fan-out on write vs on read for feeds.
+  - Normalised vs denormalised: CQRS read models.
+- **Low-level design** (parking lot, rate limiter, LRU cache):
+  1. Clarify the edge cases.
+  2. Find the nouns, verbs and **invariants**.
+  3. Apply SOLID and the right pattern (Strategy for pricing, State for lifecycles, Observer for notifications, Factory for creation).
+  4. Discuss what's shared and how it's protected, how it's tested, and how it extends.
+  5. Write real C# for the core.
+
+  The classic **LRU cache** pairs a `Dictionary<K, LinkedListNode<(K, V)>>` with a `LinkedList`, for O(1) get and put. On a hit, move the node to the front. On insert past capacity, evict `_order.Last` and remove its key from the map. Guard the whole thing with a `Lock`, because both structures must change together, so `Interlocked` isn't enough.
+
+### 11.2 · Study plan and resources
+
+[Full chapter →](ch:study-plan-resources)
+
+- **How to make it stick.** Rereading tests *recognition*, but interviews test *recall*.
+  - **Active recall**: close the page and explain it; answer drill questions **before** revealing them.
+  - **Spaced repetition**: revisit at 1 day, 3 days, 1 week and 2 weeks, and repeat misses more often.
+  - **Feynman**: explain it to a junior. Wherever you hesitate or hide behind jargon is the gap.
+  - **Interleaving**: mixed-topic drills, because interviews jump around.
+  - **Build it**: writing an outbox once beats reading about it five times.
+  - **Map placement**: put every new term in one of the 8 layers.
+- **Eight-week order** (the order matters more than the pace):
+  1. Platform, type system, OOP, generics.
+  2. Delegates, collections, LINQ, exceptions, async, modern C#.
+  3. Hosting, DI, configuration, middleware, routing, APIs.
+  4. Errors, auth, HttpClient, caching, background work, API design.
+  5. Data.
+  6. Architecture and testing.
+  7. Messaging, resilience, observability, microservices, cloud, Docker.
+  8. Azure, CI/CD, Kubernetes, performance, security, system design, plus **two mock design sessions**.
+
+  Then go back through every **Advanced** section and drill for 15 minutes daily.
+- **One practice project, every layer**: a "Shop" backend.
+  - Paged and filtered CRUD with EF projections.
+  - A Redis cart with idempotent checkout and the Result pattern.
+  - An order aggregate with a state lifecycle and ETag concurrency.
+  - JWT with policies and **own-orders-only** resource authorization.
+  - `OrderPlaced` → outbox → broker → idempotent consumers.
+  - A resilient typed HttpClient to a fake PSP (WireMock in tests).
+  - A nightly `PeriodicTimer` cleanup.
+  - OpenTelemetry across API → broker → worker in the Aspire dashboard.
+  - Domain unit tests, plus WebApplicationFactory + Testcontainers + Respawn.
+  - A chiseled multi-stage Dockerfile, GitHub Actions, and Container Apps via Bicep/azd with managed identity.
+  - BenchmarkDotNet on one hot method and a k6 test, then fix one *measured* bottleneck.
+
+  You come away with real stories ("when I built the outbox, I hit..."), which beat recited definitions. Compare against **dotnet/eShop** afterwards.
+- **Self-assessment at the advanced level** (what a staff interview probes):
+  - JIT tiering and PGO, Native AOT trade-offs, source generators vs reflection;
+  - async state-machine internals, `SynchronizationContext` deadlocks, diagnosing starvation;
+  - GC generations, LOH, DATAS, `gcroot`;
+  - threading primitives and the memory model;
+  - `Span`/`Memory` and pooling;
+  - the full request lifecycle and endpoint routing internals;
+  - aggregates, and domain vs integration events;
+  - sagas, ordering, the exactly-once myth, event sourcing;
+  - service boundaries, strangler fig, the distributed monolith;
+  - Cosmos partitioning, CAP/PACELC, Service Bus vs Event Grid vs Event Hubs;
+  - OAuth flows, token validation, BFF;
+  - IDOR, SSRF, mass assignment;
+  - performance method, percentiles, load tests;
+  - probes, resources and zero-downtime deploys with schema changes;
+  - a full checkout or URL-shortener design.
+- **Answer structure**: **definition → why it exists → how it works, with an example → trade-offs and pitfalls → your experience**. For "scoped vs singleton", that's:
+  - *Definition*: one per request vs one per app.
+  - *Why*: lifetime matches how long state lives and whether it can be shared across threads.
+  - *Example*: `DbContext` is scoped because it isn't thread-safe and tracks per-request changes.
+  - *Pitfall*: a singleton capturing a scoped service is a **captive dependency**. Scope validation catches it in Development, and `IServiceScopeFactory` fixes it.
+  - *Experience*: a real story.
+
+  More tips: say "it depends", **then say on what**, and pick an answer. Use precise vocabulary. Admit gaps and reason from first principles ("Event Hubs is a partitioned log like Kafka, so I'd expect..."). Draw anything with more than two parts. Prepare 5–6 **STAR** stories. Ask clarifying questions first.
+- **Core reading.**
+  - *C# in Depth* (Skeet) and *CLR via C#* (Richter).
+  - *Pro .NET Memory Management* (Kokosa) and *Concurrency in C# Cookbook* (Cleary).
+  - ***ASP.NET Core in Action*** (Lock), the best single book for Part III.
+  - *Designing Data-Intensive Applications* (Kleppmann).
+  - Evans, Vernon and Khononov for DDD.
+  - Newman, *Enterprise Integration Patterns* and *Release It!* for distributed systems.
+  - Khorikov for testing.
+  - *Accelerate* and Google's *SRE* book for delivery and operations.
+  - Alex Xu's *System Design Interview*.
+
+  Free: Microsoft Learn, Stephen Toub's yearly performance posts, Andrew Lock's blog, SharpLab (see the IL, JIT asm and lowered C#), the OWASP Cheat Sheets and the Azure Architecture Center.
