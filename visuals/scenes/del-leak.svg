@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="A long-lived publisher's event holds a reference to every subscriber, so subscribers that never unsubscribe can never be garbage collected">
+<defs><marker id="dk-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<rect x="24" y="40" width="200" height="120" rx="12" class="b-acc"/><text class="t-h" x="40" y="66">PriceFeed</text><text class="t-m" x="40" y="86">a singleton: lives as</text><text class="t-m" x="40" y="102">long as the app</text><text class="t-c" x="40" y="130" style="font-size:11.5px">event PriceChanged</text>
+<g data-s="1"><rect x="440" y="40" width="160" height="34" rx="8" class="b"/><text class="t-c" x="452" y="62" style="font-size:11.5px">page #1</text><path d="M224,80 C330,80 340,57 434,57" class="ln" marker-end="url(#dk-a)"/></g>
+<g data-s="2"><rect x="440" y="82" width="160" height="34" rx="8" class="b"/><text class="t-c" x="452" y="104" style="font-size:11.5px">page #2</text>
+<rect x="440" y="124" width="160" height="34" rx="8" class="b"/><text class="t-c" x="452" y="146" style="font-size:11.5px">page #3</text>
+<rect x="440" y="166" width="160" height="34" rx="8" class="b"/><text class="t-c" x="452" y="188" style="font-size:11.5px">page #4</text>
+<path d="M224,95 C330,95 340,99 434,99" class="ln" marker-end="url(#dk-a)"/><path d="M224,110 C330,110 340,141 434,141" class="ln" marker-end="url(#dk-a)"/><path d="M224,125 C330,125 340,183 434,183" class="ln" marker-end="url(#dk-a)"/></g>
+<g data-s="3-3"><text class="t-s t-bad" x="610" y="100">closed…</text><text class="t-s t-bad" x="610" y="120">but still</text><text class="t-s t-bad" x="610" y="140">in memory</text></g>
+<text class="t-s" x="24" y="236" data-s="1-1">A page subscribes: priceFeed.PriceChanged += OnPrice. The event now holds a reference to the page.</text>
+<text class="t-s" x="24" y="236" data-s="2-2">Every page that opens subscribes too. None of them ever unsubscribes.</text>
+<text class="t-s t-bad" x="24" y="236" data-s="3-3">The user closes the pages, but the GC can't free them: the feed still points at every one. A leak.</text>
+<g data-s="4"><rect x="24" y="212" width="672" height="60" rx="8" class="b-good"/><text class="t-c" x="36" y="236" style="font-size:12px">public void Dispose() =&gt; _feed.PriceChanged -= OnPrice;</text><text class="t-s t-good" x="36" y="258">Unsubscribe when the subscriber's life ends. Then nothing points at it, and the GC can free it.</text></g>
+</svg>

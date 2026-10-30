@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-label="Building a string with += creates a new, longer string every time and throws the old one away; StringBuilder writes into one growing buffer">
+<text class="t-cap" x="24" y="28">s += tea, IN A LOOP: WHAT'S ON THE HEAP</text><text class="t-cap" x="470" y="28">CHARACTERS COPIED SO FAR</text>
+<g data-s="1-1"><rect x="24" y="44" width="120" height="36" rx="6" class="b-acc"/><text class="t-c" x="36" y="67" style="font-size:12px">"Sencha "</text></g>
+<g data-s="2"><rect x="24" y="44" width="120" height="36" rx="6" class="b-dash"/><text class="t-c t-m" x="36" y="67" style="font-size:12px">"Sencha "</text><text class="t-m" x="152" y="67">garbage</text></g>
+<g data-s="2-2" class="fly"><rect x="24" y="90" width="190" height="36" rx="6" class="b-acc"/><text class="t-c" x="36" y="113" style="font-size:12px">"Sencha Assam "</text></g>
+<g data-s="3"><rect x="24" y="90" width="190" height="36" rx="6" class="b-dash"/><text class="t-c t-m" x="36" y="113" style="font-size:12px">"Sencha Assam "</text><text class="t-m" x="222" y="113">garbage</text></g>
+<g data-s="3" class="fly"><rect x="24" y="136" width="250" height="36" rx="6" class="b-acc"/><text class="t-c" x="36" y="159" style="font-size:12px">"Sencha Assam Chai "</text></g>
+<text class="t-h" x="470" y="66" data-s="1-1">7</text><text class="t-h" x="470" y="66" data-s="2-2">7 + 13 = 20</text><text class="t-h" x="470" y="66" data-s="3-3">20 + 18 = 38</text>
+<g data-s="4-4"><text class="t-h t-bad" x="470" y="66">≈ 3,000,000</text><text class="t-s t-bad" x="470" y="88">for 1,000 teas, plus 999</text><text class="t-s t-bad" x="470" y="106">dead strings for the GC</text></g>
+<text class="t-s" x="24" y="200" data-s="1-1">Strings can't change. So s += "Sencha " makes a brand-new string.</text>
+<text class="t-s" x="24" y="200" data-s="2-2">Adding "Assam" copies ALL of "Sencha " into a new, longer string. The old one is garbage.</text>
+<text class="t-s" x="24" y="200" data-s="3-3">Every round copies everything again, so the work grows much faster than the list.</text>
+<text class="t-s t-bad" x="24" y="200" data-s="4-4">Double the teas, four times the copying. That's O(n²): fine for 5, painful for 5,000.</text>
+<g data-s="5" class="fly"><text class="t-cap" x="24" y="230">StringBuilder: ONE BUFFER WITH SPARE ROOM</text>
+<rect x="24" y="242" width="560" height="38" rx="6" class="b-good"/><rect x="290" y="246" width="290" height="30" rx="4" class="b-dash"/>
+<text class="t-c" x="36" y="266" style="font-size:12px">Sencha Assam Chai </text><text class="t-m" x="300" y="266">free space: Append writes straight in</text>
+<text class="t-s t-good" x="24" y="306">Each Append copies only the new tea. ToString() builds the final string once, at the end.</text></g>
+</svg>

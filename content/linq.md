@@ -1,371 +1,667 @@
 ---
 id: linq
-title: LINQ in Depth
-summary: Language Integrated Query: the operators by category, query vs method syntax, deferred vs immediate execution, how iterators work, IEnumerable vs IQueryable, expression trees, and the performance traps.
+title: "LINQ: Ask for the Result, Not the Loop"
+summary: "Episode 6. The owner wants reports, and hand-written loops pile up. LINQ lets you describe the result (filter, sort, group, total) and the library does the looping. Covers the core operators, deferred execution, yield return, IEnumerable vs IQueryable (where the query actually runs), expression trees and how C# becomes SQL, and performance traps."
 layer: language
 where: C# language › Querying data (LINQ)
-fits: LINQ is defined in layer 1/2 (`System.Linq` in the BCL), but it shows up most in layer 5. EF Core ([EF Core querying](ch:efcore-querying)) is a LINQ *provider* that translates your queries into SQL. Most EF Core performance bugs are really LINQ misunderstandings.
+fits: LINQ is defined in layers 1 and 2 (`System.Linq` in the BCL), but it matters most in layer 5. EF Core ([EF Core querying](ch:efcore-querying)) is a LINQ *provider* that translates your queries into SQL. Most EF Core performance bugs are really LINQ misunderstandings.
 levels: b,i,a
 prereqs: delegates-events, collections
 next: efcore-querying, async-await
 ---
 
-## TL;DR
+## The 30-second version
 
-- LINQ is just extension methods (`Where`, `Select`, ...) that work on anything implementing `IEnumerable<T>` or `IQueryable<T>` — no compiler magic.
-- Most operators are **deferred**: writing a query runs nothing; it only executes when something enumerates it (`foreach`, `ToList()`, `Count()`). Enumerate twice and it runs twice, against whatever the source looks like *now*.
-- `yield return` is the mechanism that makes deferred execution possible: it turns a method into a pausable/resumable state machine.
-- `IEnumerable<T>` runs in your process with compiled delegates; `IQueryable<T>` (EF Core, etc.) captures the query as an **expression tree** and translates it to SQL — switching to `IEnumerable` too early silently pulls the whole table into memory first.
-- Prefer `Any()` over `Count() > 0`, and `MinBy`/`MaxBy` over `OrderBy(...).First()` — both avoid unnecessary full scans/sorts.
+- **LINQ** is a set of methods (`Where`, `Select`, `OrderBy`, `GroupBy`, `Sum`, …) for any sequence. Each one takes a **lambda** ([Episode 4](ch:delegates-events)). You describe *what* you want, and LINQ does the looping.
+- **Deferred execution**: building a query runs **nothing**. It's a recipe. The work happens when something walks it (`foreach`, `ToList`, `Count`), and it happens **again every time** something walks it.
+- The laziness comes from **`yield return`**: each stage hands over one item at a time, only when asked.
+- **`IEnumerable<T>`** runs the query in your app, in C#. **`IQueryable<T>`** (EF Core) turns it into SQL that runs in the database. The variable's type decides which, so be careful.
+- The bridge is the **expression tree**: a lambda stored as data, so EF Core can read it and write SQL.
 
-:::analogy The restaurant order ticket
-A LINQ query is a ticket, not a meal. Writing `orders.Where(...).Select(...)` is like a waiter writing "table 4: no onions, extra sauce" on a slip of paper — nothing gets cooked yet. The kitchen only fires the ticket when someone actually calls for it (`foreach`, `ToList()`, `Count()`). And here's the part that trips people up: if the waiter writes a *second* ticket calling for the same order, the kitchen cooks it all over again from raw ingredients — it doesn't remember the first plate. Keep that picture handy for the "deferred execution" section below; it's the same idea with real consequences.
-:::
+## Words you'll meet
 
-## What LINQ actually is, underneath the syntax {b}
-
-**LINQ** is the set of query operators you already use constantly — `Where`, `Select`, `OrderBy`, `GroupBy`, `Join`, `Sum`, and dozens more — and the thing that makes them special is that they work on **any sequence**: an in-memory list, a database table, XML, JSON, anything that implements `IEnumerable<T>` or `IQueryable<T>`. Same vocabulary, wildly different data sources.
-
-Here's the part worth knowing before anything else: LINQ isn't a special language feature baked into the compiler the way `if` or `for` are. It's just **extension methods** — `Where` lives in `System.Linq.Enumerable`, nothing more exotic than that — plus some optional query syntax the language layers on top for readability. Once you know that, a sentence like "LINQ operators chain together" stops being magic and starts being exactly what it looks like: one method call returning something you call the next method on.
-
-```csharp
-var bigSpenders = customers
-    .Where(c => c.Country == "DE")
-    .Select(c => new { c.Name, Total = c.Orders.Sum(o => o.Total) })
-    .Where(x => x.Total > 1_000)
-    .OrderByDescending(x => x.Total)
-    .Take(10)
-    .ToList();
-```
-
-:::why Why LINQ exists
-Before LINQ, filtering, projecting and grouping meant hand-written `foreach` loops building up temporary lists and dictionaries by hand — and database queries were raw SQL strings the compiler had no way to check. LINQ replaces both of those with **one declarative vocabulary** that works the same way regardless of the data source, checked by the compiler at compile time, and — this is the part that becomes a whole section later in this chapter — lets providers like EF Core translate that *same* query into SQL instead of running it in memory.
-:::
-
-## Two ways to write the same query {b}
-
-```csharp
-// Query syntax: compiles to exactly the method calls below
-var q1 = from o in orders
-         where o.Status == OrderStatus.Paid
-         orderby o.CreatedAt descending
-         select new { o.Id, o.Total };
-
-// Method syntax
-var q2 = orders
-    .Where(o => o.Status == OrderStatus.Paid)
-    .OrderByDescending(o => o.CreatedAt)
-    .Select(o => new { o.Id, o.Total });
-```
-
-These two produce **identical** compiled code — `q1` and `q2` aren't two different features, just two different spellings. Method syntax is far more common in code you'll actually see day to day. Query syntax earns its keep specifically for **joins** and **`let`** (naming an intermediate value partway through a query), where it reads noticeably cleaner than the method-chain equivalent. Worth knowing too: plenty of operators — `Take`, `Distinct`, `Any`, `Sum` among them — only exist as methods at all; there's no query-syntax spelling for them.
-
-## The operators, organised by what they do {b}
-
-| Category | Operators |
+| Word | In plain words |
 |---|---|
-| **Filtering** | `Where`, `OfType<T>` |
-| **Projection** | `Select`, `SelectMany`, `Select((x, i) => …)` with index |
-| **Sorting** | `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Order` (.NET 7), `Reverse` |
-| **Partitioning** | `Take`, `Skip`, `TakeWhile`, `SkipWhile`, `TakeLast`, `SkipLast`, `Chunk` (.NET 6) |
-| **Set** | `Distinct`, `DistinctBy`, `Union`, `UnionBy`, `Intersect`, `IntersectBy`, `Except`, `ExceptBy` |
-| **Grouping** | `GroupBy`, `ToLookup`, `CountBy`, `AggregateBy` (.NET 9) |
-| **Joining** | `Join` (inner), `GroupJoin`, `LeftJoin`/`RightJoin` (.NET 10), `Zip` |
-| **Element** | `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `Last`, `ElementAt`, `MinBy`, `MaxBy` |
-| **Quantifiers** | `Any`, `All`, `Contains` |
-| **Aggregation** | `Count`, `LongCount`, `Sum`, `Average`, `Min`, `Max`, `Aggregate` |
-| **Generation** | `Enumerable.Range`, `Repeat`, `Empty` |
-| **Conversion** | `ToList`, `ToArray`, `ToDictionary`, `ToHashSet`, `ToLookup`, `AsEnumerable`, `AsQueryable`, `Cast<T>` |
-| **Other** | `Concat`, `Append`, `Prepend`, `DefaultIfEmpty`, `SequenceEqual`, `Index` (.NET 9) |
+| **LINQ** | A set of ready-made methods (`Where`, `Select`, `GroupBy`…) for asking questions of a sequence. |
+| **operator** | One of those methods. |
+| **predicate** | A test that returns true or false, like `o => o.Paid`. |
+| **deferred execution** | Building a query runs nothing. It runs when something loops over it. |
+| **materialise** | Run a query and store the results, with `ToList()` or `ToArray()`. |
+| **iterator** | A method using `yield return`, which hands out items one at a time, on demand. |
+| **`IQueryable`** | A query that's translated (to SQL, say) and run somewhere else, such as the database. |
+| **provider** | The thing that does that translation, such as EF Core. |
+| **expression tree** | A lambda stored as data, so a provider can read it. |
 
-### First vs FirstOrDefault vs Single vs SingleOrDefault — four operators, one decision
+## Previously, and the problem {b}
 
-These four get mixed up constantly, and the fix is a single table showing exactly where they diverge:
+In [Episode 5](ch:collections) Kettle got fast lookups. Now the owner wants a report: *the top 3 customers by money spent on paid orders*. Here's the loop version:
 
-| Operator | 0 elements | 1 element | 2+ elements |
+:::walk The loop version: every step by hand
+```csharp
+var orders = Sample.Orders;
+
+var totals = new Dictionary<string, decimal>();
+foreach (var o in orders)
+{
+    if (!o.Paid) continue;
+    totals.TryGetValue(o.Customer, out var sum);
+    totals[o.Customer] = sum + o.Total;
+}
+var sorted = new List<KeyValuePair<string, decimal>>(totals);
+sorted.Sort((a, b) => b.Value.CompareTo(a.Value));
+for (int i = 0; i < Math.Min(3, sorted.Count); i++)
+    Console.WriteLine($"{sorted[i].Key}: £{sorted[i].Value}");
+
+record Order(int Id, string Customer, string Tea, decimal Total, bool Paid);
+static class Sample
+{
+    public static readonly Order[] Orders =
+    [
+        new(1, "Ada", "Sencha", 30m, true),   new(2, "Bob", "Assam", 12m, true),
+        new(3, "Ada", "Rooibos", 18m, false), new(4, "Cy", "Sencha", 55m, true),
+        new(5, "Bob", "Earl Grey", 25m, true), new(6, "Di", "Assam", 9m, true),
+    ];
+}
+```
+@1 | orders = 6 orders (#3 unpaid)
+Six orders. Ada's Rooibos order (#3) isn't paid, so it mustn't count.
+@3 | totals = { }
+A temporary dictionary to add up each customer's spending.
+@4-9 | totals = { Ada → 30, Bob → 37, Cy → 55, Di → 9 }
+Loop over every order: skip unpaid ones, read the running total (`TryGetValue` gives 0 the first time), add this order. Ada's unpaid £18 was skipped.
+@10 | totals = { Ada → 30, Bob → 37, Cy → 55, Di → 9 } ; sorted = [Ada 30, Bob 37, Cy 55, Di 9]
+Copy the dictionary into a list, because a dictionary can't be sorted.
+@11 | sorted = [Cy 55, Bob 37, Ada 30, Di 9]
+Sort it, biggest first. `b.Value.CompareTo(a.Value)` is backwards on purpose, to get descending order. That's easy to get wrong.
+@12-13 | sorted = [Cy 55, Bob 37, Ada 30, Di 9] ; i = 0…2 | > Cy: £55 | > Bob: £37 | > Ada: £30
+Print the first three, with `Math.Min` in case there are fewer than three customers. That's 11 lines of mechanics for one sentence of meaning.
+:::
+
+It works, but the *meaning* ("paid orders, grouped by customer, totalled, top 3") is buried. All you can see is mechanics: a temporary dictionary, `TryGetValue`, a copy, a sort, an index loop. Every new report means another 15 lines of the same kind of thing.
+
+## The lightbulb: describe the result {b}
+
+Here's the same report written as a description of what you want:
+
+:::walk The LINQ version: say what you want
+```csharp
+var top3 = Sample.Orders
+    .Where(o => o.Paid)                                       // keep paid orders
+    .GroupBy(o => o.Customer)                                 // one group per customer
+    .Select(g => new { Customer = g.Key, Spent = g.Sum(o => o.Total) })
+    .OrderByDescending(x => x.Spent)                          // biggest first
+    .Take(3);                                                 // top 3
+
+foreach (var c in top3) Console.WriteLine($"{c.Customer}: £{c.Spent}");
+
+record Order(int Id, string Customer, string Tea, decimal Total, bool Paid);
+static class Sample
+{
+    public static readonly Order[] Orders =
+    [
+        new(1, "Ada", "Sencha", 30m, true),   new(2, "Bob", "Assam", 12m, true),
+        new(3, "Ada", "Rooibos", 18m, false), new(4, "Cy", "Sencha", 55m, true),
+        new(5, "Bob", "Earl Grey", 25m, true), new(6, "Di", "Assam", 9m, true),
+    ];
+}
+```
+@1-6 | top3 = a query (nothing has run yet)
+This builds a **query**: a description of the work. No order has been looked at yet. (The next section is all about why.)
+@8 | top3 = a query (nothing has run yet)
+The `foreach` asks for results, so now the work happens. Here's what each line does with the data.
+@2 | after Where = [#1 Ada 30, #2 Bob 12, #4 Cy 55, #5 Bob 25, #6 Di 9]
+`Where` keeps the orders for which your lambda says `true`. Order #3 is dropped.
+@3 | after GroupBy = Ada [30], Bob [12, 25], Cy [55], Di [9]
+`GroupBy` sorts them into piles, one per customer. Each pile's label is its `Key`.
+@4 | after Select = [Ada 30, Bob 37, Cy 55, Di 9]
+`Select` turns each pile into one small object: the name and the pile's total.
+@5 | after OrderByDescending = [Cy 55, Bob 37, Ada 30, Di 9]
+Biggest first. No backwards comparison to get wrong.
+@6 | after Take = [Cy 55, Bob 37, Ada 30]
+Keep three. If there were only two customers, you'd simply get two.
+@8 | | > Cy: £55 | > Bob: £37 | > Ada: £30
+Same answer as the loop. But each line now reads like the request: paid orders, by customer, totalled, biggest first, top 3.
+:::
+
+Each line reads like the spec. This is **LINQ**, short for **Language Integrated Query**. It isn't special syntax built into the compiler. It's a library of **extension methods** on `IEnumerable<T>` (in `System.Linq`). Each one takes a **delegate**, the lambda, which is the "slot for behaviour" from [Episode 4](ch:delegates-events). `Where` loops for you and calls your lambda to decide what to keep.
+
+:::scene visuals/scenes/linq-inside-where.svg | What `Where` really is
+1. `orders.Where(o => o.Paid)` looks like special syntax. It's just a method call.
+2. `Where` is an ordinary method in `System.Linq`. The `this` on its first parameter makes it an **extension method**, which is why you can call it with a dot on any sequence.
+3. Inside is a plain `foreach` and an `if`. Your lambda is plugged in as the **predicate**, the test in that `if`.
+4. That's all LINQ is: ordinary methods with the loop already written. You only supply the part that changes, as a delegate, like the discount slot in Episode 4.
+:::
+
+The same vocabulary works on lists, arrays, dictionaries and, with EF Core, **database tables**, where it becomes SQL. That last part is the real superpower, and it's covered at the end of this chapter.
+
+### Two spellings, one query
+
+:::walk Two spellings, one query
+```csharp
+int[] prices = [12, 30, 8, 55];
+
+var a = from p in prices where p > 10 orderby p select p * 2;     // query syntax
+var b = prices.Where(p => p > 10).OrderBy(p => p).Select(p => p * 2);   // method syntax
+
+Console.WriteLine(string.Join(",", a) + " = " + string.Join(",", b));
+```
+@1 | prices = [12, 30, 8, 55]
+Four prices.
+@3 | prices = [12, 30, 8, 55] ; a = query: where > 10, order, double
+**Query syntax** looks a bit like SQL. The compiler rewrites it into method calls…
+@4 | prices = [12, 30, 8, 55] ; a = query: where > 10, order, double ; b = the same query
+…exactly these ones. `a` and `b` compile to the same thing.
+@6 | | > 24,60,110 = 24,60,110
+8 is filtered out, the rest are sorted (12, 30, 55) and doubled.
+:::
+
+The compiler turns query syntax into exactly the method calls. Method syntax is what you'll see most. Query syntax reads better for **joins** and **`let`**. Many operators (`Take`, `Distinct`, `Any`, `Sum`) only exist as methods.
+
+## The operators you'll use 90% of the time {b}
+
+| Job | Operators |
+|---|---|
+| **Filter** | `Where`, `OfType<T>` |
+| **Transform** | `Select`, `SelectMany` (flatten) |
+| **Sort** | `OrderBy`, `OrderByDescending`, `ThenBy` |
+| **Slice** | `Take`, `Skip`, `TakeWhile`, `Chunk` |
+| **Group** | `GroupBy`, `ToLookup`, `CountBy` (.NET 9) |
+| **Combine** | `Join`, `GroupJoin`, `Zip`, `Concat`, `Union` |
+| **Sets** | `Distinct`, `DistinctBy`, `Intersect`, `Except` |
+| **Pick one** | `First`, `FirstOrDefault`, `Single`, `SingleOrDefault`, `MinBy`, `MaxBy` |
+| **Yes/no** | `Any`, `All`, `Contains` |
+| **Totals** | `Count`, `Sum`, `Average`, `Min`, `Max`, `Aggregate` |
+| **Materialise** | `ToList`, `ToArray`, `ToDictionary`, `ToHashSet` |
+
+### First, FirstOrDefault, Single, SingleOrDefault
+
+| | 0 matches | 1 match | 2+ matches |
 |---|---|---|---|
-| `First()` | throws | returns it | returns first |
-| `FirstOrDefault()` | `default` | returns it | returns first |
+| `First()` | throws | returns it | returns the first |
+| `FirstOrDefault()` | `default` (null / 0) | returns it | returns the first |
 | `Single()` | throws | returns it | **throws** |
 | `SingleOrDefault()` | `default` | returns it | **throws** |
 
-Notice the real distinction isn't "First vs Single" so much as what each one is *asserting* about the data. `First`/`FirstOrDefault` make no claim about how many elements exist — they just want whichever one comes first, which is exactly right after an `OrderBy`, or for "give me any match". `Single`/`SingleOrDefault` are stricter: they're asserting "there should be **exactly one**", and throw loudly if that assertion turns out to be false — which is exactly the behaviour you want for a lookup by a unique key, where finding two rows means your data has a bug, not that you should silently pick one. `FirstOrDefault(predicate, defaultValue)` (.NET 6) additionally lets you pick what "not found" actually returns, instead of always falling back to `default`.
+The real difference is **what you're claiming about the data**. `First` means "any match will do", for example after sorting. `Single` means "there must be **exactly one**". Use it for lookups by a unique key, where finding two means your data has a bug and you want to hear about it loudly.
 
-### SelectMany: turning a sequence of sequences into one sequence
+Kettle learned this the hard way. A botched import created two orders with the same ID. The refund page used `First`, so it quietly refunded whichever one came first, which was the wrong customer. With `Single` it would have crashed on the first try, and someone would have found the duplicate that day:
 
+:::walk First shrugs, Single shouts
 ```csharp
-var allLines = orders.SelectMany(o => o.Lines);                      // IEnumerable<OrderLine>
-var pairs = orders.SelectMany(o => o.Lines, (o, l) => new { o.Id, l.Sku });  // keep the parent
+var orders = new[] { new Order(1, "Ada"), new Order(2, "Bob"), new Order(2, "Cy (imported twice!)") };
+
+Console.WriteLine(orders.First(o => o.Id == 2).Customer);
+Console.WriteLine(orders.FirstOrDefault(o => o.Id == 9)?.Customer ?? "none");
+
+try { orders.Single(o => o.Id == 2); }
+catch (InvalidOperationException) { Console.WriteLine("Single: two orders with ID 2. Data bug!"); }
+
+record Order(int Id, string Customer);
 ```
+@1 | orders = [#1 Ada, #2 Bob, #2 Cy]
+Three orders, and two of them share ID 2. That should be impossible.
+@3 | | > Bob
+`First` stops at the first match and returns it. It doesn't look further, so it never notices the duplicate.
+@4 | | > none
+`FirstOrDefault` returns `null` when nothing matches, instead of throwing. `?.` and `??` turn that into "none".
+@6 | orders = [#1 Ada, #2 Bob, #2 Cy]
+`Single` keeps looking after the first match, to make sure there isn't a second one.
+@7 | | > Single: two orders with ID 2. Data bug!
+It finds Cy's order and throws. That's what you want for a lookup by a key that's supposed to be unique: a loud failure the first time, not a quiet wrong answer forever.
+:::
 
-`Select` alone would give you a sequence of orders, each still holding its own list of lines — a sequence *of* sequences. `SelectMany` flattens that one level: instead of "ten orders, each with some lines", you get "every line from every order, as one flat list". The second overload above is worth remembering specifically because it solves a problem the first one creates: once you've flattened down to lines, how do you still know which order each line came from? The two-argument overload keeps the parent (`o`) available alongside each flattened child (`l`).
+### SelectMany, GroupBy, ToLookup and Join on Kettle data
 
-### GroupBy and lookups
+Two of these trip people up, so here they are in pictures first:
 
+:::scene visuals/scenes/linq-selectmany.svg | Select vs SelectMany
+1. `Select(o => o.Teas)` gives one result per order, and each result is itself a list. You end up with a list *of lists*.
+2. `SelectMany(o => o.Teas)` **flattens** them: one list of every tea from every order. Many lists become one.
+3. Now counting, grouping and de-duplicating are easy. An overload also keeps the parent if you need it: `SelectMany(o => o.Teas, (o, t) => (o.Id, t))`.
+:::
+
+:::scene visuals/scenes/linq-groupby.svg | GroupBy: sorting into labelled piles
+1. Start with a flat list of paid orders, in any order.
+2. `GroupBy(o => o.Customer)` sorts them into **piles**, one per customer. Each pile is a *group*, and its label is the **`Key`**.
+3. Then `Select` turns each pile into one result, such as the customer's name and the sum of their pile.
+4. Sort the results and take three: that's the whole top-3 report from the start of the chapter.
+:::
+
+:::walk Flatten, group, look up and join
 ```csharp
-var revenueByCountry = orders
-    .GroupBy(o => o.Country)
-    .Select(g => new { Country = g.Key, Orders = g.Count(), Revenue = g.Sum(o => o.Total) })
-    .OrderByDescending(x => x.Revenue);
+var orders = new[]
+{
+    new Order(1, 10, ["Sencha", "Assam"]),
+    new Order(2, 20, ["Rooibos"]),
+    new Order(3, 10, ["Sencha"]),
+};
+var customers = new[] { new Customer(10, "Ada"), new Customer(20, "Bob") };
 
-var countsByStatus = orders.CountBy(o => o.Status);        // .NET 9: IEnumerable<KeyValuePair<Status,int>>
-ILookup<int, Order> byCustomer = orders.ToLookup(o => o.CustomerId);  // immediate, multi-value dictionary
-var forCustomer42 = byCustomer[42];                         // empty sequence if none, never throws
-```
+// SelectMany flattens: orders → every tea from every order, as one list
+Console.WriteLine(string.Join(", ", orders.SelectMany(o => o.Teas)));
 
-`ToLookup` is worth a specific mention because its behaviour quietly saves you a whole class of null-check and `ContainsKey` code: unlike a `Dictionary`, indexing an `ILookup` with a key that doesn't exist returns an **empty sequence**, not an exception and not `null`. `byCustomer[42]` is always safe to `foreach` over, whether or not customer 42 has any orders.
+// GroupBy: count of each tea
+foreach (var g in orders.SelectMany(o => o.Teas).GroupBy(t => t))
+    Console.WriteLine($"{g.Key} × {g.Count()}");
 
-### Joins
+// ToLookup: like a Dictionary of lists, and a missing key gives an EMPTY sequence, not an exception
+var byCustomer = orders.ToLookup(o => o.CustomerId);
+Console.WriteLine($"customer 10 has {byCustomer[10].Count()} orders, customer 99 has {byCustomer[99].Count()}");
 
-```csharp
+// Join: match orders to customer names
 var rows = from o in orders
            join c in customers on o.CustomerId equals c.Id
-           select new { o.Id, c.Name };
+           select $"order {o.Id} → {c.Name}";
+Console.WriteLine(string.Join("; ", rows));
 
-// Left join (classic pattern before .NET 10)
-var withOptionalCoupon = from o in orders
-                         join cp in coupons on o.CouponId equals cp.Id into gj
-                         from cp in gj.DefaultIfEmpty()
-                         select new { o.Id, Coupon = cp?.Code };
+record Order(int Id, int CustomerId, string[] Teas);
+record Customer(int Id, string Name);
 ```
-
-## Deferred vs immediate execution: the one idea that explains most LINQ bugs {i}
-
-Here's the single most important thing in this entire chapter, and the thing worth slowing all the way down for: **when you write a LINQ query, nothing happens yet.** Not "almost nothing" — literally nothing. Most LINQ operators don't run your filter, your projection, anything — they just hand back an object that *describes* what you asked for, a plan, not a result. The actual work only happens later, at the exact moment something **enumerates** that plan — a `foreach`, a `ToList()`, anything that actually walks the sequence.
-
-Operators split cleanly into two camps along this line. **Deferred (lazy)** operators — `Where`, `Select`, `OrderBy`, `Take`, `SelectMany`, and most others — build that plan and do nothing else. **Immediate** operators — `ToList`, `ToArray`, `ToDictionary`, `Count`, `Sum`, `First`, `Any`, `Max` — are the ones that actually trigger enumeration and hand back a real, concrete result right then.
-
-Let's watch this happen, step by step, instead of just stating it:
-
-![A LINQ query sits inert until something enumerates it, then runs the predicate once per element — and a second enumeration reruns the whole thing from scratch](visuals/linq-deferred-execution.svg)
-
-```csharp
-var numbers = new List<int> { 1, 2, 3 };
-var query = numbers.Where(n => { Console.WriteLine($"checking {n}"); return n > 1; });
-// nothing printed yet
-
-numbers.Add(4);                    // the query will see this!
-
-foreach (var n in query) { }       // NOW prints: checking 1, 2, 3, 4
-var count = query.Count();         // runs the WHOLE query AGAIN: checking 1, 2, 3, 4
-```
-
-Walk through exactly what happens at each line, because every line here surprises someone the first time:
-
-1. `numbers.Where(...)` runs. **Nothing is printed.** The lambda you wrote hasn't executed even once yet — `query` is just a description of "filter `numbers` by this predicate", sitting there, inert.
-2. `numbers.Add(4)` — and here's the part that catches people out — this is **allowed**, and it matters, because `query` doesn't hold a snapshot of `numbers` from when it was declared. It holds a *reference* to the live list, and will read whatever is in it *whenever it's finally enumerated*.
-3. The `foreach` is the first thing that actually enumerates `query`. Only **now** does the lambda run, once per element — on all four numbers, including the `4` you added after declaring the query.
-4. `query.Count()` is a *second*, completely independent enumeration. The query has no memory of having already run once — it reruns the entire filter from scratch, printing "checking 1, 2, 3, 4" all over again.
-
-Four consequences fall directly out of that trace, and each one is a real bug pattern you'll eventually meet in production:
-
-1. **A query sees its source as it is when enumerated, not when declared.** If the source changes in between — as `numbers` did above — the query sees the *new* state, which is sometimes exactly what you want and sometimes a genuine bug.
-2. **Every enumeration re-runs the whole query, from scratch.** Against a database, that's another full round trip; against an expensive in-memory `Select`, that's repeated work for no reason. The fix is simple once you know to look for it: call `ToList()` once, and reuse the resulting list, the moment you know you'll need the results more than once.
-3. **Exceptions surface late** — at enumeration time, which can be far away, in a completely different method, from the line that actually built the faulty query.
-4. **A disposed source breaks a query that hasn't run yet.** Return a lazy query built over a `DbContext`, let that `DbContext` get disposed, and *then* have the caller enumerate it — you'll get an `ObjectDisposedException` at the enumeration site, nowhere near where the real mistake was made.
-
-### Not every deferred operator is lazy in the same way
-
-One more distinction worth having, because it explains a specific performance trap: among the deferred operators, some **stream** — they can hand you the very first result item without first reading the whole source (`Where`, `Select`, `Take` all do this). Others must **buffer** the entire source before they can yield even their first output item, because they fundamentally can't know the answer without seeing everything (`OrderBy`, `GroupBy`, `Reverse`, and `Distinct` to a degree all fall into this camp — you can't know what the smallest element is, for a sort, until you've looked at all of them). That's exactly why `orders.OrderBy(...).First()` is wasteful: it sorts the *entire* collection just to throw away everything except the very first element. `MinBy`/`MaxBy` solve the same problem in a single streaming pass, with no sort and no buffering at all.
-
-## How this laziness is actually implemented: yield return {i}
-
-You now know LINQ operators are lazy. Here's the mechanism that makes that possible — and it's one you can use yourself, not just something happening behind the scenes:
-
-```csharp
-public static IEnumerable<T> MyWhere<T>(this IEnumerable<T> source, Func<T, bool> predicate)
-{
-    foreach (var item in source)
-        if (predicate(item))
-            yield return item;     // pause here, hand the item to the caller, resume on next MoveNext()
-}
-
-static IEnumerable<int> Fibonacci()          // infinite sequences are fine, because it's lazy
-{
-    (int a, int b) = (0, 1);
-    while (true) { yield return a; (a, b) = (b, a + b); }
-}
-var first10 = Fibonacci().Take(10).ToList();
-```
-
-`yield return` is doing something genuinely clever under the hood: the compiler rewrites a method that uses it into a small object implementing `IEnumerable<T>`/`IEnumerator<T>`, whose code can **pause mid-execution**, hand one value back to whoever's asking, and later **resume exactly where it left off** — locals, loop position, everything intact — the next time it's asked for another value. That's precisely what lets `Fibonacci()` above return an *infinite* sequence without ever hanging: nothing computes the next Fibonacci number until something explicitly asks for it, and `Take(10)` only ever asks ten times.
-
-`foreach` is what drives this machinery: it calls `GetEnumerator()` once, then repeatedly calls `MoveNext()` and reads `Current`, until `MoveNext()` says there's nothing left, and finally calls `Dispose()`. Chain several LINQ operators together — `Where().Select().Take()` — and you've actually built a **pipeline of enumerators**, each one pulling exactly one item at a time from the one before it, only when asked. Nothing is computed ahead of its actual use.
-
-## IEnumerable<T> vs IQueryable<T>: the difference that decides where your query actually runs {i}
-
-Everything so far has been "LINQ to Objects" — queries running entirely in your process, over data already sitting in memory. But the exact same `Where`, `Select`, `OrderBy` syntax also works against `db.Orders` in EF Core, and *that* code doesn't run in your process at all — it becomes SQL. How can identical-looking syntax do two completely different things?
-
-| | `IEnumerable<T>` (LINQ to Objects) | `IQueryable<T>` (LINQ providers: EF Core…) |
-|---|---|---|
-| Operators take | `Func<T, bool>`: compiled delegates | `Expression<Func<T, bool>>`: expression trees |
-| Executes | In your process, in C# | Translated by a provider (to SQL, etc.) and run at the source |
-| Defined in | `System.Linq.Enumerable` | `System.Linq.Queryable` |
-| Can call any C# method | Yes | Only what the provider can translate |
-
-The whole answer is in that first row, and it's genuinely subtle: `IQueryable<T>`'s version of `Where` doesn't take a compiled `Func` at all — it takes an `Expression<Func<T, bool>>`, which, as the next section shows in detail, means the compiler hands the provider a *description* of your lambda instead of runnable code. EF Core reads that description and writes its own SQL from it. `IEnumerable<T>`'s `Where` takes an ordinary compiled delegate, which just runs, in C#, right there in your process. Same method name, same-looking lambda — two structurally different things happening underneath.
-
-```csharp
-IQueryable<Order> q = db.Orders;                         // nothing executed
-
-var paid = q.Where(o => o.Status == OrderStatus.Paid)   // still IQueryable: becomes WHERE
-            .OrderBy(o => o.CreatedAt)                   // ORDER BY
-            .Take(20);                                   // TOP(20) / LIMIT 20
-var list = await paid.ToListAsync();                    // ONE SQL query, 20 rows returned
-
-// The trap: switching to IEnumerable too early
-IEnumerable<Order> all = db.Orders;                      // static type is IEnumerable
-var bad = all.Where(o => o.Status == OrderStatus.Paid).Take(20).ToList();
-// SELECT * FROM Orders: the ENTIRE table comes over the network, then it's filtered in memory
-```
-
-Look closely at the two blocks above — the operators called are *identical*, `Where` then `Take`. The only difference is the **static type of the variable** they're called on: `IQueryable<Order>` versus `IEnumerable<Order>`. That one type annotation decides whether `.Where(...)` resolves to the `IQueryable` overload (build an expression tree, let EF Core translate it to `WHERE ... TOP(20)`) or the `IEnumerable` overload (compile a delegate, pull every single row across the network first, and only then filter in memory). The SQL difference between those two outcomes, on a million-row table, is enormous — and nothing about the *syntax* warns you which one you've written.
-
-:::gotcha The silent full-table scan
-Any of these flip a query from SQL to in-memory, usually without a compiler warning in sight: assigning the query to an `IEnumerable<T>` variable, calling `.AsEnumerable()`, calling `.ToList()` before you're done filtering, or a repository method whose return type is declared `IEnumerable<T>` instead of `IQueryable<T>`. The defence is simple to state: keep a query typed as `IQueryable` for as long as possible, right up until the one final call that actually materialises it, and `Select` down to only the columns you actually need before that happens.
-:::
-
-## Expression trees: what EF Core is actually reading {a}
-
-The previous section promised a closer look at what an `Expression<Func<…>>` really is, as opposed to a plain delegate. Here it is. When a lambda gets assigned to an `Expression<Func<…>>` instead of a `Func<…>`, the compiler does something fundamentally different with it: instead of compiling the lambda into runnable code the way it normally would, it builds an **object graph that describes the code** — a tree of nodes you can walk, inspect, and even generate completely new code from.
-
-```csharp
-Expression<Func<Order, bool>> expr = o => o.Total > 100 && o.Country == "DE";
-// AndAlso(
-//   GreaterThan(Member(o, Total), Constant(100)),
-//   Equal(Member(o, Country), Constant("DE")))
-```
-
-![An expression tree being built from a lambda, then walked node by node to produce SQL](visuals/expression-tree.svg)
-
-Walk through what that diagram is showing, because it's genuinely the whole mechanism in one picture: the lambda `o.Total > 100 && o.Country == "DE"` becomes a small tree, with an `AndAlso` node at the root, two comparison nodes beneath it (`GreaterThan` and `Equal`), and each comparison pointing at a `Member` access and a `Constant` as its two leaves. That tree is just data — ordinary .NET objects you could inspect with a debugger, same as any other object graph. EF Core's query pipeline walks it exactly the way you'd walk any tree: visit the root, recurse into each child, and at each node emit the matching piece of SQL — `AndAlso` becomes `AND`, `GreaterThan` becomes `>`, a `Member` access becomes a column name, and a `Constant` becomes... not a literal value baked into the SQL string, but a **parameter**. That detail is exactly why LINQ queries are naturally safe from SQL injection: captured values never get string-concatenated into the query text at all — they travel as proper SQL parameters (`@__country_0`), the same mechanism you'd reach for by hand with raw ADO.NET.
-
-Because an `IQueryable` is just this same kind of tree, waiting to be extended, you can build one up conditionally, piece by piece, and the provider still only ever sees — and only ever executes — one final query:
-
-```csharp
-public static IQueryable<Product> ApplyFilters(IQueryable<Product> q, ProductFilter f)
-{
-    if (f.MinPrice is { } min) q = q.Where(p => p.Price >= min);   // composing IQueryable conditionally
-    if (!string.IsNullOrEmpty(f.Search)) q = q.Where(p => p.Name.Contains(f.Search));
-    if (f.CategoryId is { } cat) q = q.Where(p => p.CategoryId == cat);
-    return q;   // still one SQL query, built from only the filters that were supplied
-}
-```
-
-There's a real limit on all of this, and it follows directly from how the translation works: the provider can only translate what it actually understands how to turn into SQL — it cannot run arbitrary C#. `q.Where(p => MyHelper(p))` throws "could not be translated" in EF Core 3 and later, precisely because `MyHelper` is just a `Member`/method-call node in the tree that EF Core has no SQL equivalent for. (Older EF Core versions used to silently fall back to evaluating the whole query in memory instead of throwing — which sounds more forgiving, but was actually a notorious, hard-to-spot performance trap: a query that looked like it ran as SQL was secretly pulling entire tables across the network instead.)
-
-## Performance considerations {a}
-
-A short, practical list, now that you understand *why* each of these is true rather than just that it is:
-
-- LINQ to Objects allocates **enumerators and delegates**, plus closures if your lambdas capture variables — you saw exactly this mechanism in the `yield return` section above. For most business code this overhead is genuinely negligible; in true hot paths (per-item processing of millions of items, tight loops inside middleware), a plain `for`/`foreach` over arrays or spans can be several times faster with zero allocations.
-- .NET 7–10 have vectorised many operators (`Sum`, `Min`, `Max`, `Average` over arrays/spans now use SIMD; `Order` and `ToArray` got faster too) — a good reminder that upgrading .NET versions sometimes buys you LINQ performance for free, no code changes needed.
-- **`Any()`** stops the moment it finds a match. `Count() > 0` does not — on a lazy sequence it's a full pass through everything, just to throw the number away and check if it was nonzero (though on an `ICollection`, `Count` is a stored property and genuinely O(1)).
-- **`Count` property vs `Count()` method:** `Count()` actually checks whether the source is an `ICollection<T>` and uses its stored `.Count` when it can, rather than blindly enumerating — but `TryGetNonEnumeratedCount` exists specifically to make that intent explicit in your own code, rather than relying on an internal optimisation.
-- Avoid `OrderBy(...).First()` for the reason covered earlier — a full sort just to discard everything but one element; use `MinBy`/`MaxBy` instead.
-- Avoid repeated `.ToList()` calls chained through a pipeline; each one allocates a brand-new full copy of whatever's been produced so far.
-- `Where(...).Count()` vs `Count(predicate)` produce identical results — pick whichever reads more clearly to you.
-
-:::qa What is deferred execution in LINQ?
-Most operators don't run when called. They build a query that executes when it is enumerated (foreach, ToList, Count, First…), using the data as it is at that moment, and every enumeration runs it again. Immediate operators like ToList, Count, Sum and First force execution.
-:::
-
-:::qa IEnumerable vs IQueryable?
-IEnumerable runs LINQ in memory using compiled delegates. IQueryable captures the query as expression trees that a provider (EF Core) translates and executes at the data source, e.g. as SQL. Switching to IEnumerable too early pulls all rows into memory and filters there.
+@1-7 | orders = [#1 (cust 10): Sencha, Assam / #2 (cust 20): Rooibos / #3 (cust 10): Sencha] ; customers = [10 Ada, 20 Bob]
+Three orders, each with a list of teas, and two customers.
+@10 | | > Sencha, Assam, Rooibos, Sencha
+`SelectMany` takes each order's tea list and **flattens** them into one sequence. `Select` would have given three separate lists.
+@13 | g = Sencha [Sencha, Sencha]
+Group the flattened teas by name. Each group is a pile with a `Key`.
+@14 | g = Sencha [Sencha, Sencha] | > Sencha × 2 | > Assam × 1 | > Rooibos × 1
+One line per pile. Groups come out in the order their key was first seen.
+@17 | byCustomer = lookup { 10 → [#1, #3], 20 → [#2] }
+`ToLookup` builds the groups **now** (not lazily) and indexes them by key, like a dictionary of lists.
+@18 | | > customer 10 has 2 orders, customer 99 has 0
+The difference from a dictionary: a missing key gives an **empty** sequence, not an exception.
+@21-23 | rows = query: orders matched to customers by ID
+`join … on … equals …` pairs each order with the customer whose `Id` matches its `CustomerId`.
+@24 | | > order 1 → Ada; order 2 → Bob; order 3 → Ada
 :::
 
 :::qa What's the difference between First, FirstOrDefault, Single and SingleOrDefault?
-First returns the first element and throws if there are none; FirstOrDefault returns default instead. Single expects exactly one element and throws if there are zero or more than one; SingleOrDefault returns default for zero but still throws for more than one.
+`First` returns the first match and throws if there's none. `FirstOrDefault` returns default instead of throwing. `Single` asserts there is exactly one match and throws if there are zero or several. `SingleOrDefault` returns default for zero matches but still throws for several. Use `Single` when duplicates would mean a bug, and `First` when you only want any or the top item.
 :::
 
 :::qa Select vs SelectMany?
-Select maps each element to exactly one result, so a sequence of lists stays a sequence of lists. SelectMany maps each element to a sequence and flattens them into one sequence (all order lines from all orders).
+`Select` maps each element to one result, so a sequence of orders becomes a sequence of line lists. `SelectMany` maps each element to a sequence and flattens them all into one sequence, such as every line of every order. An overload keeps the parent available alongside each child.
 :::
 
-:::qa How does yield return work?
-The compiler turns the method into a state machine implementing IEnumerable/IEnumerator. Each MoveNext runs code until the next yield return, hands back that value, and pauses. Execution is lazy and resumes exactly where it left off.
+## Deferred execution: a recipe, not a meal {i}
+
+:::plain
+A LINQ query is a set of instructions, not a result. Nothing happens until something asks for the items, and it happens all over again every time something asks.
+:::
+
+Here is the single most important idea in LINQ, and the cause of most LINQ bugs:
+
+**Building a query runs nothing.** `orders.Where(…).Select(…)` doesn't filter anything. It returns an object that *describes* the work, a recipe. The cooking only happens when something **walks** the sequence (`foreach`, `ToList`, `Count`, `First`). And it happens **every time** something walks it.
+
+That behaviour has a name: **deferred execution**. Operators that just add to the recipe (`Where`, `Select`, `OrderBy`, `Take`) are **deferred**. Operators that need an actual answer (`ToList`, `Count`, `Sum`, `First`, `Any`) are **immediate**, and they're the ones that trigger the work.
+
+:::scene visuals/scenes/linq-pipeline.svg | Pulling items through `Where → Select → Take`
+1. You've written `orders.Where(paid).Select(total).Take(2)`. Three stations are set up, but **no order has been looked at**. You only have a plan.
+2. `foreach` asks for an item. `Take` asks `Select`, `Select` asks `Where`, and `Where` pulls order #1. It's unpaid, so it's dropped. Items are *pulled* one at a time, from the end.
+3. `Where` pulls #2: paid. `Select` turns it into £30, and `Take` passes it to your loop.
+4. #3 becomes £12, and `Take` now has 2, so **the whole pipeline stops**. Orders #4 and #5 are never even read. That's why laziness can be very efficient.
+5. Loop over the same query again and **all of it runs again from scratch**. A query stores no results. Call `.ToList()` once if you need them more than once.
+:::
+
+Run this and watch *when* the lambda actually runs:
+
+:::walk When does the lambda run?
+```csharp
+var prices = new List<int> { 5, 20, 40 };
+var expensive = prices.Where(p => { Console.WriteLine($"  checking {p}"); return p > 10; });
+Console.WriteLine("query built (nothing checked yet)");
+
+prices.Add(80);                          // the query will see this: it reads the source LATE
+
+Console.WriteLine($"count = {expensive.Count()}");   // runs now: checks 5, 20, 40, 80
+Console.WriteLine($"first = {expensive.First()}");   // runs AGAIN, and stops at 20
+
+var snapshot = expensive.ToList();       // runs one last time and KEEPS the results
+Console.WriteLine($"snapshot has {snapshot.Count} items; reading it again checks nothing");
+Console.WriteLine($"first = {snapshot[0]}");
+```
+@1 | prices = [5, 20, 40]
+Three prices in a list.
+@2 | prices = [5, 20, 40] ; expensive = a recipe: "prices where > 10"
+Build the query. The lambda prints whenever it runs, so you'll see exactly when it does.
+@3 | | > query built (nothing checked yet)
+Nothing printed "checking". Building a query runs **nothing**.
+@5 | prices = [5, 20, 40, 80] ; expensive = a recipe: "prices where > 10"
+Add 80 to the list, *after* the query was written.
+@7 | | >   checking 5 | >   checking 20 | >   checking 40 | >   checking 80 | > count = 3
+`Count()` needs a real answer, so now the query runs. It reads the list **as it is now**, so it sees the 80.
+@8 | | >   checking 5 | >   checking 20 | > first = 20
+`First()` runs the query **again** from the start. It stops at the first match, 20, so 40 and 80 aren't checked this time.
+@10 | snapshot = [20, 40, 80] | >   checking 5 | >   checking 20 | >   checking 40 | >   checking 80
+`ToList()` runs it one more time and **keeps the results** in a real list.
+@11-12 | snapshot = [20, 40, 80] | > snapshot has 3 items; reading it again checks nothing | > first = 20
+Reading the list doesn't run the lambda at all. If this were a database query, that's the difference between one round trip and three.
+:::
+
+Four bugs follow directly from this, and you'll meet each of them:
+
+1. **The query sees its source as it is when it *runs*,** not when it was written (the `80` above).
+2. **Every walk runs it again.** On a database query, that's another round trip.
+3. **Exceptions show up late,** where the query is walked, which can be far from where it was written.
+4. **A disposed source breaks it.** Return an un-run query over a `DbContext`, dispose the context, and the caller gets `ObjectDisposedException`.
+
+:::gotcha Some operators must read everything first
+`Where`, `Select` and `Take` **stream**: they can hand over the first result immediately. `OrderBy`, `GroupBy` and `Reverse` must **buffer** the whole source before they can produce anything, because you can't know the smallest item until you've seen them all. So `orders.OrderBy(o => o.Total).First()` sorts *everything* just to keep one item. Use `orders.MinBy(o => o.Total)`, which takes one pass and needs no sort.
+:::
+
+:::qa What is deferred execution in LINQ?
+Most operators don't run when they're called. They build a query that executes when it's enumerated (`foreach`, `ToList`, `Count`, `First`…), using the data as it is at that moment, and every enumeration runs it again. Immediate operators like `ToList`, `Count`, `Sum` and `First` force execution.
 :::
 
 :::qa What is the multiple-enumeration problem?
-Enumerating a lazy IEnumerable more than once re-executes the whole pipeline, including database queries or expensive projections, and results may differ between enumerations. Materialise once with ToList/ToArray when you need the results more than once.
+Enumerating a deferred `IEnumerable<T>` more than once re-runs the whole query each time. That repeats the work, can return different results if the source changed, and against a database causes repeated round trips. Materialise once with `ToList`/`ToArray` when you need the results more than once.
 :::
+
+## How the laziness works: yield return {i}
+
+:::plain
+`yield return` lets a method hand out its results one at a time. It gives one item, waits until the caller asks for another, then carries on from exactly where it stopped.
+:::
+
+You can write your own lazy operator. `yield return` hands **one** item to the caller and **pauses** the method right there, keeping every local variable, until the caller asks for the next item:
+
+:::scene visuals/scenes/linq-yield.svg | Caller and iterator taking turns
+1. The `foreach` asks for the first item by calling `MoveNext()`: "give me the next one".
+2. The iterator runs its loop: 5 fails the test, 20 passes. It hands over **20** and **pauses** right at the `yield return`, remembering `x` and where it is in the loop.
+3. Control goes back to the caller, which prints "got 20". Meanwhile the iterator is frozen mid-loop.
+4. `MoveNext()` again. The iterator **resumes just after** its bookmark, checks 40, and hands it over.
+5. How can a method pause halfway? The compiler rewrites it into a small object, a **state machine**, whose fields hold the loop position and the locals. Nothing runs until it's asked, which is why LINQ is lazy and why an infinite sequence is fine.
+:::
+
+:::walk Caller and iterator, taking turns
+```csharp
+foreach (var p in KeepAbove(new[] { 5, 20, 40 }, 10))
+    Console.WriteLine($"got {p}");
+
+Console.WriteLine(string.Join(",", Fibonacci().Take(10)));   // an infinite sequence, made safe by laziness
+
+static IEnumerable<int> KeepAbove(IEnumerable<int> source, int min)   // a home-made Where
+{
+    foreach (var x in source)
+    {
+        Console.WriteLine($"  looking at {x}");
+        if (x > min) yield return x;          // hand over one item, pause here
+    }
+}
+
+static IEnumerable<long> Fibonacci()
+{
+    (long a, long b) = (0, 1);
+    while (true) { yield return a; (a, b) = (b, a + b); }    // never ends, but only runs when asked
+}
+```
+@6-13 | -
+`KeepAbove` is a home-made `Where`. `yield return` hands over one item and **pauses** the method right there.
+@1
+`KeepAbove(...)` is called, but none of its body runs yet. You get back an object that will run it on demand.
+@8-10 | x = 5 | >   looking at 5
+The `foreach` asks for the first item, so the method starts. 5 is too small, so it isn't yielded…
+@10-11 | x = 20 | >   looking at 20
+…and the loop moves on to 20, which passes. `yield return 20` hands it over and **freezes** the method, remembering `x` and its place in the loop.
+@2 | p = 20 | > got 20
+Control is back in the caller, which prints it.
+@11 | x = 20
+The caller asks for the next item. The method **resumes just after** the `yield return`, exactly where it paused.
+@10-11 | x = 40 | >   looking at 40
+40 passes and is handed over.
+@2 | p = 40 | > got 40
+The source runs out, so the method ends and the `foreach` finishes. The output interleaves, because the two sides took turns.
+@15-19 | (a, b) = (0, 1)
+`Fibonacci` is an **infinite** loop. That's only safe because it pauses after every `yield return`.
+@4 | | > 0,1,1,2,3,5,8,13,21,34
+`Take(10)` asks for ten items, then stops asking, and the loop is never resumed again.
+:::
+
+The output interleaves "looking at" and "got". The loop and the method take turns. The compiler rewrites a `yield` method into a small **state machine** object that remembers where it paused. `foreach` drives it by calling `MoveNext()` again and again. Chaining `Where().Select().Take()` builds a pipeline of these, each pulling from the one before it. That's exactly the conveyor belt above.
+
+:::qa How does yield return work?
+The compiler turns an iterator method into a state-machine class that implements `IEnumerable<T>`/`IEnumerator<T>`. Each `MoveNext()` runs the method until the next `yield return`, saves its position and locals, and exposes the value as `Current`. That makes sequences lazy, including infinite ones.
+:::
+
+## Where does the query run? IEnumerable vs IQueryable {i}
+
+:::plain
+The same LINQ code can run in two places: in your app, over data you already have, or in the database, translated into SQL. The declared type of the variable decides which, and getting it wrong can download a whole table.
+:::
+
+So far everything has run in your app, over data in memory. That's **LINQ to Objects**. But EF Core lets you write the *same* `Where` and `Take` over `db.Orders`, and that code never runs in your app at all. It becomes SQL. How can the same code do two different things?
+
+Through two interfaces that look alike:
+
+| | `IEnumerable<T>` | `IQueryable<T>` |
+|---|---|---|
+| `Where` takes | `Func<T,bool>`: compiled code | `Expression<Func<T,bool>>`: a **description** of the code |
+| Runs | in your app, in C# | translated (to SQL) and run **in the database** |
+| Can call any C# method | yes | only what the provider can translate |
+
+Which `Where` you get depends only on the **declared type of the variable**. The code looks identical either way:
+
+:::scene visuals/scenes/linq-where-it-runs.svg | Same `.Where(...).Take(20)`, two very different trips
+1. `db.Orders` is an `IQueryable<Order>`. `Where` and `Take` don't run. They build a **description** of the query (an expression tree).
+2. When you call `ToListAsync()`, EF Core translates that description into SQL, `SELECT TOP 20 … WHERE Paid = 1`, and sends it to the database.
+3. The **database** does the filtering and sends back 20 rows. It's small and fast.
+4. Now the same code with the variable typed **`IEnumerable<Order>`**. `Where` is now the in-memory version, so EF has to fetch **the whole table**. A million rows cross the network, then your app throws away all but 20.
+:::
+
+:::walk Same LINQ, two very different trips
+```csharp norun
+IQueryable<Order> q = db.Orders;
+var page = await q.Where(o => o.Status == OrderStatus.Paid)   // → WHERE
+                  .OrderBy(o => o.CreatedAt)                    // → ORDER BY
+                  .Take(20)                                     // → TOP(20)
+                  .ToListAsync();                               // ONE SQL query, 20 rows
+
+IEnumerable<Order> all = db.Orders;                             // ← same data, wrong type
+var oops = all.Where(o => o.Status == OrderStatus.Paid).Take(20).ToList();
+// SELECT * FROM Orders: the WHOLE table, filtered in memory
+```
+@1 | q = IQueryable<Order> (a query over the Orders table, not run)
+`db.Orders` is an `IQueryable`. Nothing has been fetched.
+@2 | q = query: WHERE Status = Paid
+This `Where` is `Queryable.Where`. It takes an **expression tree**, so it adds a description to the query instead of running anything.
+@3-4 | q = query: WHERE Status = Paid ORDER BY CreatedAt, TOP 20
+More description: an ORDER BY and a TOP.
+@5 | SQL sent = SELECT TOP(20) … WHERE Status = 1 ORDER BY CreatedAt ; rows back = 20
+`ToListAsync` finally runs it. EF Core translates the whole tree into **one** SQL query, and the database sends back 20 rows.
+@7 | all = IEnumerable<Order> (the same table)
+Now the same table, but the variable is typed `IEnumerable<Order>`. That one word changes which `Where` the compiler picks.
+@8 | SQL sent = SELECT * FROM Orders ; rows back = every order (1,000,000) ; kept = 20
+This is `Enumerable.Where`, which takes a compiled delegate. EF Core can't read a delegate, so it can only fetch **the whole table** and let your C# filter it in memory. Same result, a million rows over the network.
+:::
+
+:::gotcha The silent full-table scan
+Four things quietly switch a query from SQL to in-memory, with no compiler warning. Assigning it to an `IEnumerable<T>` variable. Calling `.AsEnumerable()`. Calling `.ToList()` before you've finished filtering. Or a repository method that returns `IEnumerable<T>`. Keep queries as `IQueryable` until the very last call, and `Select` only the columns you need.
+:::
+
+:::qa IEnumerable vs IQueryable?
+`IEnumerable<T>` executes LINQ in memory, using compiled delegates. `IQueryable<T>` builds expression trees that a provider such as EF Core translates and executes at the source (SQL). Filtering on an `IQueryable` happens in the database. Switching to `IEnumerable` too early pulls all the rows into memory first.
+:::
+
+## Expression trees: how C# becomes SQL {a}
+
+:::plain
+To turn C# into SQL, EF Core needs to *read* your lambda, not run it. So `IQueryable` asks the compiler for the lambda as a tree of objects, which EF Core walks piece by piece to write the SQL.
+:::
+
+In [Episode 4](ch:delegates-events#the-same-lambda-compiled-two-ways-expression-trees) you saw that a lambda assigned to `Expression<Func<…>>` isn't compiled into runnable code. It becomes an **expression tree**, an object graph that describes the code. `IQueryable.Where` asks for exactly that, so EF Core can **read your lambda like data** and write SQL from it.
+
+![An expression tree being built from a lambda, then walked node by node to produce SQL](visuals/expression-tree.svg)
+
+The best way to believe it is to build a tiny EF Core yourself. This walks the tree and writes a `WHERE` clause:
+
+:::walk Build a tiny EF Core
+```csharp
+using System.Linq.Expressions;
+
+Expression<Func<Order, bool>> filter = o => o.Total > 100 && o.Country == "GB";
+Console.WriteLine($"tree: {filter.Body}");
+Console.WriteLine($"SQL:  WHERE {ToSql(filter.Body)}");
+
+Expression<Func<Order, bool>> custom = o => Rules.IsVip(o);
+try { ToSql(custom.Body); }
+catch (NotSupportedException ex) { Console.WriteLine($"error: {ex.Message}"); }   // EF says "could not be translated"
+
+static string ToSql(Expression e) => e switch
+{
+    BinaryExpression b   => $"({ToSql(b.Left)} {Op(b.NodeType)} {ToSql(b.Right)})",
+    MemberExpression m   => $"[{m.Member.Name}]",                     // property → column
+    ConstantExpression c => c.Value is string s ? $"'{s}'" : $"{c.Value}",
+    _ => throw new NotSupportedException($"can't translate a {e.NodeType} node to SQL"),
+};
+
+static string Op(ExpressionType t) => t switch
+{
+    ExpressionType.AndAlso => "AND", ExpressionType.OrElse => "OR", ExpressionType.Equal => "=",
+    ExpressionType.GreaterThan => ">", ExpressionType.LessThan => "<",
+    _ => throw new NotSupportedException(t.ToString()),
+};
+
+static class Rules { public static bool IsVip(Order o) => o.Total > 1000; }
+record Order(decimal Total, string Country);
+```
+@3 | filter = tree: AndAlso(GreaterThan(Total, 100), Equal(Country, "GB"))
+Because the type is `Expression<...>`, this lambda isn't compiled into code. It's a **tree of objects** describing it.
+@4 | | > tree: ((o.Total > 100) AndAlso (o.Country == "GB"))
+@5
+Hand the tree's body to `ToSql`.
+@13 | e = AndAlso node
+The top node is a `BinaryExpression` (two sides and an operator). So translate the left side, the operator and the right side.
+@13 | e = GreaterThan node
+The left side is another binary node, `Total > 100`.
+@14 | e = Member node (Total)
+`o.Total` is a `MemberExpression`. A property becomes a column: `[Total]`.
+@15 | e = Constant node (100)
+`100` is a `ConstantExpression`, so it's written as a value. Then the same for `Country == "GB"`.
+@5 | | > SQL:  WHERE (([Total] > 100) AND ([Country] = 'GB'))
+The pieces come back up the tree and join into SQL. This is what EF Core does, with a lot more node types.
+@7-8 | custom = tree: Call(Rules.IsVip, o)
+Now a lambda that calls your own C# method.
+@16 | e = Call node
+There's no SQL for "call `Rules.IsVip`", because the database can't run C#. So the translator gives up.
+@9 | | > error: can't translate a Call node to SQL
+That's EF Core's "could not be translated" error, and now you know exactly where it comes from.
+:::
+
+That's the real mechanism, minus a few thousand edge cases. Two details matter in the real EF Core:
+
+- **Captured values become SQL parameters** (`@__country_0`), never text pasted into the SQL. That's why LINQ queries are naturally safe from SQL injection.
+- **Only translatable code works.** Calling your own C# method inside a query is a node EF can't turn into SQL. Since EF Core 3 that throws "could not be translated", like the `IsVip` example above. Older versions silently pulled the whole table into memory instead.
+
+Because an `IQueryable` is just a tree waiting to grow, you can build it up conditionally, and the database still receives **one** query:
+
+```csharp norun
+IQueryable<Product> q = db.Products;
+if (filter.MinPrice is { } min) q = q.Where(p => p.Price >= min);
+if (!string.IsNullOrEmpty(filter.Search)) q = q.Where(p => p.Name.Contains(filter.Search));
+return await q.ToListAsync();   // one SQL query, with only the filters that were supplied
+```
 
 :::qa How does EF Core translate LINQ to SQL?
-IQueryable operators take Expression&lt;Func&lt;…&gt;&gt; parameters, so the compiler builds expression trees instead of delegates. EF Core's query pipeline walks the tree, maps members to columns via the model, turns captured variables into SQL parameters, and generates provider-specific SQL. Untranslatable expressions throw.
+`IQueryable` operators take `Expression<Func<…>>`, so the compiler builds expression trees instead of delegates. EF Core walks the combined tree with expression visitors. It maps entities and members to tables and columns, turns captured variables into SQL parameters, and generates the SQL. Anything it can't translate throws, rather than being run silently on the client.
 :::
 
+## Performance notes {a}
+
+:::plain
+LINQ is fast enough for almost all business code. The traps are doing more work than you meant to: sorting everything to keep one item, or running the same query twice.
+:::
+
+- LINQ to Objects allocates small objects (enumerators, delegates, closures). In normal business code that cost is negligible. In true hot paths (millions of items per request) a plain `for` loop over an array or span can be several times faster.
+- **`Any()`** stops at the first match. `Count() > 0` may walk everything. (On a `List`, `Count` is a stored number, so it's free either way.) Here's the difference, counted:
+
+:::walk Count every order each one touches
+```csharp
+var orders = Enumerable.Range(1, 10_000).Select(i => new Order(i, i % 500)).ToList();
+
+int touched = 0;
+IEnumerable<Order> Watched() { foreach (var o in orders) { touched++; yield return o; } }
+
+bool any = Watched().Any(o => o.Total > 100);
+Console.WriteLine($"Any:   touched {touched:N0} orders");
+
+touched = 0;
+bool count = Watched().Count(o => o.Total > 100) > 0;
+Console.WriteLine($"Count: touched {touched:N0} orders");
+
+record Order(int Id, decimal Total);
+```
+@1 | orders = 10,000 orders (totals 0 to 499)
+Ten thousand orders.
+@3-4 | touched = 0
+A small iterator that hands out the orders one by one and counts how many it handed out.
+@6 | touched = 101 ; any = true
+`Any` asks "is there at least one over £100?". Order #101 is the first, so it stops there.
+@7 | | > Any:   touched 101 orders
+@10 | touched = 10,000 ; count = true
+`Count(...) > 0` asks the same question in a worse way. `Count` has to see **every** order to count them all, and only then do you compare with 0.
+@11 | | > Count: touched 10,000 orders
+Same answer, a hundred times more work. Against a database, `Any` becomes `EXISTS`, which can also stop at the first row.
+:::
+- Use **`MinBy` / `MaxBy`**, not `OrderBy(...).First()`.
+- Each `.ToList()` in the middle of a chain makes a full copy. Only materialise at the end, or when you need the results more than once.
+- Newer .NET versions make many operators faster (`Sum`, `Min` and `Max` over arrays use SIMD). Upgrading is often a free speed-up.
+
 :::qa Any() vs Count() > 0?
-Any stops at the first element (or the first match), so it's O(1) for the common case and maps to EXISTS in SQL. Count enumerates everything on lazy sequences and maps to COUNT(*). Prefer Any for existence checks.
+`Any()` stops at the first element, so it's O(1) for this check. `Count()` may enumerate the whole sequence, although it uses the stored `Count` for collections. On EF Core, `Any()` translates to `EXISTS`, which is cheaper than `COUNT`. Prefer `Any()` for existence checks.
 :::
 
 :::qa Is LINQ slow?
-LINQ to Objects adds small overheads (enumerator and delegate allocations, interface calls) that are irrelevant for most business code. In hot paths over large data, hand-written loops or Span-based code can be faster. Recent .NET versions vectorised many operators. For databases, the cost is about the SQL generated, not LINQ itself.
+For typical business code, no: its overhead is small and newer .NET versions optimise many operators. It allocates enumerators and delegates, so in extremely hot paths hand-written loops over arrays or spans can be faster. Measure with BenchmarkDotNet before rewriting.
 :::
+
+## Next episode {b}
+
+Kettle's reports are now a few readable lines each. Then the payment provider has a bad afternoon. Halfway through checkout, the charge call fails. The order is half-saved and the stock is already reserved. Worse, a database connection is left open each time, until the pool runs dry and the whole site stops. You need a way to **fail cleanly** and to **always clean up**: [Episode 7 · Exceptions →](ch:exceptions-disposal)
 
 ## Further reading
 
-- [LINQ overview](https://learn.microsoft.com/en-us/dotnet/csharp/linq/)
-- [Standard query operators](https://learn.microsoft.com/en-us/dotnet/csharp/linq/standard-query-operators/)
-- Jon Skeet's *Edulinq* blog series: reimplementing LINQ to Objects, the best way to understand it.
+- [Language Integrated Query (LINQ)](https://learn.microsoft.com/en-us/dotnet/csharp/linq/)
+- [Deferred execution and lazy evaluation](https://learn.microsoft.com/en-us/dotnet/standard/linq/deferred-execution-lazy-evaluation)
+- [Expression trees](https://learn.microsoft.com/en-us/dotnet/csharp/advanced-topics/expression-trees/)
+- [How EF Core queries work](https://learn.microsoft.com/en-us/ef/core/querying/how-query-works)
 
 ## Verify this chapter
 
-Run with `dotnet run` (plain console app, .NET 8/9, no packages; no database, so the `IQueryable` section is covered conceptually only — EF Core's actual SQL translation is verified in the EF Core chapters). It checks deferred vs. immediate execution, `yield return`'s pause/resume behavior, `Any()` short-circuiting where `Count()` doesn't, and that an `Expression<Func<...>>` is data you can inspect rather than runnable code.
-
 ```csharp
-// --- Deferred execution: the query doesn't run until enumerated, and reruns on every enumeration ---
-var checks = 0;
-var numbers = new List<int> { 1, 2, 3 };
-var query = numbers.Where(n => { checks++; return n > 1; });
-if (checks != 0) throw new Exception("FAIL: Where should not run the predicate before enumeration");
-Console.WriteLine("OK: building a LINQ query runs nothing yet (checks == 0)");
+using System.Linq.Expressions;
 
-numbers.Add(4); // the query holds a reference to the live list, not a snapshot
-var first = query.ToList();
-if (checks != 4) throw new Exception($"FAIL: expected 4 predicate calls (including the late-added 4), got {checks}");
-Console.WriteLine("OK: enumerating runs the predicate once per element, seeing the list as it is NOW (4 items)");
+// deferred: nothing runs until enumeration, and it re-runs every time
+int runs = 0;
+var src = new List<int> { 1, 2, 3 };
+var q = src.Where(x => { runs++; return x > 1; });
+Check(runs == 0, "building a query runs nothing");
+src.Add(4);
+Check(q.Count() == 3 && runs == 4, "the query sees items added after it was built");
+q.Count();
+Check(runs == 8, "a second enumeration runs the whole query again");
 
-checks = 0;
-var second = query.Count();
-if (checks != 4) throw new Exception("FAIL: a second enumeration should re-run the whole query from scratch");
-Console.WriteLine("OK: a second enumeration (Count()) re-ran the predicate from scratch instead of reusing the first result");
+// streaming: Take stops early
+int pulled = 0;
+var firstTwo = Enumerable.Range(1, 1_000).Where(x => { pulled++; return true; }).Take(2).ToList();
+Check(pulled == 2, "Take(2) stops pulling after two items");
 
-// --- Any() short-circuits; Count() walks the whole lazy sequence ---
-var visited = 0;
-IEnumerable<int> Source() { foreach (var n in Enumerable.Range(1, 1000)) { visited++; yield return n; } }
-visited = 0;
-var hasMatch = Source().Any(n => { return n == 1; }); // matches on the very first element
-if (visited != 1) throw new Exception($"FAIL: Any should stop at the first match, visited {visited} elements");
-Console.WriteLine("OK: Any() stopped after the first matching element instead of scanning everything");
+// First vs Single
+var dup = new[] { 1, 1 };
+Check(dup.First() == 1, "First returns the first of several matches");
+Check(Throws(() => dup.Single()), "Single throws when there are several matches");
+Check(Array.Empty<int>().FirstOrDefault() == 0, "FirstOrDefault returns default when there are none");
 
-visited = 0;
-var total = Source().Count();
-if (visited != 1000) throw new Exception("FAIL: Count() on a lazy sequence should enumerate everything");
-Console.WriteLine("OK: Count() on a lazy IEnumerable<T> walked all 1000 elements, unlike Any()");
+// ToLookup: a missing key gives an empty sequence
+Check(new[] { 1, 2 }.ToLookup(x => x % 2)[99].Any() == false, "a lookup returns empty for a missing key");
 
-// --- yield return: pause/resume, proven by interleaving with external side effects ---
-IEnumerable<int> Trace()
-{
-    Console.WriteLine("  trace: about to yield 1");
-    yield return 1;
-    Console.WriteLine("  trace: about to yield 2");
-    yield return 2;
-}
-var it = Trace().GetEnumerator();
-Console.WriteLine("main: before first MoveNext");
-it.MoveNext(); // only now does "about to yield 1" print — proves the method body hadn't started yet
-Console.WriteLine($"main: got {it.Current}, now calling MoveNext again");
-it.MoveNext(); // resumes exactly after the first yield, not from the top
-if (it.Current != 2) throw new Exception("FAIL: yield return should resume where it left off");
-Console.WriteLine("OK: yield return paused and resumed exactly where it left off (saw 1 then 2, interleaved with main)");
+// yield return is lazy (an infinite sequence is fine)
+Check(Naturals().Take(3).SequenceEqual(new[] { 0, 1, 2 }), "a yield-based infinite sequence works with Take");
 
-// --- An Expression<Func<...>> is an inspectable object graph, not compiled, runnable code ---
-System.Linq.Expressions.Expression<Func<int, bool>> expr = x => x > 100;
-var body = (System.Linq.Expressions.BinaryExpression)expr.Body;
-if (body.NodeType != System.Linq.Expressions.ExpressionType.GreaterThan)
-    throw new Exception("FAIL: expected the expression tree's root node to be a GreaterThan comparison");
-Console.WriteLine($"OK: Expression<Func<int,bool>> is data — its root node is {body.NodeType}, matching 'x > 100', inspectable without running it");
+// expression trees are data
+Expression<Func<int, bool>> e = x => x > 5;
+Check(e.Body is BinaryExpression { NodeType: ExpressionType.GreaterThan }, "a lambda can become an inspectable tree");
 
-// Not runtime-verifiable here — see Further reading: LINQ overview, Standard query operators (Microsoft Learn)
-// (actual SQL generated by an IQueryable provider like EF Core is covered and verified in the EF Core chapters)
+static IEnumerable<int> Naturals() { for (int i = 0; ; i++) yield return i; }
+static bool Throws(Action a) { try { a(); return false; } catch (InvalidOperationException) { return true; } }
+static void Check(bool ok, string claim) =>
+    Console.WriteLine(ok ? $"OK: {claim}" : throw new Exception($"FAIL: {claim}"));
 ```

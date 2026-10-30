@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Passing a managed array to native code: the GC can move objects, so the array is pinned while the C library reads it">
+<defs><marker id="ai-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker>
+<marker id="ai-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-bad"/></marker></defs>
+<text class="t-cap" x="24" y="28">.NET MANAGED HEAP (the GC may move things)</text><text class="t-cap" x="500" y="28">NATIVE: labelprint.so (C)</text>
+<rect x="24" y="40" width="450" height="130" rx="10" class="b-sunk"/><rect x="500" y="40" width="196" height="130" rx="10" class="b-warn"/>
+<text class="t-c" x="512" y="66" style="font-size:11.5px">int print_label(</text><text class="t-c" x="512" y="84" style="font-size:11.5px">  const char* zpl,</text><text class="t-c" x="512" y="102" style="font-size:11.5px">  int len);</text>
+<text class="t-m" x="512" y="130">no GC, no bounds checks:</text><text class="t-m" x="512" y="146">it trusts the pointer</text>
+<rect x="40" y="60" width="90" height="40" rx="5" class="b"/><text class="t-m" x="52" y="84">Basket</text>
+<g data-s="1-1"><rect x="140" y="60" width="80" height="40" rx="5" class="b-dash"/><text class="t-m" x="150" y="84">(free)</text></g>
+<g data-mv="2:-90,0"><g><rect x="230" y="60" width="150" height="40" rx="5" class="b-acc" data-hl="3,4"/><text class="t-c" x="242" y="85" style="font-size:12px">byte[] zpl</text></g></g>
+<g data-s="2"><rect x="400" y="60" width="60" height="40" rx="5" class="b"/><text class="t-m" x="410" y="84">Stock</text></g>
+<g data-s="2-2"><text class="t-s t-bad" x="160" y="134">the GC compacted the heap: zpl MOVED</text><text class="t-s t-bad" x="160" y="154">a pointer taken earlier now points at junk</text></g>
+<g data-s="3"><text class="t-h t-acc" x="144" y="56">📌</text><text class="t-s t-acc" x="160" y="134">fixed (byte* p = zpl) { … }</text><text class="t-s" x="160" y="154">pinned: the GC must not move it</text></g>
+<g data-s="4-4"><path d="M290,80 C380,120 430,80 494,80" class="ln-acc" marker-end="url(#ai-a)"/><text class="t-s" x="24" y="200">print_label(p, zpl.Length) gets a stable address. The C code reads the bytes</text><text class="t-s" x="24" y="220">directly. When the fixed block ends, the array is unpinned.</text></g>
+<g data-s="5"><rect x="24" y="186" width="672" height="104" rx="8" class="b-good"/><text class="t-c" x="36" y="208" style="font-size:12px">[LibraryImport("labelprint")]</text><text class="t-c" x="36" y="226" style="font-size:12px">static partial int PrintLabel(ReadOnlySpan&lt;byte&gt; zpl, int len);</text>
+<text class="t-s" x="36" y="252">In practice a source generator writes the pinning and conversion code for you.</text><text class="t-s t-good" x="36" y="274">You pass a span, and unsafe code stays inside generated, reviewed code.</text></g>
+<text class="t-s" x="24" y="200" data-s="1-1">Kettle builds the label as bytes, in a normal array on the managed heap.</text>
+</svg>

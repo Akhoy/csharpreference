@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="The same lambda becomes runnable code when assigned to Func, or a tree of objects describing it when assigned to Expression of Func">
+<defs><marker id="dt-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<rect x="230" y="32" width="260" height="40" rx="8" class="b-acc"/><text class="t-c" x="360" y="57" text-anchor="middle" style="font-size:12.5px">total =&gt; total &gt; 100</text>
+<g data-s="2" class="fly-l"><path d="M300,72 C250,100 180,100 150,116" class="ln" marker-end="url(#dt-a)"/><text class="t-c" x="24" y="106" style="font-size:11.5px">Func&lt;decimal, bool&gt;</text>
+<rect x="24" y="120" width="300" height="80" rx="8" class="b-good"/><text class="t-cap" x="36" y="140">COMPILED CODE (IL)</text><text class="t-c" x="36" y="162" style="font-size:11.5px">ldarg.0  ldc 100  cgt  ret</text><text class="t-s" x="36" y="186">You can run it. You can't read it.</text></g>
+<g data-s="3" class="fly-r"><path d="M420,72 C470,100 540,100 570,116" class="ln" marker-end="url(#dt-a)"/><text class="t-c" x="420" y="106" style="font-size:11.5px">Expression&lt;Func&lt;decimal, bool&gt;&gt;</text>
+<rect x="396" y="120" width="300" height="120" rx="8" class="b-info"/><text class="t-cap" x="408" y="140">A TREE OF OBJECTS (DATA)</text>
+<rect x="496" y="150" width="100" height="26" rx="5" class="b"/><text class="t-c" x="546" y="168" text-anchor="middle" style="font-size:11px">GreaterThan</text>
+<path d="M520,176 L470,198 M572,176 L620,198" class="ln"/><rect x="410" y="198" width="110" height="26" rx="5" class="b"/><text class="t-c" x="465" y="216" text-anchor="middle" style="font-size:11px">Param total</text><rect x="572" y="198" width="110" height="26" rx="5" class="b"/><text class="t-c" x="627" y="216" text-anchor="middle" style="font-size:11px">Constant 100</text></g>
+<text class="t-s" x="24" y="268" data-s="1-1">You write one lambda. What the compiler makes of it depends on the type you assign it to.</text>
+<text class="t-s t-good" x="24" y="268" data-s="2-2">Assign it to a Func and you get ordinary compiled code, ready to call.</text>
+<text class="t-s t-info" x="24" y="268" data-s="3-3">Assign it to an Expression&lt;Func&gt; and you get a description of the code, which other code can inspect.</text>
+<text class="t-s" x="24" y="268" data-s="4">EF Core asks for the second kind, reads the tree, and writes SQL: WHERE Total &gt; @p0.</text>
+</svg>

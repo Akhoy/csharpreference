@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="Two threads, four requests: synchronous code blocks both threads while waiting on the payment API; async code frees the threads at each await so all four requests are in flight">
+<text class="t-cap" x="24" y="26">SYNCHRONOUS · 2 threads</text><text class="t-m" x="560" y="26">time →</text>
+<text class="t-s" x="24" y="62">Thread 1</text><text class="t-s" x="24" y="102">Thread 2</text>
+<g data-s="1"><rect x="100" y="44" width="40" height="28" rx="5" class="b-solid"/><rect x="140" y="44" width="300" height="28" rx="5" class="b-dash"/><text class="t-m" x="150" y="63">A: blocked, waiting for the payment API…</text><rect x="440" y="44" width="40" height="28" rx="5" class="b-solid"/></g>
+<g data-s="1"><rect x="100" y="84" width="40" height="28" rx="5" class="b-solid"/><rect x="140" y="84" width="300" height="28" rx="5" class="b-dash"/><text class="t-m" x="150" y="103">B: blocked, waiting for the payment API…</text><rect x="440" y="84" width="40" height="28" rx="5" class="b-solid"/></g>
+<g data-s="2" class="fly"><rect x="500" y="44" width="196" height="68" rx="8" class="b-bad"/><text class="t-s t-bad" x="512" y="66">C and D are queued:</text><text class="t-s t-bad" x="512" y="86">no free thread.</text><text class="t-m" x="512" y="104">CPU: 5% · users: spinning</text></g>
+<line x1="24" y1="140" x2="696" y2="140" class="ln-m"/>
+<g data-s="3"><text class="t-cap" x="24" y="166">ASYNC · the same 2 threads</text>
+<text class="t-s" x="24" y="202">Thread 1</text><text class="t-s" x="24" y="242">Thread 2</text>
+<rect x="100" y="184" width="40" height="28" rx="5" class="b-solid"/>
+<text class="t-c t-w" x="114" y="203" style="font-size:12px">A</text>
+<rect x="146" y="184" width="40" height="28" rx="5" class="b-solid"/>
+<text class="t-c t-w" x="160" y="203" style="font-size:12px">B</text>
+<rect x="192" y="184" width="40" height="28" rx="5" class="b-solid"/>
+<text class="t-c t-w" x="206" y="203" style="font-size:12px">C</text>
+<rect x="238" y="184" width="40" height="28" rx="5" class="b-solid"/>
+<text class="t-c t-w" x="252" y="203" style="font-size:12px">D</text>
+<text class="t-m" x="290" y="203">each hits await → thread is free</text>
+<rect x="100" y="270" width="380" height="30" rx="6" class="b-acc" style="fill-opacity:.4"/><text class="t-s" x="110" y="290">At the payment API: A, B, C, D all in flight</text>
+<text class="t-m" x="100" y="242">(free: nothing to do yet)</text></g>
+<g data-s="4" class="fly"><rect x="500" y="184" width="40" height="28" rx="5" class="b-good"/><text class="t-c" x="514" y="203" style="font-size:12px">A</text><rect x="546" y="184" width="40" height="28" rx="5" class="b-good"/><text class="t-c" x="560" y="203" style="font-size:12px">C</text>
+<rect x="500" y="224" width="40" height="28" rx="5" class="b-good"/><text class="t-c" x="514" y="243" style="font-size:12px">B</text><rect x="546" y="224" width="40" height="28" rx="5" class="b-good"/><text class="t-c" x="560" y="243" style="font-size:12px">D</text>
+<text class="t-m" x="596" y="203">replies arrive:</text><text class="t-m" x="596" y="219">any free thread</text><text class="t-m" x="596" y="235">finishes the job</text></g>
+<text class="t-s" x="24" y="336" data-s="1-1">Each thread takes a request, calls the payment API, then just sits there until it replies.</text>
+<text class="t-s t-bad" x="24" y="336" data-s="2-2">Both threads are busy doing nothing. New requests queue. This is thread-pool starvation.</text>
+<text class="t-s t-acc" x="24" y="336" data-s="3-3">With await, a thread starts A, and at the await it's handed back, so it can start B, C, D.</text>
+<text class="t-s t-good" x="24" y="336" data-s="4">Same 2 threads, 4 requests served, no one waited for a thread. Scale that to thousands.</text>
+</svg>

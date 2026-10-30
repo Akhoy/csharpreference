@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A method receives a copy of the reference: it can change the object, but reassigning its copy doesn't move the caller's variable unless the parameter is ref">
+<defs><marker id="ts4-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker>
+<marker id="ts4-ara" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<text class="t-cap" x="24" y="26">CALLER</text><text class="t-cap" x="24" y="160">INSIDE THE METHOD</text><text class="t-cap" x="470" y="26">HEAP</text>
+<rect x="24" y="40" width="110" height="42" rx="6" class="b-info"/><text class="t-c" x="36" y="66">basket</text><circle cx="118" cy="61" r="4" class="f-ink"/>
+<path d="M122,61 C260,61 330,80 464,80" class="ln" marker-end="url(#ts4-ar)"/>
+<rect x="470" y="46" width="220" height="70" rx="8" class="b"/><text class="t-cap" x="482" y="64">Basket OBJECT</text>
+<text class="t-c" x="482" y="96" data-s="1-2">[Earl Grey, Sencha]</text><text class="t-c t-acc" x="482" y="96" data-s="3">[ ] (emptied)</text>
+<g data-s="2-4"><rect x="24" y="172" width="110" height="42" rx="6" class="b-info"/><text class="t-c" x="36" y="198">b</text><circle cx="118" cy="193" r="4" class="f-ink"/>
+<text class="t-m" x="150" y="236" data-s="2-2">b is a COPY of the arrow</text></g>
+<g data-s="2-3"><path d="M122,193 C300,193 360,110 470,110" class="ln" marker-end="url(#ts4-ar)"/></g>
+<g data-s="4-4"><path d="M122,193 C250,193 330,232 464,232" class="ln-acc" marker-end="url(#ts4-ara)"/>
+<rect x="470" y="200" width="220" height="64" rx="8" class="b-acc"/><text class="t-cap" x="482" y="218">A NEW Basket</text><text class="t-c" x="482" y="248">[ ]</text>
+<text class="t-s t-acc" x="150" y="284">b moved. basket didn't.</text></g>
+<g data-s="5"><rect x="24" y="172" width="250" height="42" rx="6" class="b-acc"/><text class="t-c" x="36" y="198">ref b = the caller's basket itself</text>
+<text class="t-s t-acc" x="24" y="240">With ref there is no copy, so reassigning b</text><text class="t-s t-acc" x="24" y="258">reassigns the caller's variable too.</text></g>
+<text class="t-c" x="290" y="150" data-s="2-2">Empty(basket)</text>
+<text class="t-c" x="290" y="150" data-s="3-3">b.Clear();</text>
+<text class="t-c" x="290" y="150" data-s="4-4">b = new Basket();</text>
+<text class="t-c" x="290" y="150" data-s="5">void Empty(ref Basket b)</text>
+</svg>

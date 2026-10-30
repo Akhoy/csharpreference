@@ -7,7 +7,7 @@ where: Runtime & platform › Execution engine (CLR)
 fits: This is the bottom of layer 2, directly under the language. Everything in C# eventually becomes IL that this machinery executes. The GC ([Memory & GC](ch:memory-gc)) and the thread pool ([Threading](ch:threading-concurrency)) are other services of the same runtime.
 levels: b,i,a
 prereqs: what-is-dotnet
-next: projects-sdk-nuget, type-system, memory-gc
+next: projects-sdk-nuget, csharp-story, memory-gc
 ---
 
 ## TL;DR

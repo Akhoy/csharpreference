@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="override is decided by the object's real type at runtime; new hiding is decided by the variable's declared type at compile time">
+<defs><marker id="on-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker>
+<marker id="on-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-warn"/></marker>
+<marker id="on-i" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="28">A x = new B();</text>
+<rect x="24" y="44" width="170" height="52" rx="8" class="b-info"/><text class="t-cap" x="36" y="62">VARIABLE x</text><text class="t-s" x="36" y="84">declared type: <tspan font-weight="700">A</tspan></text>
+<path d="M194,70 L262,70" class="ln" marker-end="url(#on-i)"/>
+<rect x="268" y="44" width="170" height="52" rx="8" class="b"/><text class="t-cap" x="280" y="62">OBJECT</text><text class="t-s" x="280" y="84">real type: <tspan font-weight="700">B</tspan></text>
+<rect x="480" y="44" width="216" height="36" rx="6" class="b-sunk" data-hl="2"/><text class="t-c" x="492" y="67" style="font-size:12px">B.Who()   → "B"</text>
+<rect x="480" y="88" width="216" height="36" rx="6" class="b-sunk" data-hl="4"/><text class="t-c" x="492" y="111" style="font-size:12px">B.Plain() → "B"</text>
+<rect x="480" y="132" width="216" height="36" rx="6" class="b-sunk" data-hl="3"/><text class="t-c" x="492" y="155" style="font-size:12px">A.Plain() → "A"</text>
+<g data-s="2-2"><path d="M438,62 L474,62" class="ln-acc" marker-end="url(#on-a)"/><text class="t-c" x="24" y="204" style="font-size:12.5px">x.Who()   // virtual + override</text>
+<text class="t-s t-acc" x="24" y="230">At RUNTIME the call follows the arrow to the object, asks "what are you really?"</text><text class="t-s t-acc" x="24" y="250">and runs B's version. The variable's label doesn't matter.</text></g>
+<g data-s="3-3"><path d="M110,96 C110,150 300,150 474,150" class="ln" style="stroke:var(--c-gotcha);stroke-width:2.2" marker-end="url(#on-w)"/><text class="t-c" x="24" y="204" style="font-size:12.5px">x.Plain() // not virtual, B "hides" it with new</text>
+<text class="t-s t-warn" x="24" y="230">The COMPILER picked A.Plain when it compiled the line, from x's label (A).</text><text class="t-s t-warn" x="24" y="250">The object is never asked. Same object, but you get A's version.</text></g>
+<g data-s="4-4"><path d="M438,80 C456,90 460,104 474,106" class="ln-acc" marker-end="url(#on-a)"/><text class="t-c" x="24" y="204" style="font-size:12.5px">((B)x).Plain()</text>
+<text class="t-s" x="24" y="230">Change only the label (cast to B) and you get B.Plain. Nothing about the object changed.</text><text class="t-s" x="24" y="250">That's confusing, which is why hiding with new is almost always a mistake.</text></g>
+<g data-s="5"><rect x="24" y="186" width="672" height="90" rx="8" class="b-good"/><text class="t-h" x="40" y="212">The rule</text>
+<text class="t-s" x="40" y="236"><tspan font-weight="700">override</tspan>: the object decides, at runtime. Polymorphism works.</text><text class="t-s" x="40" y="258"><tspan font-weight="700">new</tspan>: the variable's declared type decides, at compile time. Polymorphism quietly doesn't.</text></g>
+<text class="t-s" x="24" y="204" data-s="1-1">One object of type B, held in a variable declared as A. Which method runs depends on HOW you call.</text>
+</svg>

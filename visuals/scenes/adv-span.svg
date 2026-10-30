@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-label="Split copies every field into new strings; a Span is a window over the original characters, so parsing allocates nothing">
+<text class="t-cap" x="24" y="26">ONE LINE OF THE SUPPLIER CSV, ALREADY IN MEMORY</text>
+<rect x="24" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="35" y="62" text-anchor="middle" style="font-size:12.5px">2</text>
+<rect x="48" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="59" y="62" text-anchor="middle" style="font-size:12.5px">0</text>
+<rect x="72" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="83" y="62" text-anchor="middle" style="font-size:12.5px">2</text>
+<rect x="96" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="107" y="62" text-anchor="middle" style="font-size:12.5px">6</text>
+<rect x="120" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="131" y="62" text-anchor="middle" style="font-size:12.5px">-</text>
+<rect x="144" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="155" y="62" text-anchor="middle" style="font-size:12.5px">1</text>
+<rect x="168" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="179" y="62" text-anchor="middle" style="font-size:12.5px">1</text>
+<rect x="192" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="203" y="62" text-anchor="middle" style="font-size:12.5px">-</text>
+<rect x="216" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="227" y="62" text-anchor="middle" style="font-size:12.5px">2</text>
+<rect x="240" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="251" y="62" text-anchor="middle" style="font-size:12.5px">7</text>
+<rect x="264" y="40" width="22" height="34" rx="3" class="b-sunk"/><text class="t-c" x="275" y="62" text-anchor="middle" style="font-size:12.5px">,</text>
+<rect x="288" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="299" y="62" text-anchor="middle" style="font-size:12.5px">T</text>
+<rect x="312" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="323" y="62" text-anchor="middle" style="font-size:12.5px">E</text>
+<rect x="336" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="347" y="62" text-anchor="middle" style="font-size:12.5px">A</text>
+<rect x="360" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="371" y="62" text-anchor="middle" style="font-size:12.5px">-</text>
+<rect x="384" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="395" y="62" text-anchor="middle" style="font-size:12.5px">0</text>
+<rect x="408" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="419" y="62" text-anchor="middle" style="font-size:12.5px">1</text>
+<rect x="432" y="40" width="22" height="34" rx="3" class="b-sunk"/><text class="t-c" x="443" y="62" text-anchor="middle" style="font-size:12.5px">,</text>
+<rect x="456" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="467" y="62" text-anchor="middle" style="font-size:12.5px">6</text>
+<rect x="480" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="491" y="62" text-anchor="middle" style="font-size:12.5px">.</text>
+<rect x="504" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="515" y="62" text-anchor="middle" style="font-size:12.5px">5</text>
+<rect x="528" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="539" y="62" text-anchor="middle" style="font-size:12.5px">0</text>
+<rect x="552" y="40" width="22" height="34" rx="3" class="b-sunk"/><text class="t-c" x="563" y="62" text-anchor="middle" style="font-size:12.5px">,</text>
+<rect x="576" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="587" y="62" text-anchor="middle" style="font-size:12.5px">G</text>
+<rect x="600" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="611" y="62" text-anchor="middle" style="font-size:12.5px">B</text>
+<rect x="624" y="40" width="22" height="34" rx="3" class="b"/><text class="t-c" x="635" y="62" text-anchor="middle" style="font-size:12.5px">P</text>
+<g data-s="2-2">
+<text class="t-s t-bad" x="24" y="108">line.Split(',') makes a string[] plus 4 NEW strings: every character copied</text>
+<rect x="24" y="124" width="160" height="34" rx="6" class="b-bad"/><text class="t-c" x="34" y="146" style="font-size:12px">"2026-11-27"</text>
+<rect x="196" y="124" width="104" height="34" rx="6" class="b-bad"/><text class="t-c" x="206" y="146" style="font-size:12px">"TEA-01"</text>
+<rect x="312" y="124" width="76" height="34" rx="6" class="b-bad"/><text class="t-c" x="322" y="146" style="font-size:12px">"6.50"</text>
+<rect x="400" y="124" width="62" height="34" rx="6" class="b-bad"/><text class="t-c" x="410" y="146" style="font-size:12px">"GBP"</text>
+<rect x="474" y="124" width="96" height="34" rx="6" class="b-bad"/><text class="t-c" x="484" y="146" style="font-size:12px">string[4]</text>
+<text class="t-h t-bad" x="24" y="200">5 objects per line × 2,000,000 lines = 10 million objects</text><text class="t-s" x="24" y="222">…all garbage a moment later. The GC spends more time cleaning than the import spends working.</text>
+</g>
+<g data-s="3-3"><rect x="21" y="36" width="244" height="42" rx="6" fill="none" class="ln-acc" style="stroke-width:3"/></g><g data-s="4-4" data-mv="4:432,0"><rect x="21" y="36" width="100" height="42" rx="6" fill="none" class="ln-acc" style="stroke-width:3"/></g>
+<g data-s="3-3"><text class="t-s t-acc" x="24" y="108">ReadOnlySpan&lt;char&gt; field = line.AsSpan(0, 10);</text><text class="t-s" x="24" y="130">A span is just (where it starts, how long it is) over the SAME characters.</text><text class="t-s t-good" x="24" y="152">Nothing copied. Nothing allocated.</text></g>
+<g data-s="4-4"><text class="t-s t-acc" x="24" y="108">decimal.Parse(line.AsSpan(18, 4))</text><text class="t-s" x="24" y="130">Move the window to the price field and parse straight from the original text.</text><text class="t-h t-good" x="24" y="170">0 allocations per line</text><text class="t-s" x="24" y="192">The import that took 40 minutes finishes in a few.</text></g>
+<g data-s="5"><rect x="24" y="96" width="672" height="140" rx="10" class="b-deep"/>
+<text class="t-h" x="40" y="122">Why Span has strict rules (it's a "ref struct")</text>
+<text class="t-s" x="40" y="146">A span can point at stack memory, which vanishes when the method returns.</text>
+<text class="t-s" x="40" y="168">So the compiler never lets a span reach the heap: no class fields, no lambdas,</text>
+<text class="t-s" x="40" y="190">no await, no boxing. Need one of those? Use Memory&lt;T&gt;, the heap-safe cousin.</text>
+<text class="t-s t-good" x="40" y="218">The rules are what make "zero-copy" safe.</text></g>
+<text class="t-s" x="24" y="108" data-s="1-1">One string, 26 characters. You need four fields out of it, two million times a night.</text>
+</svg>

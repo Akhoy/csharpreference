@@ -113,7 +113,7 @@ public class Square : Rectangle
 void Resize(Rectangle r) { r.Width = 5; r.Height = 4; Debug.Assert(r.Area == 20); }   // fails for Square: Area = 16
 ```
 
-Trace through why `Resize` fails: it was written against `Rectangle`'s contract, where setting `Width` and `Height` independently should give an area equal to their product. `Square` can't honour that without breaking its own invariant — setting one side always forces the other to match — so *something* has to give, and it's always the caller's assumption. This is exactly why [OOP](ch:oop#virtual-override-and-new-three-keywords-that-look-similar-an) stressed that "is-a" in a type hierarchy has to mean "behaves like," not just "is mathematically a special case of."
+Trace through why `Resize` fails: it was written against `Rectangle`'s contract, where setting `Width` and `Height` independently should give an area equal to their product. `Square` can't honour that without breaking its own invariant — setting one side always forces the other to match — so *something* has to give, and it's always the caller's assumption. This is exactly why [OOP](ch:oop#virtual-override-and-new) stressed that "is-a" in a type hierarchy has to mean "behaves like," not just "is mathematically a special case of."
 
 Backend-flavoured violations:
 
@@ -213,7 +213,7 @@ DRY's caveat is worth dwelling on, because it's where people most often over-app
 
 ## Other principles worth naming {i}
 
-- **Composition over inheritance**: assemble behaviour from collaborators (decorators, strategies) instead of deep class hierarchies. See [OOP](ch:oop#composition-over-inheritance-why-is-a-chains-get-brittle).
+- **Composition over inheritance**: assemble behaviour from collaborators (decorators, strategies) instead of deep class hierarchies. See [OOP](ch:oop#inheritance-and-when-it-goes-wrong).
 - **Law of Demeter** (principle of least knowledge): talk to friends, not strangers. `order.Customer.Address.City.Name` couples you to four classes' structure; prefer `order.ShippingCity()`, or pass what's needed.
 - **Tell, Don't Ask**: instead of asking an object for data and making decisions for it, tell it what to do. `account.Withdraw(50)`, which enforces its own rule, beats `if (account.Balance >= 50) account.Balance -= 50;`. This is the root of rich domain models ([DDD](ch:ddd)).
 - **Separation of Concerns**: HTTP, business rules, persistence and presentation in different places.

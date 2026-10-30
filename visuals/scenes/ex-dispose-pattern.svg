@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Dispose(bool) can be reached two ways: your code calls Dispose (true, safe to touch other objects) or the GC's finalizer calls it (false, only free the native resource)">
+<defs><marker id="dp2-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<rect x="250" y="120" width="220" height="90" rx="12" class="b-acc"/><text class="t-c" x="262" y="144" style="font-size:12px">Dispose(bool disposing)</text>
+<text class="t-c" x="262" y="166" style="font-size:11px">if (disposing) free managed</text><text class="t-c" x="262" y="184" style="font-size:11px">free native memory (always)</text>
+<g data-s="1"><rect x="24" y="40" width="250" height="56" rx="10" class="b-good"/><text class="t-s" x="36" y="62">Your code: using / Dispose()</text><text class="t-c t-good" x="36" y="84" style="font-size:12px">Dispose(disposing: true)</text>
+<path d="M150,96 C150,120 220,140 244,150" class="ln" marker-end="url(#dp2-a)"/></g>
+<g data-s="2-2"><text class="t-s t-good" x="24" y="240">Path 1 (normal): disposing = true. Everything else is still alive,</text><text class="t-s t-good" x="24" y="258">so it's safe to dispose the other objects you hold, too.</text>
+</g><g data-s="2"><rect x="490" y="40" width="206" height="40" rx="8" class="b-sunk"/><text class="t-c" x="502" y="65" style="font-size:11px">GC.SuppressFinalize(this)</text><text class="t-m" x="490" y="96">"no need for path 2 now"</text></g>
+<g data-s="3"><rect x="446" y="226" width="250" height="56" rx="10" class="b-warn"/><text class="t-s" x="458" y="248">Nobody called Dispose: the GC's</text><text class="t-c t-warn" x="458" y="270" style="font-size:11.5px">finalizer → Dispose(false)</text>
+<path d="M570,226 C570,210 500,200 476,190" class="ln" marker-end="url(#dp2-a)"/></g>
+<g data-s="3-3"><text class="t-s t-warn" x="24" y="240">Path 2 (safety net): disposing = false. Other objects may already be</text><text class="t-s t-warn" x="24" y="258">gone, so ONLY free the raw native resource.</text></g>
+<text class="t-s" x="24" y="240" data-s="1-1">One cleanup method, two ways to reach it. The bool says which way you came.</text>
+<g data-s="4"><rect x="24" y="226" width="400" height="56" rx="10" class="b-info"/><text class="t-s" x="36" y="248">You only need this if you hold a RAW handle.</text><text class="t-s" x="36" y="268">Better still: wrap it in a SafeHandle.</text></g>
+</svg>

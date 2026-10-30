@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="new GiftCard() runs derived field initialisers, then base field initialisers, then the base constructor body, then the derived constructor body">
+<text class="t-cap" x="24" y="28">new GiftCard()  · GiftCard : PaymentMethod</text>
+<rect x="24" y="44" width="330" height="170" rx="12" class="b-sunk"/><text class="t-cap" x="40" y="66">PaymentMethod (the base)</text>
+<rect x="366" y="44" width="330" height="170" rx="12" class="b-sunk"/><text class="t-cap" x="382" y="66">GiftCard (the derived class)</text>
+<g data-hl="2"><rect x="40" y="80" width="298" height="50" rx="8" class="b"/><text class="t-c" x="52" y="102" style="font-size:12px">field initialisers</text><text class="t-m" x="52" y="120">_created = DateTime.UtcNow</text></g>
+<g data-hl="3"><rect x="40" y="144" width="298" height="56" rx="8" class="b"/><text class="t-c" x="52" y="166" style="font-size:12px">constructor body</text><text class="t-m" x="52" y="186">PaymentMethod() { … }</text></g>
+<g data-hl="1"><rect x="382" y="80" width="298" height="50" rx="8" class="b"/><text class="t-c" x="394" y="102" style="font-size:12px">field initialisers</text><text class="t-m" x="394" y="120">_code = "GC-1"</text></g>
+<g data-hl="4"><rect x="382" y="144" width="298" height="56" rx="8" class="b"/><text class="t-c" x="394" y="166" style="font-size:12px">constructor body</text><text class="t-m" x="394" y="186">GiftCard() { … }</text></g>
+<g data-s="1"><circle cx="668" cy="96" r="12" class="b-solid"/><text class="t-c t-w" x="668" y="101" text-anchor="middle" style="font-size:12px">1</text></g>
+<g data-s="2"><circle cx="326" cy="96" r="12" class="b-solid"/><text class="t-c t-w" x="326" y="101" text-anchor="middle" style="font-size:12px">2</text></g>
+<g data-s="3"><circle cx="326" cy="162" r="12" class="b-solid"/><text class="t-c t-w" x="326" y="167" text-anchor="middle" style="font-size:12px">3</text></g>
+<g data-s="4"><circle cx="668" cy="162" r="12" class="b-solid"/><text class="t-c t-w" x="668" y="167" text-anchor="middle" style="font-size:12px">4</text></g>
+<text class="t-s" x="24" y="240" data-s="1-1">1. The derived class's field initialisers run first, before any constructor body.</text>
+<text class="t-s" x="24" y="240" data-s="2-2">2. Then the base class's field initialisers.</text>
+<text class="t-s" x="24" y="240" data-s="3-3">3. Then the base constructor's body. The base part of the object is now fully built.</text>
+<text class="t-s" x="24" y="240" data-s="4-4">4. Only now does GiftCard's own constructor body run, safely using the finished base.</text>
+<g data-s="5"><rect x="24" y="226" width="672" height="64" rx="8" class="b-bad"/><text class="t-s t-bad" x="36" y="250">The trap: if step 3 calls a virtual method that GiftCard overrides, the override runs</text><text class="t-s t-bad" x="36" y="270">BEFORE step 4 has set GiftCard's fields. It sees a half-built object.</text></g>
+</svg>

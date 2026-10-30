@@ -1,457 +1,699 @@
 ---
 id: modern-csharp
-title: Modern C#: Nullability, Pattern Matching, Records and the C# 9–14 Toolkit
-summary: The features that make modern C# look different from old tutorials. Nullable reference types, pattern matching and switch expressions, records, init and required, tuples and deconstruction, extension methods and members, primary constructors, collection expressions, raw strings, and a version-by-version map.
+title: "Modern C#: Let the Compiler Catch It (Nullability, Patterns, Records)"
+summary: "Episode 9. A 3 a.m. NullReferenceException and 40-line data classes. Modern C# makes the compiler warn about nulls before you ship, replaces if/else chains with pattern matching, and turns data classes into one-line records. Covers nullable reference types, switch expressions and patterns, records, init and required, tuples, extension methods and members, top-level statements, primary constructors, collection expressions, raw strings, and a version-by-version map."
 layer: language
 where: C# language › Modern language features
-fits: Layer 1. These features don't add new runtime capabilities; they are mostly compiler features. But modern ASP.NET Core templates and samples (layer 3) use them everywhere: file-scoped namespaces, top-level `Program.cs`, records as DTOs, primary-constructor services. Knowing them lets you read current code fluently.
+fits: Layer 1. These are mostly compiler features with no new runtime abilities, but modern ASP.NET Core code (layer 3) uses them everywhere. File-scoped namespaces, top-level `Program.cs`, records as DTOs and primary-constructor services all come from here. Knowing them lets you read current code fluently.
 levels: b,i,a
 prereqs: type-system, oop
 next: advanced-csharp, building-apis
 ---
 
-## TL;DR
+## The 30-second version
 
-- None of this chapter's features add new runtime behavior — they're compiler conveniences that make modern code *look* different from older tutorials.
-- **Nullable reference types** are a compile-time-only warning system for possible nulls; they add **zero** runtime checks, so bad data from JSON/EF Core can still sneak a null through.
-- **Pattern matching** lets you test a value's *shape* (its type, its properties, a range) in `is`/`switch`, not just whether it equals a constant.
-- **Records** are for data that's equal by *value*, not identity; `with` gives you a non-destructively modified copy, never mutating the original.
-- **`init`/`required`** let a type force callers to set certain properties exactly once — checked by the compiler, and by JSON deserialization too.
-- **Extension methods/members** add capability to an existing type without touching its source — this is the exact mechanism behind `IServiceCollection.AddX()` everywhere in ASP.NET Core.
+- **Nullable reference types**: write `string?` for "may be null". The compiler then **tracks nulls through your code** and warns before you ship. It's compile-time only, so still check data at the edges of your app.
+- **Pattern matching**: `switch` expressions test a value's *shape* (`{ Total: >= 100 }`, `"GB" or "IE"`, `[first, .., last]`), and the compiler checks you covered every case.
+- **Records**: `record OrderDto(int Id, decimal Total);` is one line with value equality, `ToString` and `with`-copies built in. Use them for data, and classes for things with identity.
+- **`init` and `required`**: set once while the object is built, and *must* be set.
+- Plus **less ceremony**: top-level `Program.cs`, global usings, file-scoped namespaces, primary constructors, `[1, 2, 3]` collection expressions and raw `"""strings"""`.
 
-## Why this chapter exists {b}
+## Words you'll meet
 
-Picture a concrete moment: you open a pull request on a modern ASP.NET Core repo for the first time, and nothing looks like the tutorial you learned from. `Program.cs` has nine lines total and no `class`, no `Main`. A model class has one line and no body. A `switch` is missing its `default`, and somehow the compiler isn't complaining about it. None of that is new language *capability* — the CLR could always do everything this chapter describes — it's new *syntax*, added version by version, specifically to remove ceremony from code you'd otherwise have written longhand. We'll keep coming back to that one pull request through this chapter: each feature below is one more line in it starting to make sense.
+| Word | In plain words |
+|---|---|
+| **nullable reference type** | Writing `string?` to say "this might be null". Plain `string` then means "never null". |
+| **flow analysis** | The compiler following your code line by line to work out what's safe at each point. |
+| **null-forgiving `!`** | "Trust me, it isn't null." It silences a warning and checks nothing. |
+| **pattern** | A description of a value's shape, like `{ Total: >= 100 }` or `"GB" or "IE"`. |
+| **switch expression** | `x switch { pattern => result, … }`: a table of rules, tried from top to bottom. |
+| **record** | A type for data: two records with the same values are equal. |
+| **`with`** | Make a copy of a record with some values changed. |
+| **`init` / `required`** | Settable only while the object is built / must be set while it's built. |
+| **extension method** | A static method you can call with a dot, as if the type had it. |
 
-None of these features add new runtime capabilities the CLR couldn't already do — they're almost entirely compiler conveniences, syntax that compiles down to things you've already met elsewhere in this book. The goal here isn't to memorise which C# version introduced what; it's to recognise each feature on sight and know *why* someone reached for it, so reading real code stops requiring a lookup every few lines.
+## Previously, and the 3 a.m. page {b}
 
-| C# | .NET | Headline features |
-|---|---|---|
-| 7.x | Core 2.x | Tuples, deconstruction, `out var`, pattern matching (`is`), local functions, `ref` returns, `Span<T>` support |
-| 8 | Core 3.x | **Nullable reference types**, switch expressions, property patterns, async streams, `using` declarations, ranges `^1`/`..`, default interface methods |
-| 9 | 5 | **Records**, `init`, **top-level statements**, relational/logical patterns (`and`, `or`, `not`), target-typed `new()` |
-| 10 | 6 | **Global usings**, **file-scoped namespaces**, record structs, extended property patterns, constant interpolated strings |
-| 11 | 7 | **Raw string literals**, **`required` members**, list patterns, generic math (static abstract members), UTF-8 literals `"x"u8`, `file` types |
-| 12 | 8 | **Primary constructors** for classes, **collection expressions** `[1, 2]`, default lambda parameters, alias any type, `[Experimental]` |
-| 13 | 9 | `params` collections, new `System.Threading.Lock`, `\e` escape, partial properties, `ref struct` in generics (`allows ref struct`) |
-| 14 | 10 | **Extension members** (properties, static extensions), **`field` keyword**, null-conditional assignment `a?.B = x`, `nameof` with unbound generics, implicit span conversions |
+In [Episode 8](ch:async-await) Kettle survived Black Friday. At 3 a.m. the pager goes off. Shipping-label generation is crashing:
 
-## Nullable reference types: making a silent killer visible at compile time {b}
-
-`NullReferenceException` is, by most accounts, the single most common runtime crash in C# history — a reference you assumed couldn't be null, turning out to be null, discovered only when the line actually executes. **Nullable reference types**, turned on with `<Nullable>enable</Nullable>` (the default in new project templates), attack this problem at compile time instead of leaving it to be discovered at runtime: the compiler starts treating every reference type as **non-nullable by default**, and tracks, flow-sensitively, line by line, whether a given reference could possibly be null at each point in your code.
-
+:::walk The 3 a.m. crash, step by step
 ```csharp
-public class Customer
+var customers = new[]
 {
-    public string Email { get; set; } = "";     // never null
-    public string? MiddleName { get; set; }      // may be null
-}
+    new Customer("Ada", new Address("SW1A 1AA")),
+    new Customer("Bob", null),                    // signed up, never entered an address
+};
 
-void Print(Customer c)
-{
-    Console.WriteLine(c.Email.Length);           // fine
-    Console.WriteLine(c.MiddleName.Length);      // ⚠ CS8602: possible null dereference
-    if (c.MiddleName is not null)
-        Console.WriteLine(c.MiddleName.Length);  // fine: compiler knows it's not null here
-}
+foreach (var c in customers)
+    Console.WriteLine($"Label for {c.Name}: {c.Address.Postcode}");   // 💥 for Bob
+
+record Address(string Postcode);
+record Customer(string Name, Address Address);
 ```
+@10-11 | -
+`Customer` has an `Address`. The type says nothing about whether it can be missing.
+@1-5 | customers = [Ada → Address(SW1A 1AA), Bob → null]
+Bob signed up and never entered an address, so his `Address` is `null`: an arrow that points at nothing.
+@7-8 | c = Ada ; c.Address = → Address(SW1A 1AA) | > Label for Ada: SW1A 1AA
+Ada's address exists, so `.Postcode` follows the arrow and reads it.
+@7 | c = Bob ; c.Address = null
+Next customer.
+@8 | c = Bob ; c.Address = null | ! NullReferenceException: Object reference not set to an instance of an object.
+`c.Address.Postcode` tries to follow an arrow that points nowhere, and the program crashes. Everything after this, every other customer's label, never happens. Press **Run** to see the real crash.
+:::
 
-Notice the third line doesn't warn, even though it's accessing the exact same `MiddleName` property the second line warned about — the compiler is tracking the *flow* of your code, and by the time execution reaches inside the `if`, it has proven, from the `is not null` check, that a null dereference here is impossible. This is genuinely flow analysis, not a blunt "this property is marked nullable so always warn" rule.
+Ada's label prints, then **`NullReferenceException`**. It's the most common crash in C# history. The type said `Address`, the data said "nothing", and nothing warned anyone until a customer hit it in production.
+
+And the crash didn't just skip Bob. The label job ran as one loop over the night's orders, so one bad customer stopped it halfway. Four hundred parcels missed the morning van. The fix took one line. Finding it took two hours, at night, from a stack trace.
+
+## The lightbulb: make the compiler worry about it {b}
+
+The bug wasn't really the missing address. The bug was that the *code* had no way to say **"an address might be missing"**. So the compiler couldn't remind you to handle it.
+
+Modern C# lets you say it. With **nullable reference types** turned on (`<Nullable>enable</Nullable>`, the default in new projects), a plain `Address` means **"never null"** and `Address?` means **"might be null"**. The compiler then follows your code line by line, a technique called **flow analysis**, and warns wherever you use a maybe-null value without checking it.
+
+That's the theme of this whole episode: modern C# features mostly **move mistakes from runtime to compile time**, and cut the boilerplate while they're at it.
+
+## Nullable reference types: the compiler tracks maybe-null {b}
+
+:::scene visuals/scenes/mod-null-flow.svg | Following a maybe-null value through your code
+1. `Address?` says "this can be missing". From now on the compiler treats `Address` as **maybe null**.
+2. `c.Address.Postcode` uses it without a check, so you get **warning CS8602: possible null dereference**. The 3 a.m. crash shows up as a squiggle while you type.
+3. `if (c.Address is null) return …;` After this line the compiler **knows** `Address` isn't null.
+4. The same `c.Address.Postcode` is now provably safe, with no warning. The compiler followed your logic.
+5. The catch: this is **compile-time only**. JSON with a missing field, a database `NULL` or old un-annotated code can still give you `null` at runtime. Check data where it enters your app.
+:::
+
+The fixed Kettle code:
+
+:::walk The fix: say "might be missing", then handle it
+```csharp
+var customers = new[] { new Customer("Ada", new Address("SW1A 1AA")), new Customer("Bob", null) };
+foreach (var c in customers) Console.WriteLine(LabelFor(c));
+
+static string LabelFor(Customer c)
+{
+    if (c.Address is null) return $"{c.Name}: no address, so offer click & collect";
+    return $"{c.Name}: ship to {c.Address.Postcode}";    // the compiler knows Address isn't null here
+}
+
+record Address(string Postcode);
+record Customer(string Name, Address? Address);         // ← the ? is the whole fix: "may be missing"
+```
+@11 | -
+The whole fix starts with one character: `Address?`. Now the type **says** an address may be missing, and the compiler holds you to it. Writing `c.Address.Postcode` without a check would now be a warning in your editor.
+@2 | c = Ada
+Make a label for each customer.
+@6 | c = Ada ; c.Address = → Address(SW1A 1AA)
+Check first. Ada has an address, so carry on.
+@7 | | > Ada: ship to SW1A 1AA
+After the check, the compiler **knows** `Address` isn't null here, so there's no warning.
+@6 | c = Bob ; c.Address = null | > Bob: no address, so offer click & collect
+Bob has no address. Instead of crashing, the code takes the path for missing addresses, and the loop carries on to the next customer.
+:::
+
+The null toolkit:
 
 | Syntax | Meaning |
 |---|---|
-| `string?` | May be null |
-| `x?.Prop` | Null-conditional: `null` if x is null |
-| `x ?? fallback` | Null-coalescing |
-| `x ??= value` | Assign if null |
-| `x!` | **Null-forgiving**: "trust me, it isn't null". Suppresses the warning only; use sparingly |
-| `a?.B = x` (C# 14) | Assign only if `a` isn't null |
-| `[NotNullWhen(true)]`, `[MaybeNull]`, `[NotNull]`, `[MemberNotNull]` | Attributes that teach the compiler about your API's null behaviour |
+| `string?` | may be null |
+| `x?.Prop` | `null` if `x` is null, otherwise `x.Prop` |
+| `x ?? fallback` | use `fallback` if `x` is null |
+| `x ??= value` | assign only if `x` is null |
+| `x!` | **null-forgiving**: "trust me". It silences the warning and checks nothing. Use it rarely |
+| `[NotNullWhen(true)]` and friends | teach the compiler your method's null rules |
 
-That last row matters more than it looks, because the compiler can only track what it's been told:
-
+:::walk The null operators
 ```csharp
-public bool TryFind(int id, [NotNullWhen(true)] out Order? order) { /* ... */ }
-
-if (TryFind(5, out var o)) Console.WriteLine(o.Total);   // no warning: o is known non-null here
+string? coupon = null;
+Console.WriteLine(coupon?.ToUpper() ?? "(no coupon)");   // ?. then ??
+coupon ??= "WELCOME10";
+Console.WriteLine(coupon);
 ```
-
-Without `[NotNullWhen(true)]`, the compiler has no way to know that `order` is guaranteed non-null specifically when `TryFind` returns `true` — it would warn on `o.Total` regardless. The attribute is you teaching the compiler your own API's actual null-contract, so its flow analysis stays accurate through your own methods, not just the BCL's.
-
-:::gotcha The analysis is entirely compile-time — nothing here checks anything at runtime
-This is the single most important thing to understand about the whole feature: nullable reference types add **zero runtime checks**. They're purely a compile-time warning system, built from static analysis of code *you wrote*. JSON deserialisation can still hand you a null where you declared `string`, not `string?`, if the JSON itself was missing that field. EF Core materialising a row with a database `NULL` can do the same. Reflection, or a caller in an assembly built with nullability disabled, bypasses the whole system entirely, because the check never existed at runtime to bypass. The practical response: validate at your actual trust boundaries anyway (`ArgumentNullException.ThrowIfNull`), and seriously consider making nullable warnings into build errors (`<WarningsAsErrors>nullable</WarningsAsErrors>`) — a warning nobody's forced to fix tends to quietly accumulate until it's ignored entirely.
+@1 | coupon = null
+A coupon that hasn't been entered.
+@2 | | > (no coupon)
+`coupon?.ToUpper()` means "call `ToUpper` only if `coupon` isn't null". It's null, so the whole expression is `null`. Then `??` supplies a fallback.
+@3 | coupon = "WELCOME10"
+`??=` assigns only if the variable is currently null.
+@4 | | > WELCOME10
 :::
 
-The feature does reach further than your own code, though: **EF Core and ASP.NET Core both read these annotations and act on them.** In EF Core, a `string` property becomes a `NOT NULL` database column and `string?` becomes nullable, inferred directly from your nullability annotation rather than needing a separate `[Required]` attribute. In ASP.NET Core model validation, a non-nullable property is implicitly treated as `[Required]` for the same reason — the annotation you wrote for the compiler's benefit gets reused as real, meaningful metadata elsewhere in the framework.
+That last row matters for your own `Try…` methods:
 
-## Pattern matching: testing a value's shape, not just its identity {b}
+```csharp norun
+public bool TryFind(int id, [NotNullWhen(true)] out Order? order) { … }
 
-A **pattern** tests whether a value has a particular *shape* — not just "does it equal this constant", but "is it this type, with these properties, satisfying this condition". Patterns work inside `is` expressions, `switch` statements, and switch expressions alike:
+if (TryFind(5, out var o)) Console.WriteLine(o.Total);   // no warning: o is non-null when it returned true
+```
 
-| Pattern | Example | Matches when |
+**EF Core and ASP.NET Core read these annotations too.** A `string` property becomes a `NOT NULL` column and `string?` becomes nullable. A non-nullable property in a request model is treated as required.
+
+:::qa What are nullable reference types and do they prevent NullReferenceException at runtime?
+A compiler feature, enabled with `<Nullable>`, that treats reference types as non-null by default. `T?` then means "may be null", and the compiler uses flow analysis to warn about possible null dereferences. It's compile-time only, with no runtime checks, so values from deserialisation, reflection or unannotated code can still be null. Validate at the boundaries.
+:::
+
+:::qa What does the null-forgiving operator (!) do?
+`x!` tells the compiler to treat `x` as non-null and suppresses the warning. It does nothing at runtime: if `x` is actually null, you still get a NullReferenceException later. Use it only when you know something the compiler can't, such as values set by a framework, and prefer real checks or nullability attributes.
+:::
+
+## Pattern matching: test the shape of a value {b}
+
+Next, the shipping-fee rules. Written the old way, they turn into an `if/else` maze:
+
+```csharp norun
+if (order.Total >= 100) fee = 0;
+else if (order.Customer.IsVip) fee = 0;
+else if (order.Country == "GB" || order.Country == "IE") fee = 3.95m;
+else if (order.Country != null) fee = 12.90m;
+else throw new InvalidOperationException("No country");
+```
+
+A **switch expression** says the same thing as a table of rules. Each arm is a **pattern**, a description of the *shape* a value must have:
+
+:::walk Rules as a table, tried from the top
+```csharp
+Console.WriteLine(Fee(new Order(120m, false, "FR")));   // 0
+Console.WriteLine(Fee(new Order(40m, true, "FR")));     // 0
+Console.WriteLine(Fee(new Order(40m, false, "IE")));    // 3.95
+Console.WriteLine(Fee(new Order(40m, false, "US")));    // 12.90
+
+static decimal Fee(Order o) => o switch
+{
+    { Total: >= 100 }            => 0m,        // property + relational pattern
+    { IsVip: true }              => 0m,
+    { Country: "GB" or "IE" }    => 3.95m,     // logical "or" pattern
+    { Country: not null }        => 12.90m,
+    _                            => throw new InvalidOperationException("No country"),
+};
+
+record Order(decimal Total, bool IsVip, string? Country);
+```
+@6-13 | -
+Each arm is a **pattern**: a description of a shape. The first arm that matches wins.
+@1 | o = Order(Total 120, not VIP, FR)
+A £120 order to France.
+@8 | o = Order(Total 120, not VIP, FR) | > 0
+First arm: is `Total` at least 100? Yes, so free shipping. The other arms aren't even checked.
+@2 | o = Order(Total 40, VIP, FR)
+A £40 order from a VIP.
+@9 | o = Order(Total 40, VIP, FR) | > 0
+The first arm fails (40 < 100). The second asks "is `IsVip` true?", and it is.
+@3 | o = Order(Total 40, not VIP, IE)
+A £40 order to Ireland.
+@10 | o = Order(Total 40, not VIP, IE) | > 3.95
+Not over 100, not VIP, but `Country` is `"GB" or "IE"`.
+@4 | o = Order(Total 40, not VIP, US)
+A £40 order to the US.
+@11 | o = Order(Total 40, not VIP, US) | > 12.90
+Only "has a country at all" matches.
+@12 | -
+And an order with no country falls through to `_`, which matches anything. If you deleted this arm, the compiler would warn that some inputs aren't handled.
+:::
+
+:::scene visuals/scenes/mod-switch.svg | One order, tried against each arm
+1. The arms are tried **from the top**. The first asks: is `Total` at least 100? For this order it's 40, so no.
+2. Next arm: is this a VIP customer? No.
+3. Next: is `Country` "GB" or "IE"? Yes. The **first match wins**.
+4. The result is `3.95m`, and the arms below are never even checked. So order matters: put specific rules first.
+:::
+
+The arms are tried **top to bottom**, and the first match wins. The compiler also checks two things for you. **Exhaustiveness**: you get a warning if some input matches no arm. **Subsumption**: you get an error if an arm can never be reached because an earlier one already catches everything it would.
+
+The pattern kinds:
+
+| Pattern | Example | Matches when… |
 |---|---|---|
-| Type / declaration | `o is Order order` | `o` is an `Order` (binds it) |
-| Constant | `x is null`, `status is OrderStatus.Paid` | Equal to a constant |
-| Relational | `age is >= 18` | Comparison holds |
-| Logical | `c is >= 'a' and <= 'z'`, `x is not null`, `s is "y" or "yes"` | Combined |
-| Property | `o is { Status: OrderStatus.Paid, Total: > 100 }` | Properties match nested patterns |
-| Extended property | `o is { Customer.Country: "DE" }` | Nested member path |
-| Positional | `point is (0, 0)` | Deconstruct and match |
-| List | `args is [var first, .., var last]`, `[_, _]` | Sequence shape |
-| Discard / var | `_`, `var x` | Anything |
+| Type | `o is Order order` | it's an `Order`, and it's bound to `order` |
+| Constant | `status is OrderStatus.Paid`, `x is null` | it equals the constant |
+| Relational | `qty is > 0 and <= 10` | the comparison holds |
+| Logical | `s is "y" or "yes"`, `x is not null` | `and` / `or` / `not` combine |
+| Property | `{ Status: Paid, Total: > 100 }` | its properties match |
+| Nested property | `{ Customer.Country: "GB" }` | a member path matches |
+| List | `[var first, .., var last]`, `[]` | a sequence has that shape |
+| Discard | `_` | anything |
 
+:::walk Patterns for the shape of a list
 ```csharp
-public static decimal ShippingFee(Order o) => o switch
-{
-    { Total: >= 100 }                                  => 0m,
-    { Customer.IsVip: true }                           => 0m,
-    { ShippingAddress.Country: "DE" or "AT" or "CH" }  => 4.90m,
-    { ShippingAddress.Country: not null }              => 12.90m,
-    _ => throw new InvalidOperationException("No shipping address")
-};
+Console.WriteLine(Describe([]));
+Console.WriteLine(Describe(["Sencha"]));
+Console.WriteLine(Describe(["Sencha", "Assam", "Rooibos", "Chai"]));
 
-public static IResult ToHttp<T>(Result<T> r) => r switch
+static string Describe(string[] teas) => teas switch
 {
-    { IsSuccess: true } => Results.Ok(r.Value),
-    { Error.Code: var c } when c.EndsWith("not_found") => Results.NotFound(),
-    { Error.Code: "conflict" } => Results.Conflict(),
-    _ => Results.BadRequest(r.Error)
-};
-
-string Describe(int[] xs) => xs switch
-{
-    [] => "empty",
-    [var only] => $"one item: {only}",
-    [var first, .. var middle, var last] => $"{first}…{last} ({middle.Length} in between)"
+    []                                   => "empty basket",
+    [var only]                           => $"just {only}",
+    [var first, .. var middle, var last] => $"{first} … {last} ({middle.Length} in between)",
 };
 ```
-
-That's exactly the missing `default` from the pull request at the start of this chapter — it wasn't an oversight the reviewer should have caught. What makes `switch` expressions genuinely safer than an old-style `if`/`else` chain, not just shorter, is what the compiler checks on your behalf: it checks **exhaustiveness** — a compiler warning if your arms don't provably cover every possible case — and **subsumption**, an error if an earlier arm already matches everything a later arm would, making that later arm permanently unreachable dead code. A switch expression that genuinely finds no matching arm at runtime (something exhaustiveness checking is supposed to prevent, but — as Microsoft's own docs note — can't always guarantee for every pattern shape, list patterns among them) throws `SwitchExpressionException` rather than silently doing nothing.
-
-![A switch expression tries each arm in source order and stops at the first match; arms after it never run](visuals/switch-arms-narrowing.svg)
-
-## Records: types built for carrying data, not identity {b}
-
-A **record** is designed around a different default assumption from a class: that two instances with the same data genuinely *are* the same thing, rather than being two distinct objects that happen to look alike. To make that assumption cheap to express, the compiler generates value-based `Equals`/`GetHashCode`, a readable `ToString`, `Deconstruct`, a copy constructor, and support for `with` — all automatically, from a one-line declaration:
-
-```csharp
-public record ProductDto(int Id, string Name, decimal Price);       // positional record class
-
-var a = new ProductDto(1, "Mouse", 20m);
-var b = a with { Price = 18m };                 // non-destructive mutation: a copy with one change
-Console.WriteLine(a == new ProductDto(1, "Mouse", 20m));   // True: value equality
-Console.WriteLine(a);                           // ProductDto { Id = 1, Name = Mouse, Price = 20 }
-var (id, name, _) = a;                          // deconstruction
-
-public record struct Point(int X, int Y);       // value-type record (mutable by default)
-public readonly record struct Money(decimal Amount, string Currency);
-
-public abstract record Shape;                   // records support inheritance (record classes)
-public sealed record Circle(double Radius) : Shape;
-```
-
-That `a == new ProductDto(1, "Mouse", 20m)` line returning `True` is the whole point made concrete: these are two entirely separate objects in memory, yet `==` says they're equal, because a record's equality compares *values*, field by field, not references — exactly the "Records" row from [Type system](ch:type-system#equality-three-different-questions-similar-syntax)'s equality table. `with` gives you non-destructive updates on top of that: `b` is a brand-new object, a full copy of `a` except for the one property you named, leaving `a` itself completely untouched.
-
-| Use a record for | Use a class for |
-|---|---|
-| DTOs, API request/response models | Entities with identity and lifecycle (EF Core entities) |
-| Commands, queries, events, messages | Services with dependencies and behaviour |
-| Value objects (Money, Address) | Mutable objects with complex invariants |
-| Configuration snapshots, results | Anything where reference identity matters |
-
-:::gotcha A record's generated equality is shallow — and that can genuinely surprise you
-`public record Cart(List<Item> Items);` looks immutable, and in one sense it is — nothing stops you reassigning `Cart.Items` to a different list after construction, true, but that's not the trap. The real trap: `cart.Items.Add(...)` still works perfectly fine, because the `List<Item>` itself was never made immutable, only the record's own property is "init-only". And the generated equality compares the **list reference**, not its contents — two carts holding lists with identical items, added in the same order, won't be considered equal unless they happen to share the exact same `List<Item>` instance. If you need genuine deep immutability and deep equality, use `IReadOnlyList<T>` or `ImmutableArray<T>` for the property, and write custom equality logic if the default field-by-field comparison isn't what you actually need.
+@1 | teas = [ ]
+An empty basket.
+@7 | teas = [ ] | > empty basket
+`[]` matches an empty array.
+@2 | teas = [Sencha]
+One tea.
+@8 | teas = [Sencha] ; only = Sencha | > just Sencha
+`[var only]` matches exactly one item and **names** it.
+@3 | teas = [Sencha, Assam, Rooibos, Chai]
+Four teas.
+@9 | first = Sencha ; middle = [Assam, Rooibos] ; last = Chai | > Sencha … Chai (2 in between)
+`[var first, .. var middle, var last]` names the first and last, and `..` collects everything between them.
 :::
 
-## init and required: forcing the caller to set what matters {b}
+:::qa Explain switch expressions and property patterns.
+A switch expression (`x switch { pattern => value, … }`) evaluates arms top to bottom and returns the first match. The compiler warns when the arms aren't exhaustive and errors on unreachable arms. Property patterns like `{ Status: Paid, Total: > 100 }` match on members, and can nest, combine with `and`/`or`/`not`, and use relational operators.
+:::
 
+## Records: data classes in one line {b}
+
+Kettle has dozens of small "just data" types: API requests, responses, events. As classes, each one needs equality, `ToString` and copying written by hand, about 40 lines of boilerplate per type that has to be kept in sync.
+
+A **record** is a type designed for **data**. Two records with the same values *are* equal, and the compiler writes everything else.
+
+:::scene visuals/scenes/mod-records.svg | 40 lines of boilerplate, or one line
+1. A plain class with three fields. Two instances with **identical data** are **not** `==`, because a class compares references (two objects means "different").
+2. To make it behave like data, you'd hand-write `Equals`, `GetHashCode`, `==`, `!=`, `ToString`, `Deconstruct` and a copy method. That's about 40 lines to keep in sync every time a field changes.
+3. **`record OrderDto(int Id, string Tea, decimal Total);`** is one line. The compiler generates all of it, so identical data is now `==`, and `ToString` is readable.
+4. **`with`** makes a changed **copy**. The original is untouched, so records are safe to pass around and share.
+:::
+
+:::walk What a one-line record gives you
 ```csharp
-public class CreateOrderRequest
+var a = new OrderDto(1, "Sencha", 6m);
+var b = a with { Total = 9m };                            // a copy with one change
+
+Console.WriteLine(a);                                     // OrderDto { Id = 1, Tea = Sencha, Total = 6 }
+Console.WriteLine(a == new OrderDto(1, "Sencha", 6m));    // True: compared by value
+Console.WriteLine($"{a.Total} → {b.Total}");              // 6 → 9: a didn't change
+var (id, tea, _) = a;                                     // deconstruction
+Console.WriteLine($"{id}: {tea}");
+
+public record OrderDto(int Id, string Tea, decimal Total);        // record class (a reference type)
+public readonly record struct Money(decimal Amount, string Currency);   // record struct (a value type)
+```
+@10 | -
+One line. The compiler writes the constructor, the properties, `Equals`, `GetHashCode`, `==`, `ToString`, `Deconstruct` and copying.
+@1 | a = → OrderDto { Id = 1, Tea = Sencha, Total = 6 }
+Create one.
+@2 | a = → OrderDto { 1, Sencha, 6 } ; b = → OrderDto { 1, Sencha, 9 } (a new object)
+`with` makes a **copy** with one property changed. `a` is untouched.
+@4 | | > OrderDto { Id = 1, Tea = Sencha, Total = 6 }
+The generated `ToString` shows the data. That's useful in logs.
+@5 | | > True
+A separate object with the same values is `==`, because records compare by value.
+@6 | | > 6 → 9
+The original kept its 6, so a record is safe to pass around: nobody can change it under you.
+@7-8 | id = 1 ; tea = Sencha | > 1: Sencha
+Deconstruction pulls the values out into variables. `_` skips the one you don't need.
+:::
+
+| Use a **record** for | Use a **class** for |
+|---|---|
+| API requests and responses (DTOs) | EF Core entities (they have identity and a lifecycle) |
+| Commands, queries, events, messages | Services with dependencies and behaviour |
+| Value objects (`Money`, `Address`) | Objects with complex rules that change over time |
+
+:::gotcha Record equality is shallow
+`record Basket(List<string> Items)` compares the **list reference**, not its contents. Two baskets with identical items in different `List` objects are **not** equal. And `basket.Items.Add(…)` still works, because the record is immutable but the list inside it isn't. For real value semantics, use immutable collections or override `Equals`.
+:::
+
+:::qa What is a record and how is it different from a class?
+A record is a type with compiler-generated value-based equality, `GetHashCode`, `ToString`, `Deconstruct` (for positional records) and `with`-expression support. It's designed for immutable data. Classes compare by reference by default. A `record` is a reference type and a `record struct` is a value type.
+:::
+
+## init and required: set once, and don't forget {b}
+
+:::plain
+Some properties should be set exactly once, when the object is created, and some must never be forgotten. `init` handles the first and `required` the second, and the compiler enforces both.
+:::
+
+:::scene visuals/scenes/mod-init.svg | The window where init and required apply
+1. `new CreateOrderRequest { … }` runs the **constructor** first, as always.
+2. Then comes the **`{ … }` window**, the object initialiser. Here `init` properties may be set, and `required` ones must be.
+3. Leave out a `required` member and it's **compile error CS9035**. You find out now, not at 3 a.m.
+4. Once the object is built, it's **locked**: assigning an `init` property later is also a compile error.
+5. In short, **`init`** answers "*when* may this be set?" (only during creation), and **`required`** answers "*must* it be set?" (yes). Together they mean set once and never forgotten.
+:::
+
+:::walk Set once, and you can't forget
+```csharp
+var req = new CreateOrderRequest { CustomerId = 42, Teas = ["Sencha"] };
+Console.WriteLine($"{req.CustomerId}: {string.Join(",", req.Teas)}, coupon {req.Coupon ?? "none"}");
+
+// var bad = new CreateOrderRequest { CustomerId = 42 };   // ✗ CS9035: required member 'Teas' not set
+// req.CustomerId = 7;                                      // ✗ init-only: locked after creation
+
+class CreateOrderRequest
 {
-    public required int CustomerId { get; init; }        // must be set; can't change afterwards
-    public required List<LineDto> Lines { get; init; }
-    public string? CouponCode { get; init; }              // optional, still immutable after init
+    public required int CustomerId { get; init; }
+    public required List<string> Teas { get; init; }
+    public string? Coupon { get; init; }                     // optional, but still locked once set
+}
+```
+@9-11 | -
+`required` means "you must set this when you create the object". `init` means "you can only set it then".
+@1 | req = → CreateOrderRequest { CustomerId = 42, Teas = [Sencha], Coupon = null }
+Both required properties are set. `Coupon` is optional, so it's left as `null`.
+@2 | | > 42: Sencha, coupon none
+@4 | ! CS9035: Required member 'CreateOrderRequest.Teas' must be set in the object initializer
+Forget `Teas` and the build fails. With a plain property, you'd find out from a customer whose order had no items. (Commented out so the rest runs.)
+@5 | ! CS8852: Init-only property 'CustomerId' can only be assigned in an object initializer
+And once the object exists, it's locked. A request can't be quietly changed halfway through handling it.
+:::
+
+- **`init`** decides *when* a property can be set: only while the object is being created.
+- **`required`** decides *whether* it must be set. Forget it and you get a **compile error**. `System.Text.Json` respects it too, so missing JSON fields become errors instead of silent defaults.
+
+:::qa What's the difference between init and required?
+`init` makes a property settable only during object initialisation, after which it's read-only. `required` forces callers to set the member when they create the object, or they get a compile error. They're often combined as `required … { get; init; }`, and `System.Text.Json` enforces `required` during deserialisation.
+:::
+
+## Tuples: quick multi-value returns {b}
+
+:::walk Return two things without a class
+```csharp
+var teas = new[] { 6.50m, 4.25m, 9.00m };
+var (count, total) = Summarise(teas);              // deconstruct into two variables
+Console.WriteLine($"{count} teas, £{total}");
+
+var a = 1; var b = 2;
+(a, b) = (b, a);                                   // swap without a temp variable
+Console.WriteLine($"{a} {b}");
+
+static (int Count, decimal Total) Summarise(decimal[] prices) => (prices.Length, prices.Sum());
+```
+@1 | teas = [6.50, 4.25, 9.00]
+Three prices.
+@9 | -
+The return type `(int Count, decimal Total)` is a **tuple**: two values with names, no class needed.
+@2 | count = 3 ; total = 19.75
+Deconstruct the result straight into two variables.
+@3 | | > 3 teas, £19.75
+@5 | a = 1 ; b = 2
+Two variables.
+@6 | a = 2 ; b = 1
+Tuples also swap two variables in one line, without a temporary.
+@7 | | > 2 1
+:::
+
+A tuple is a mutable struct with no real name. That's great for a quick **private** return of two or three values. For anything public, persisted or sent over the wire, use a record: it gets real names and can evolve.
+
+:::qa What are tuples good for and when would you avoid them?
+They're lightweight `ValueTuple` structs for returning or grouping a few values locally, with names and deconstruction. Avoid them in public APIs, persisted data or anything that crosses a boundary. Use a record there instead, for clear names, versioning and serialisation.
+:::
+
+## Extension methods and extension members {i}
+
+:::plain
+An extension method lets you call your own helper with a dot, as if the type had always had it. Underneath, it's an ordinary static method that takes the object as its first argument.
+:::
+
+An **extension method** adds a method to a type you don't own. It's really a static method whose first parameter has `this`:
+
+:::scene visuals/scenes/mod-extension.svg | What `price.AsPounds()` really is
+1. `price.AsPounds()` looks as if `decimal` suddenly has a new method.
+2. It doesn't. The compiler rewrites the call into a plain static call: `KettleExtensions.AsPounds(price)`.
+3. The word **`this`** on the first parameter is what allows the dot syntax. `price` becomes that argument.
+4. That's why an extension can't see private members: it's just an outside method that's handed the object. All of LINQ, and every `builder.Services.AddXyz()`, is this same trick.
+:::
+
+:::walk A method that looks built in, but isn't
+```csharp
+var price = 12.5m;
+Console.WriteLine(price.AsPounds());            // reads like a built-in method
+Console.WriteLine("earl grey".ToTitle());
+
+static class KettleExtensions
+{
+    public static string AsPounds(this decimal amount) => $"£{amount:0.00}";
+    public static string ToTitle(this string s) =>
+        string.Join(" ", s.Split(' ').Select(w => char.ToUpper(w[0]) + w[1..]));
+}
+```
+@1 | price = 12.5
+A price.
+@2 | amount = 12.5
+`price.AsPounds()` looks like a method on `decimal`. The compiler rewrites it into `KettleExtensions.AsPounds(price)`.
+@7 | amount = 12.5 | > £12.50
+The `this` on the first parameter is what makes the dot syntax work. The method is ordinary static code outside the type, so it can't see `decimal`'s private members.
+@3 | s = "earl grey"
+Same trick on `string`.
+@8-9 | s = "earl grey" | > Earl Grey
+Split into words, capitalise each first letter, join again.
+:::
+
+You've used hundreds of them already. **All of LINQ** is extension methods on `IEnumerable<T>` ([Episode 6](ch:linq)). So is every `builder.Services.AddXyz()` and `app.MapXyz()` in ASP.NET Core. That's how libraries plug themselves in:
+
+```csharp norun
+public static IServiceCollection AddKettleOrdering(this IServiceCollection services, IConfiguration config)
+{
+    services.AddScoped<IOrderService, OrderService>();
+    services.AddOptions<OrderingOptions>().Bind(config.GetSection("Ordering")).ValidateOnStart();
+    return services;    // returned so calls can be chained
 }
 
-var req = new CreateOrderRequest { CustomerId = 42, Lines = [] };   // ✔
-var bad = new CreateOrderRequest { CustomerId = 42 };               // ✘ CS9035: required member 'Lines' not set
-req.CouponCode = "X";                                               // ✘ init-only
+builder.Services.AddKettleOrdering(builder.Configuration);
 ```
 
-These two keywords solve two separate, complementary problems. `init` restricts *when* a property can be set — only during object initialisation, never afterward — giving you immutability without needing a big, repetitive constructor to enforce it. `required` (C# 11) goes further, forcing the *compiler* to check that a caller actually set a given property at all; skip `Lines` on construction and you get `CS9035`, a compile error, rather than discovering a silently-empty list of order lines at runtime. The combination of the two, `required ... { get; init; }`, is as close as C# gets to "the caller absolutely must provide this, and nothing can ever change it afterward" — all enforced before the code even runs.
+**Extension members** (C# 14) extend the idea to **properties** and static members, with an `extension` block:
 
-This isn't purely a compile-time nicety either: `required` is understood by `System.Text.Json` too, so a missing JSON property for a `required` member causes an actual deserialisation error, rather than silently leaving it at its default. `[SetsRequiredMembers]` on a constructor is the escape hatch for when you're providing an alternative way to guarantee the required members are set, telling the compiler "trust this constructor, it covers them all."
-
-## Tuples and deconstruction {b}
-
-```csharp
-(int Count, decimal Total) Summarise(IEnumerable<Order> orders) => (orders.Count(), orders.Sum(o => o.Total));
-
-var (count, total) = Summarise(orders);              // deconstruct
-var summary = Summarise(orders);
-Console.WriteLine(summary.Total);                    // named elements
-(a, b) = (b, a);                                     // swap without a temp variable
-
-foreach (var (key, value) in dictionary) { }         // KeyValuePair deconstruction
-```
-
-`ValueTuple`, what `(int, decimal)` actually is underneath, is a **mutable struct** — which immediately tells you where it belongs and where it doesn't, by the same reasoning from [Type system](ch:type-system#when-a-struct-actually-earns-its-keep): fine for a quick, **private or internal** multi-value return where defining a whole named type feels like overkill, but the wrong choice for a public API or anything persisted. A record gives you named, evolvable, properly-serialisable members for a few extra characters — worth it the moment the value crosses a real boundary.
-
-## Extension methods and extension members: adding capability without touching the original type {i}
-
-**Extension methods** (a C# 3 feature — old enough that you've definitely already used dozens without necessarily naming the mechanism) let you add methods to an existing type without touching its source at all. Under the hood they're ordinary static methods in a static class, where the first parameter carries a `this` modifier. LINQ's entire operator set, `IServiceCollection.AddXyz()`, `app.MapXyz()` — all of these are extension methods. That's precisely why `IServiceCollection` itself, a tiny interface at its core, seems to have an enormous API surface once you count every library's extension methods on top of it.
-
-```csharp
-public static class ServiceCollectionExtensions
-{
-    public static IServiceCollection AddOrdering(this IServiceCollection services, IConfiguration config)
-    {
-        services.AddScoped<IOrderService, OrderService>();
-        services.AddOptions<OrderingOptions>().Bind(config.GetSection("Ordering")).ValidateOnStart();
-        return services;                 // return for fluent chaining
-    }
-}
-
-builder.Services.AddOrdering(builder.Configuration);   // reads like a built-in method
-```
-
-This is the exact mechanism behind the `Add<Feature>()` / `Map<Feature>()` convention you'll see throughout [Dependency injection](ch:dependency-injection#a-tour-of-the-registration-api) and elsewhere in this book: it's how every library plugs itself cleanly into ASP.NET Core, and it's how you keep your own `Program.cs` from turning into a wall of raw registration calls.
-
-**Extension members** (C# 14) extend the same idea beyond methods, to properties, static members and operators, using a new `extension` block:
-
-```csharp
+```csharp norun
 public static class OrderExtensions
 {
     extension(Order order)
     {
-        public bool IsBig => order.Total > 1_000m;               // extension property
-        public Money TotalWithTax(decimal rate) => order.Total * (1 + rate);
+        public bool IsBig => order.Total > 1_000m;     // an extension PROPERTY
     }
 }
-if (order.IsBig) { }
+if (order.IsBig) { … }
 ```
 
-Three rules worth knowing before you reach for this (confirmed against Microsoft's [CS0122 reference](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-messages/cs0122) and the [extension methods guide](https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/classes-and-structs/extension-methods)): extensions can never access an object's *private* members, the same restriction extension methods have always had; a real instance member always wins over an extension with the same signature, if both exist — the extension only fills in gaps, never overrides; and the extension's own namespace has to be imported at the call site, same as any other extension method, for the compiler to find it at all.
+The rules: extensions can't see **private** members, and a real member with the same signature always wins over an extension.
 
-## Less ceremony: top-level statements, global usings, file-scoped namespaces {b}
+:::qa How do extension methods work and how does ASP.NET Core use them?
+They're static methods in a static class, with `this` on the first parameter. The compiler lets you call them like instance methods when the namespace is imported. They can't access private members, and real members take precedence. ASP.NET Core uses them for its whole configuration API (`AddControllers`, `AddDbContext`, `UseAuthentication`, `MapGet`), so libraries can add fluent methods to `IServiceCollection` and `WebApplication`.
+:::
 
-```csharp
-// Program.cs: top-level statements (C# 9). The compiler generates the Main method.
+## Less ceremony {b}
+
+None of these change what your code *does*. They remove typing that every file used to repeat.
+
+:::scene visuals/scenes/mod-toplevel.svg | Where did `Main` go?
+1. A modern `Program.cs` has no class and no `Main` method, though old tutorials always had both.
+2. They're still there. The compiler **generates** them around your lines. That's also why `args` works without being declared.
+3. Global usings and file-scoped namespaces are the same kind of thing: less to type, and identical compiled code.
+:::
+
+```csharp norun
+// Program.cs: top-level statements (C# 9). The compiler writes the Main method for you.
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
-app.MapGet("/", () => "Hello");
+app.MapGet("/", () => "Welcome to Kettle");
 app.Run();
 ```
 
-```csharp
-// GlobalUsings.cs (or <Using Include="..."/> in the csproj)
-global using Shop.Domain;
+```csharp norun
+// GlobalUsings.cs: one place for usings every file needs (C# 10)
+global using Kettle.Domain;
 global using Microsoft.EntityFrameworkCore;
 
-// Any file: file-scoped namespace (C# 10), one less indentation level
-namespace Shop.Api.Orders;
+// any file: a file-scoped namespace, so there's one less level of indentation (C# 10)
+namespace Kettle.Api.Orders;
 public class OrderEndpoints { }
 ```
 
-None of these three change what the compiled code actually does — they exist purely to remove ceremony that every single C# file used to repeat. Top-level statements mean `Program.cs` is no longer wrapped in a `class Program { static void Main(string[] args) { ... } }` you never actually needed to think about; the compiler generates that scaffolding silently. Global usings move a `using` you'd otherwise retype at the top of every file into one shared place. File-scoped namespaces drop one level of `{ }` indentation that used to wrap an entire file's contents for no real benefit. `<ImplicitUsings>enable</ImplicitUsings>` goes further still, adding a set of SDK-specific global usings automatically (`System`, `System.Linq`, `System.Threading.Tasks`, `Microsoft.AspNetCore.Builder`, `Microsoft.Extensions.DependencyInjection`, and more) — which is a large part of why modern minimal API code can get away with no `using` statements at the top at all.
+You can prove the generated `Main` is there, from inside it:
 
-## Primary constructors and collection expressions {i}
-
+:::walk Ask the code where it is
 ```csharp
-// Primary constructor (C# 12): perfect for DI-injected services
-public sealed class CheckoutService(IOrderRepository orders, IPaymentGateway payments, TimeProvider clock)
-{
-    public async Task<Result<OrderId>> CheckoutAsync(Cart cart, CancellationToken ct)
-    {
-        var order = Order.Create(cart, clock.GetUtcNow());
-        // orders, payments, clock are in scope everywhere in the class
-        await payments.ChargeAsync(order.Total, ct);
-        orders.Add(order);
-        return order.Id;
-    }
-}
+using System.Reflection;
 
-// Collection expressions (C# 12): one syntax for arrays, lists, spans, immutable collections…
-int[] a = [1, 2, 3];
-List<string> names = [];
-ImmutableArray<int> imm = [1, 2];
-ReadOnlySpan<byte> bytes = [0x48, 0x49];
-int[] merged = [..a, ..other, 99];        // spread
+Console.WriteLine("Hello from Kettle");
+var method = MethodBase.GetCurrentMethod()!;
+Console.WriteLine($"this code is in method {method.Name}, in class {method.DeclaringType!.Name}");
+Console.WriteLine($"args exists too: {args.Length} arguments");
 ```
+@3 | | > Hello from Kettle
+This file has no class and no method. It's just statements.
+@4 | method = <Main>$
+Ask the runtime which method is running right now.
+@5 | | > this code is in method <Main>$, in class Program
+The compiler wrapped your lines in a method called `<Main>$` (a name you couldn't type yourself, so it can't clash) inside a class called `Program`.
+@6 | | > args exists too: 0 arguments
+That's also where `args` comes from: it's the generated method's parameter.
+:::
 
-[OOP](ch:oop#primary-constructors-the-modern-shorthand) already covered primary constructors properly, including the one genuine gotcha worth remembering (their parameters are reassignable, not automatically `readonly` fields). Collection expressions deserve a mention of their own, purely for the uniformity they bring. Before C# 12, an array, a `List<T>`, an `ImmutableArray<T>` and a `Span<T>` each needed their own distinct initialisation syntax. Now `[...]` works for all of them — the compiler picks the right concrete construction based on the variable's declared type. One syntax to learn, reused everywhere a sequence of values needs creating.
+`<ImplicitUsings>enable</ImplicitUsings>` in the project file adds the common ones (`System`, `System.Linq`, `System.Threading.Tasks` and so on) for you.
 
-## Strings: interpolation and raw literals {i}
+## Primary constructors, collection expressions, raw strings {i}
 
+:::plain
+You'll see three shortcuts in almost every modern file. Constructor parameters written on the class line. One bracket syntax for building any collection. And strings that need no escaping.
+:::
+
+:::walk Three shortcuts in one file
 ```csharp
-var msg = $"Order {order.Id} total {order.Total:C2} placed {order.CreatedAt:yyyy-MM-dd}";
-var aligned = $"|{name,-20}|{qty,5}|";          // alignment
-var path = @"C:\data\orders";                    // verbatim: no escape processing
+var checkout = new CheckoutService(new FixedClock());
+Console.WriteLine(checkout.Stamp());
+
+int[] prices = [6, 9, 4];                    // one syntax for arrays, lists, spans...
+List<string> teas = ["Sencha"];
+int[] more = [..prices, 12];                 // spread
+Console.WriteLine($"{more.Length} prices, {teas.Count} tea");
 
 var json = """
-    {
-      "name": "Keyboard",
-      "tags": ["office", "usb"]
-    }
-    """;                                         // raw string literal (C# 11): no escaping, indentation trimmed
+    { "tea": "Sencha", "price": 6.50, "tags": ["green", "japanese"] }
+    """;                                     // a raw string literal: no escaping needed
+Console.WriteLine(json);
 
-var template = $$"""
-    { "id": {{order.Id}}, "literal": "{braces}" }
-    """;                                         // $$ means {{x}} interpolates and single { } are literal
+var id = 42;
+var template = $$"""{ "orderId": {{id}}, "note": "braces { } are literal here" }""";
+Console.WriteLine(template);
+
+class CheckoutService(IClock clock)          // primary constructor: clock is in scope class-wide
+{
+    public string Stamp() => $"checked out at {clock.Now:HH:mm}";
+}
+interface IClock { DateTime Now { get; } }
+class FixedClock : IClock { public DateTime Now => new(2026, 11, 27, 9, 30, 0); }
 ```
+@18-21 | -
+A **primary constructor**: the parameter `clock` is written on the class line and is usable in every member. No field, no constructor body.
+@1-2 | checkout = → CheckoutService (clock = FixedClock) | > checked out at 09:30
+`Stamp` reads `clock` directly.
+@4-6 | prices = [6, 9, 4] ; teas = [Sencha] ; more = [6, 9, 4, 12]
+**Collection expressions**: the same `[ ]` makes an array or a list, decided by the variable's type. `..` spreads another collection in.
+@7 | | > 4 prices, 1 tea
+@9-11 | json = { "tea": "Sencha", … }
+A **raw string**: everything between the `"""` lines is taken exactly as written, quotes included. The indentation of the closing `"""` is removed from every line.
+@12 | | > { "tea": "Sencha", "price": 6.50, "tags": ["green", "japanese"] }
+@14-15 | id = 42 ; template = { "orderId": 42, … }
+With `$$`, it takes **two** braces to interpolate (`{{id}}`), so single braces stay literal. That's handy for JSON.
+@16 | | > { "orderId": 42, "note": "braces { } are literal here" }
+:::
 
-Raw string literals exist specifically because embedding JSON, regex, or SQL inside a normal C# string means constantly escaping quotes and backslashes that mean something different in the two languages at once. A triple-quoted raw string sidesteps that entirely — what you see between the `"""` markers is exactly, literally, what you get, with no escaping required for anything inside it.
+- **Primary constructors** (C# 12): the parameters are in scope for the whole class, which makes them ideal for injected services. They are **not** `readonly` ([Episode 2](ch:oop#primary-constructors-the-modern-shorthand)).
+- **Collection expressions** (C# 12): `[...]` builds any collection type. The compiler picks the right construction from the target type.
+- **Raw string literals** (C# 11): `"""…"""` holds JSON, SQL or regex exactly as written. With `$$`, `{{x}}` interpolates and single braces stay literal.
 
-Worth knowing precisely: interpolated strings aren't naive string concatenation under the hood — they compile through `DefaultInterpolatedStringHandler`, which avoids boxing value-type arguments and avoids unnecessary intermediate string allocations along the way. That efficiency, though, comes with one important exception worth remembering: **don't use interpolated strings in log messages**. [Errors & logging](ch:errors-logging) explains exactly why — a log call needs its arguments to stay as separate, structured values a log store can query on, and string interpolation collapses them into one opaque, pre-formatted string before the logger ever sees them.
+:::gotcha Don't interpolate log messages
+`logger.LogInformation($"Order {id} placed")` flattens `id` into text, so your log store can't filter on it. Write `logger.LogInformation("Order {OrderId} placed", id)` instead ([Errors & logging](ch:errors-logging)).
+:::
 
-## Other quality-of-life features worth recognising on sight {i}
+:::qa What are primary constructors and what's a gotcha?
+Constructor parameters declared on the type (`class Svc(IRepo repo)`) that are in scope throughout the class body. They're ideal for DI. The gotcha is that they're ordinary mutable parameters, not readonly fields: any member can reassign them, and capturing them in several places can create hidden fields. Assign to a `readonly` field when you need immutability.
+:::
+
+## Small features you'll see everywhere {i}
+
+:::plain
+None of these is a big idea. Learn to recognise them so they don't slow you down when you read other people's code.
+:::
+
+:::walk Six small features in eight lines
+```csharp
+using OrderMap = System.Collections.Generic.Dictionary<int, string>;
+
+OrderMap orders = new();
+orders[1] = "Sencha"; orders[2] = "Assam"; orders[3] = "Chai";
+string[] teas = [.. orders.Values];
+Console.WriteLine($"{teas[^1]} / {string.Join(",", teas[..2])} / {nameof(orders)}");
+
+Func<int, int> twice = static x => x * 2;
+Console.WriteLine($"{Label(twice(21))}");
+
+string Label(int id) => $"ORD-{id}";
+```
+@1 | -
+A **type alias**: `OrderMap` is now another name for `Dictionary<int, string>`.
+@3 | orders = OrderMap { }
+**Target-typed `new`**: the type is on the left, so `new()` on the right doesn't repeat it.
+@4-5 | orders = { 1 → Sencha, 2 → Assam, 3 → Chai } ; teas = [Sencha, Assam, Chai]
+Fill it, then spread its values into an array.
+@6 | | > Chai / Sencha,Assam / orders
+`^1` is the last item. `..2` is a range: items 0 and 1. `nameof(orders)` is the variable's name as a string, checked by the compiler, so it updates if you rename the variable.
+@8 | twice = static x => x * 2
+A **static lambda** promises not to capture anything. If it accidentally used a local variable, that would be a compile error, so it can never allocate a closure.
+@9 | | > ORD-42
+@11 | -
+`Label` is a **local function**: a helper declared inside the code that uses it, invisible to the rest of the program.
+:::
 
 | Feature | Example |
 |---|---|
 | Target-typed `new` | `Dictionary<string, List<int>> map = new();` |
-| `nameof` | `throw new ArgumentNullException(nameof(order));`, survives renames |
-| Ranges and indices | `items[^1]`, `items[1..^1]`, `text[..10]` |
+| `nameof` | `throw new ArgumentNullException(nameof(order));` survives renames |
+| Index from end and ranges | `items[^1]`, `items[1..^1]`, `text[..10]` |
 | `using` declaration | `using var scope = logger.BeginScope(...);` |
-| Static lambdas | `list.Select(static x => x * 2)`: prevents accidental capture |
-| Local functions | Helper methods inside a method; can be `static` |
-| Default lambda parameters | `var greet = (string name = "you") => $"Hi {name}";` |
-| Type aliases | `using OrderMap = System.Collections.Generic.Dictionary<int, Order>;`, any type since C# 12 |
-| `params` collections | `void Log(params ReadOnlySpan<string> parts)`: no array allocation |
-| New `Lock` type | `private readonly Lock _gate = new(); lock (_gate) { }`, faster than locking on object |
-| `field` keyword | `public string Name { get; set => field = value.Trim(); }` |
+| `static` lambdas | `list.Select(static x => x * 2)` gives a compile error if it captures by accident ([closures](ch:delegates-events#closures-a-lambda-packs-a-backpack)) |
+| Local functions | helper methods declared inside a method |
+| Type aliases | `using OrderMap = Dictionary<int, Order>;` |
+| `params` spans (C# 13) | `void Log(params ReadOnlySpan<string> parts)` doesn't allocate an array |
+| `Lock` type (C# 13) | `private readonly Lock _gate = new();` |
+| `field` keyword (C# 14) | `public string Name { get; set => field = value.Trim(); }` |
 | UTF-8 literals | `ReadOnlySpan<byte> h = "Content-Type"u8;` |
 
-A couple of these are worth a second's thought rather than just filing away as syntax. `nameof(order)` isn't just a shorter way to write `"order"` — the key benefit is that it's checked by the compiler and tied to the actual identifier, so renaming the parameter and forgetting to update a hard-coded string message simply can't happen; the compiler won't let the two drift apart. Static lambdas are the direct, deliberate enforcement mechanism for the closure-cost discussion in [Delegates, lambdas and closures](ch:delegates-events#closures-when-a-lambda-outlives-the-method-it-was-written-in) — marking a lambda `static` is you telling the compiler "I don't intend to capture anything here, please fail to compile if I accidentally do."
+## Which version added what {i}
 
-:::qa What are nullable reference types and do they prevent NullReferenceException at runtime?
-A compiler feature (enabled with &lt;Nullable&gt;) that treats reference types as non-null by default, so `T?` means "may be null", and it warns about possible null dereferences through flow analysis. It's compile-time only: there are no runtime checks, so values from deserialisation, reflection or unannotated code can still be null. Validate at boundaries.
-:::
+| C# | .NET | Headline features |
+|---|---|---|
+| 7.x | Core 2.x | tuples, `out var`, `is` patterns, local functions, `ref` returns |
+| 8 | Core 3.x | **nullable reference types**, switch expressions, async streams, `using` declarations, ranges, default interface methods |
+| 9 | 5 | **records**, `init`, **top-level statements**, `and`/`or`/`not` patterns |
+| 10 | 6 | **global usings**, **file-scoped namespaces**, record structs |
+| 11 | 7 | **raw strings**, **`required`**, list patterns, generic math |
+| 12 | 8 | **primary constructors**, **collection expressions** |
+| 13 | 9 | `params` collections, `Lock`, partial properties |
+| 14 | 10 | **extension members**, **`field`** keyword, `a?.B = x` |
 
-:::qa What does the null-forgiving operator (!) do?
-It suppresses a nullable warning for that expression. It has no runtime effect. Overusing it defeats the feature.
-:::
+## Next episode {b}
 
-:::qa What is a record and how is it different from a class?
-A record is a class (or struct with `record struct`) for which the compiler generates value-based equality and GetHashCode, ToString, Deconstruct and `with` support. Two records with equal property values are equal. Classes use reference equality by default. Use records for data (DTOs, messages, value objects) and classes for entities and services.
-:::
-
-:::qa What's the difference between init and required?
-`init` makes a property settable only during object initialisation. `required` forces callers to set the property in the initialiser, checked by the compiler. They're often combined: `public required string Email { get; init; }`.
-:::
-
-:::qa Explain switch expressions and property patterns.
-A switch expression evaluates arms top-down and returns the first matching arm's value: `x switch { pattern => value, _ => default }`. Property patterns match on members, `{ Status: Paid, Total: > 100 }`, and nest (`{ Customer.Country: "DE" }`). The compiler warns if not all cases are covered.
-:::
-
-:::qa How do extension methods work and how does ASP.NET Core use them?
-They are static methods in static classes whose first parameter is marked with `this`. The compiler lets you call them as instance methods on that type. ASP.NET Core and libraries expose their setup as extension methods on IServiceCollection (AddX) and IEndpointRouteBuilder/IApplicationBuilder (MapX/UseX), which is the convention for organising Program.cs.
-:::
-
-:::qa What are primary constructors and what's a gotcha?
-C# 12 lets classes declare constructor parameters in the type header, and those parameters are in scope throughout the class body, which suits DI. The gotcha: they're mutable captured parameters, not readonly fields, and capturing them in a struct or in several members stores them as hidden fields.
-:::
-
-:::qa What are tuples good for and when would you avoid them?
-Lightweight multi-value returns and deconstruction for private or internal code. Avoid them in public APIs and persisted contracts, where a named record is clearer, can evolve, and has proper property names in serialisation.
-:::
+Kettle's code is now safer and shorter, and Kettle is a real business: a warehouse, a nightly supplier feed, a finance team. The finale is one long night. At 01:00 the supplier's 2-million-row price file arrives, and `line.Split(',')` creates **ten million throwaway strings** that bury the garbage collector. By the next afternoon, six more problems hit limits that normal C# can't get past. Millions of struct copies. A printer that only speaks C. An audit rule people keep forgetting. A slow serverless cold start. And a report builder that must stay safe from SQL injection. [Episode 10 · Advanced C# →](ch:advanced-csharp)
 
 ## Further reading
 
-- [What's new in C# (every version)](https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/)
-- [What's new in C# 14](https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/csharp-14) — extension members, the `field` keyword, null-conditional assignment, `nameof` on unbound generics
+- [What's new in C#](https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/) (one page per version)
 - [Nullable reference types](https://learn.microsoft.com/en-us/dotnet/csharp/nullable-references)
-- [Pattern matching overview](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/patterns/pattern-matching) — exhaustiveness and subsumption, straight from the source
-- [SwitchExpressionException class](https://learn.microsoft.com/en-us/dotnet/api/system.runtime.compilerservices.switchexpressionexception)
-- [Records](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/record) — confirms `record struct` is mutable by default; only `readonly record struct` is immutable
+- [Pattern matching overview](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/functional/pattern-matching)
+- [Records](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/record)
 
 ## Verify this chapter
 
-Run with `dotnet run` in a plain console project (`dotnet new console`) — no extra packages needed. It checks record value equality, `with`, the shallow-equality gotcha, `required` enforced through JSON, pattern matching, extension methods and collection expressions.
-
 ```csharp
-using System.Text.Json;
+// records: value equality, readable ToString, non-destructive with
+var a = new Dto(1, "Sencha");
+Check(a == new Dto(1, "Sencha"), "records with equal values are ==");
+var b = a with { Tea = "Assam" };
+Check(a.Tea == "Sencha" && b.Tea == "Assam", "with creates a modified copy and leaves the original alone");
+Check(a.ToString() == "Dto { Id = 1, Tea = Sencha }", "records generate a readable ToString");
 
-void Check(bool condition, string claim)
+// record equality is shallow over collections
+Check(new Bag(new List<int> { 1 }) != new Bag(new List<int> { 1 }), "record equality compares a list by reference");
+
+// switch expressions take the first matching arm
+Check(Fee(150m, "US") == 0m && Fee(20m, "IE") == 3.95m && Fee(20m, "US") == 12.90m, "switch arms are tried top to bottom");
+
+// list patterns
+Check(Shape([1, 2, 3]) == "1..3" && Shape([]) == "empty", "list patterns match on sequence shape");
+
+// null operators
+string? none = null;
+Check((none?.Length ?? -1) == -1, "?. and ?? handle null without throwing");
+
+// tuples
+var (x, y) = (1, 2); (x, y) = (y, x);
+Check(x == 2 && y == 1, "tuple swap");
+
+static decimal Fee(decimal total, string country) => (total, country) switch
 {
-    if (!condition) throw new Exception($"FAIL: {claim}");
-    Console.WriteLine($"OK: {claim}");
-}
-
-// 1. Records have value equality: two separate instances with equal properties are ==.
-var a = new ProductDto(1, "Mouse", 20m);
-var sameValues = new ProductDto(1, "Mouse", 20m);
-Check(!ReferenceEquals(a, sameValues) && a == sameValues, "Two separate record instances with equal properties are == (value equality)");
-
-// 2. `with` produces a non-destructive copy: the original is untouched, the copy has the one changed property.
-var b = a with { Price = 18m };
-Check(a.Price == 20m, "The original record is untouched after `with`");
-Check(b.Price == 18m && b.Id == a.Id && b.Name == a.Name, "`with` copies every property except the one(s) explicitly changed");
-
-// 3. A record's generated equality is SHALLOW for reference-type members: two carts with equal-content
-//    lists (different List<T> instances) are NOT equal, because the list REFERENCE is compared.
-var cart1 = new Cart(new List<string> { "sku-1", "sku-2" });
-var cart2 = new Cart(new List<string> { "sku-1", "sku-2" });
-Check(cart1 != cart2, "Two records holding different List<T> instances with identical contents are NOT equal (equality is shallow/by-reference for that member)");
-var cart3 = new Cart(cart1.Items);   // same list reference
-Check(cart1 == cart3, "Two records sharing the SAME list reference ARE equal");
-
-// 4. `required` is enforced by System.Text.Json: a missing required property fails deserialization.
-var jsonMissingRequired = """{ "CustomerId": 42 }""";   // "Lines" is required and missing
-bool threwOnMissingRequired = false;
-try { JsonSerializer.Deserialize<CreateOrderRequest>(jsonMissingRequired); }
-catch (JsonException) { threwOnMissingRequired = true; }
-Check(threwOnMissingRequired, "System.Text.Json throws JsonException when a `required` property is missing from the JSON");
-
-var jsonComplete = """{ "CustomerId": 42, "Lines": ["sku-1"] }""";
-var deserialized = JsonSerializer.Deserialize<CreateOrderRequest>(jsonComplete);
-Check(deserialized is { CustomerId: 42 }, "System.Text.Json deserializes successfully once every `required` property is present");
-
-// 5. Pattern matching: property patterns and list patterns match the shapes the chapter describes.
-Check(Describe(new[] { 1, 2, 3 }) == "first=1 last=3 middle=1", "A list pattern [first, .. middle, last] destructures a 3+ element array correctly");
-Check(Describe(Array.Empty<int>()) == "empty", "A list pattern [] matches an empty array");
-Check(ShippingFee(new Order(Total: 150, IsVip: false)) == 0m, "A property pattern on Total >= 100 matches and returns free shipping");
-Check(ShippingFee(new Order(Total: 10, IsVip: true)) == 0m, "A property pattern on IsVip matches and returns free shipping regardless of total");
-
-// 6. Extension methods add capability to an existing type without modifying its source.
-Check("hello world".IsTitleCaseWord() == false, "An extension method (IsTitleCaseWord) works like an instance method on a type it didn't define");
-Check("Hello".IsTitleCaseWord() == true, "An extension method correctly identifies a title-case word");
-
-// 7. Collection expressions produce the right concrete type for the declared variable.
-int[] arr = [1, 2, 3];
-List<string> list = ["a", "b"];
-Check(arr.Length == 3 && arr is int[], "A collection expression assigned to int[] produces an array");
-Check(list.Count == 2 && list is List<string>, "The same [...] syntax assigned to List<string> produces a List<T>");
-
-Console.WriteLine("All modern-csharp claims verified.");
-
-string Describe(int[] xs) => xs switch
-{
-    [] => "empty",
-    [var only] => $"one item: {only}",
-    [var first, .. var middle, var last] => $"first={first} last={last} middle={middle.Length}"
+    ( >= 100, _) => 0m,
+    (_, "GB" or "IE") => 3.95m,
+    _ => 12.90m,
 };
+static string Shape(int[] xs) => xs switch { [] => "empty", [var f, .., var l] => $"{f}..{l}", _ => "one" };
+static void Check(bool ok, string claim) =>
+    Console.WriteLine(ok ? $"OK: {claim}" : throw new Exception($"FAIL: {claim}"));
 
-decimal ShippingFee(Order o) => o switch
-{
-    { Total: >= 100 } => 0m,
-    { IsVip: true } => 0m,
-    _ => 12.90m
-};
-
-public record ProductDto(int Id, string Name, decimal Price);
-public record Cart(List<string> Items);
-public record Order(decimal Total, bool IsVip);
-
-public class CreateOrderRequest
-{
-    public required int CustomerId { get; init; }
-    public required List<string> Lines { get; init; }
-}
-
-public static class StringExtensions
-{
-    public static bool IsTitleCaseWord(this string s) => s.Length > 0 && char.IsUpper(s[0]) && s.Skip(1).All(char.IsLower);
-}
+record Dto(int Id, string Tea);
+record Bag(List<int> Items);
 ```
-
-Not attempted here: nullable reference type warnings are a compiler-time analysis, not something a running program can assert on — that claim is checked by reading the compiler's own warnings (`CS8602` etc.) when you build with `<Nullable>enable</Nullable>`, not by running anything.

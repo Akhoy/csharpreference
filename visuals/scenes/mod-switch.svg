@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A switch expression tests each arm from top to bottom and stops at the first one that matches">
+<text class="t-cap" x="24" y="28">Fee(new Order(Total: 40, IsVip: false, Country: "IE"))</text>
+<rect x="24" y="44" width="430" height="34" rx="6" class="b" data-hl="1"/><text class="t-c" x="36" y="66" style="font-size:12px">{ Total: &gt;= 100 }         =&gt; 0m,</text>
+<rect x="24" y="84" width="430" height="34" rx="6" class="b" data-hl="2"/><text class="t-c" x="36" y="106" style="font-size:12px">{ IsVip: true }            =&gt; 0m,</text>
+<rect x="24" y="124" width="430" height="34" rx="6" class="b" data-hl="3"/><text class="t-c" x="36" y="146" style="font-size:12px">{ Country: "GB" or "IE" }  =&gt; 3.95m,</text>
+<rect x="24" y="164" width="430" height="34" rx="6" class="b"/><text class="t-c" x="36" y="186" style="font-size:12px">{ Country: not null }      =&gt; 12.90m,</text>
+<rect x="24" y="204" width="430" height="34" rx="6" class="b"/><text class="t-c" x="36" y="226" style="font-size:12px">_                          =&gt; throw …</text>
+<text class="t-s t-bad" x="470" y="66" data-s="1">✗ 40 isn't ≥ 100</text>
+<text class="t-s t-bad" x="470" y="106" data-s="2">✗ not a VIP</text>
+<text class="t-s t-good" x="470" y="146" data-s="3">✓ "IE" matches</text>
+<g data-s="4"><text class="t-m" x="470" y="186">never checked</text><text class="t-m" x="470" y="226">never checked</text>
+<rect x="616" y="124" width="80" height="34" rx="17" class="b-good"/><text class="t-c" x="656" y="146" text-anchor="middle" style="font-size:12px">3.95m</text></g>
+<text class="t-s" x="24" y="270" data-s="1-1">Arms are tried from the top. The first asks: is Total at least 100?</text>
+<text class="t-s" x="24" y="270" data-s="2-2">No, so try the next arm: is this a VIP customer?</text>
+<text class="t-s" x="24" y="270" data-s="3-3">No, so the next: is Country "GB" or "IE"? Yes, and the first match wins.</text>
+<text class="t-s" x="24" y="270" data-s="4">The result is 3.95m. The arms below are never even checked, so order matters: specific first.</text>
+<text class="t-m" x="24" y="290" data-s="4">The compiler warns if some input could match no arm, and errors if an arm can never be reached.</text>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="Awaiting two calls one after the other takes the sum of their times; starting both and awaiting them together takes only the longest">
+<text class="t-cap" x="24" y="28">LOADING THE ORDER PAGE · 0 ms → 300 ms</text>
+<line x1="150" y1="40" x2="150" y2="236" class="ln-m"/><line x1="250" y1="40" x2="250" y2="236" class="ln-m"/><line x1="350" y1="40" x2="350" y2="236" class="ln-m"/><line x1="450" y1="40" x2="450" y2="236" class="ln-m"/>
+<text class="t-m" x="150" y="250" text-anchor="middle">0</text><text class="t-m" x="250" y="250" text-anchor="middle">100 ms</text><text class="t-m" x="350" y="250" text-anchor="middle">200 ms</text><text class="t-m" x="450" y="250" text-anchor="middle">300 ms</text>
+<g data-s="1"><text class="t-s" x="24" y="66">one after</text><text class="t-s" x="24" y="82">the other</text>
+<rect x="150" y="52" width="100" height="28" rx="5" class="b-info"/><text class="t-c" x="158" y="71" style="font-size:11px">customer</text>
+<rect x="250" y="84" width="200" height="28" rx="5" class="b-warn"/><text class="t-c" x="258" y="103" style="font-size:11px">order history</text>
+<text class="t-s t-bad" x="470" y="90">300 ms: the second call</text><text class="t-s t-bad" x="470" y="108">waited for the first</text></g>
+<g data-s="2"><text class="t-s" x="24" y="160">together</text>
+<rect x="150" y="146" width="100" height="28" rx="5" class="b-info"/><text class="t-c" x="158" y="165" style="font-size:11px">customer</text>
+<rect x="150" y="178" width="200" height="28" rx="5" class="b-warn"/><text class="t-c" x="158" y="197" style="font-size:11px">order history</text></g>
+<g data-s="3"><line x1="350" y1="140" x2="350" y2="212" class="ln-good" style="stroke-width:3"/><text class="t-s t-good" x="466" y="172">200 ms: both waited at the</text><text class="t-s t-good" x="466" y="190">same time. WhenAll ends</text><text class="t-s t-good" x="466" y="208">with the slowest one.</text></g>
+<text class="t-s" x="24" y="272" data-s="1-1">await customer, THEN await history: the waits add up, though the calls don't depend on each other.</text>
+<text class="t-s" x="24" y="272" data-s="2-2">Start both first (no await yet), so both requests are in flight at once…</text>
+<text class="t-s t-good" x="24" y="272" data-s="3">…then await Task.WhenAll(customerTask, historyTask). Total time = the longest call, not the sum.</text>
+</svg>

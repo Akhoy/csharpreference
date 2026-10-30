@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="GroupBy sorts orders into labelled piles by customer; then each pile can be totalled">
+<text class="t-cap" x="24" y="28">PAID ORDERS</text>
+<g data-s="1-1"><rect x="24" y="40" width="96" height="34" rx="6" class="b"/><text class="t-c" x="32" y="62" style="font-size:11px">Ada £30</text><rect x="126" y="40" width="96" height="34" rx="6" class="b"/><text class="t-c" x="134" y="62" style="font-size:11px">Bob £12</text><rect x="228" y="40" width="96" height="34" rx="6" class="b"/><text class="t-c" x="236" y="62" style="font-size:11px">Cy £55</text><rect x="330" y="40" width="96" height="34" rx="6" class="b"/><text class="t-c" x="338" y="62" style="font-size:11px">Bob £25</text><rect x="432" y="40" width="96" height="34" rx="6" class="b"/><text class="t-c" x="440" y="62" style="font-size:11px">Di £9</text>
+<text class="t-s" x="24" y="110">A flat list, in any order.</text></g>
+<g data-s="2"><text class="t-c" x="24" y="62" style="font-size:12px">.GroupBy(o =&gt; o.Customer)</text>
+<rect x="24" y="80" width="150" height="110" rx="10" class="b-sunk"/><text class="t-cap" x="36" y="100">KEY: Ada</text><rect x="36" y="110" width="96" height="30" rx="5" class="b"/><text class="t-c" x="44" y="130" style="font-size:11px">£30</text>
+<rect x="184" y="80" width="150" height="110" rx="10" class="b-sunk"/><text class="t-cap" x="196" y="100">KEY: Bob</text><rect x="196" y="110" width="96" height="30" rx="5" class="b"/><text class="t-c" x="204" y="130" style="font-size:11px">£12</text><rect x="196" y="146" width="96" height="30" rx="5" class="b"/><text class="t-c" x="204" y="166" style="font-size:11px">£25</text>
+<rect x="344" y="80" width="150" height="110" rx="10" class="b-sunk"/><text class="t-cap" x="356" y="100">KEY: Cy</text><rect x="356" y="110" width="96" height="30" rx="5" class="b"/><text class="t-c" x="364" y="130" style="font-size:11px">£55</text>
+<rect x="504" y="80" width="150" height="110" rx="10" class="b-sunk"/><text class="t-cap" x="516" y="100">KEY: Di</text><rect x="516" y="110" width="96" height="30" rx="5" class="b"/><text class="t-c" x="524" y="130" style="font-size:11px">£9</text></g>
+<g data-s="3"><text class="t-c t-good" x="36" y="208" style="font-size:12px">Sum: £30</text><text class="t-c t-good" x="196" y="208" style="font-size:12px">Sum: £37</text><text class="t-c t-good" x="356" y="208" style="font-size:12px">Sum: £55</text><text class="t-c t-good" x="516" y="208" style="font-size:12px">Sum: £9</text>
+<text class="t-c" x="24" y="240" style="font-size:11.5px">.Select(g =&gt; new { Customer = g.Key, Spent = g.Sum(o =&gt; o.Total) })</text></g>
+<text class="t-s" x="24" y="240" data-s="2-2">One pile per customer. Each pile is a group, labelled with its Key.</text>
+<text class="t-s t-acc" x="24" y="264" data-s="4">Then .OrderByDescending(x =&gt; x.Spent).Take(3): Cy, Bob, Ada. That's the whole report.</text>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="A generic class is a template with a blank T; filling the blank produces a real, fully checked type">
+<defs><marker id="gt-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-ink"/></marker></defs>
+<text class="t-cap" x="24" y="28">YOU WRITE IT ONCE</text><text class="t-cap" x="400" y="28">THE COMPILER FILLS IN THE BLANK</text>
+<rect x="24" y="44" width="330" height="150" rx="10" class="b-acc"/>
+<text class="t-c" x="40" y="72">class Cache&lt;<tspan class="t-acc" font-weight="700">T</tspan>&gt;</text>
+<text class="t-c" x="40" y="96">{</text>
+<text class="t-c" x="56" y="120">Dictionary&lt;int, <tspan class="t-acc" font-weight="700">T</tspan>&gt; _items;</text>
+<text class="t-c" x="56" y="144">void Add(<tspan class="t-acc" font-weight="700">T</tspan> item) …</text>
+<text class="t-c" x="56" y="168"><tspan class="t-acc" font-weight="700">T</tspan>? Get(int id) …  }</text>
+<text class="t-m" x="24" y="216" data-s="1">T is a <tspan font-weight="700">type parameter</tspan>: a blank to fill in later.</text>
+<g data-s="2" class="fly-r"><path d="M354,90 L392,90" class="ln" marker-end="url(#gt-ar)"/>
+<rect x="400" y="50" width="296" height="80" rx="8" class="b-good"/><text class="t-cap" x="412" y="68">Cache&lt;Order&gt;</text>
+<text class="t-c" x="412" y="92">void Add(<tspan class="t-good" font-weight="700">Order</tspan> item)</text><text class="t-c" x="412" y="114"><tspan class="t-good" font-weight="700">Order</tspan>? Get(int id)</text></g>
+<g data-s="3" class="fly-r"><path d="M354,160 C372,160 376,180 392,180" class="ln" marker-end="url(#gt-ar)"/>
+<rect x="400" y="142" width="296" height="80" rx="8" class="b-info"/><text class="t-cap" x="412" y="160">Cache&lt;Customer&gt;</text>
+<text class="t-c" x="412" y="184">void Add(<tspan class="t-info" font-weight="700">Customer</tspan> item)</text><text class="t-c" x="412" y="206"><tspan class="t-info" font-weight="700">Customer</tspan>? Get(int id)</text></g>
+<g data-s="4-4" class="fly"><rect x="24" y="240" width="672" height="64" rx="8" class="b-bad"/>
+<text class="t-c" x="40" y="264">orders.Add(new Customer());</text>
+<text class="t-s t-bad" x="40" y="288">✗ Compile error: Cache&lt;Order&gt;.Add takes an Order. Caught before the app ever runs.</text></g>
+<g data-s="5" class="fly"><rect x="24" y="240" width="672" height="64" rx="8" class="b-good"/>
+<text class="t-s" x="40" y="264">One class to write, test and fix. Every use is checked. No casts, no boxing.</text>
+<text class="t-s t-good" x="40" y="288">Cache&lt;Order&gt;, Cache&lt;Customer&gt;, Cache&lt;Product&gt;… all from the same 20 lines.</text></g>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Check-then-act race: two threads both check the key is missing, then both add, and one value is lost; GetOrAdd does the check and the add as one step">
+<text class="t-cap" x="24" y="28">THREAD A</text><text class="t-cap" x="270" y="28">SHARED CACHE</text><text class="t-cap" x="520" y="28">THREAD B</text>
+<rect x="270" y="44" width="180" height="60" rx="8" class="b-sunk"/><text class="t-c" x="282" y="70" style="font-size:12px" data-s="1-2">(no "GB")</text><text class="t-c" x="282" y="70" style="font-size:12px" data-s="3-3">GB → rates v1</text><text class="t-c t-bad" x="282" y="70" style="font-size:12px" data-s="4-4">GB → rates v2</text><text class="t-c t-good" x="282" y="70" style="font-size:12px" data-s="5">GB → rates v1</text>
+<g data-s="1-4"><rect x="24" y="44" width="220" height="36" rx="6" class="b" data-hl="1"/><text class="t-c" x="34" y="67" style="font-size:11px">ContainsKey("GB")? no</text>
+<rect x="476" y="44" width="220" height="36" rx="6" class="b" data-hl="2"/><text class="t-c" x="486" y="67" style="font-size:11px" data-s="2">ContainsKey("GB")? no</text>
+<rect x="24" y="92" width="220" height="36" rx="6" class="b" data-hl="3" data-s="3"/><text class="t-c" x="34" y="115" style="font-size:11px" data-s="3">cache["GB"] = v1</text>
+<rect x="476" y="92" width="220" height="36" rx="6" class="b-bad" data-s="4"/><text class="t-c" x="486" y="115" style="font-size:11px" data-s="4">cache["GB"] = v2</text></g>
+<text class="t-s" x="24" y="170" data-s="1-1">Thread A checks: "GB" isn't in the cache yet.</text>
+<text class="t-s" x="24" y="170" data-s="2-2">Before A acts, thread B checks too. It also sees "no GB". Both now plan to add.</text>
+<text class="t-s" x="24" y="170" data-s="3-3">A loads the rates and stores v1.</text>
+<text class="t-s t-bad" x="24" y="170" data-s="4-4">B stores v2 over it. The rates were loaded twice, and anyone holding v1 now disagrees with the cache.</text>
+<text class="t-s t-bad" x="24" y="190" data-s="4-4">Each call was thread-safe on its own. The GAP between check and act wasn't.</text>
+<g data-s="5"><rect x="24" y="150" width="672" height="90" rx="10" class="b-good"/><text class="t-c" x="40" y="176" style="font-size:12px">cache.GetOrAdd("GB", LoadRates)</text>
+<text class="t-s" x="40" y="200">ConcurrentDictionary does the check and the add as ONE step. Both threads get the same v1.</text>
+<text class="t-m" x="40" y="222">(Under a race the factory may still RUN twice, but only one result is ever stored. Wrap it in Lazy&lt;T&gt; to run it once.)</text></g>
+</svg>

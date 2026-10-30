@@ -205,7 +205,7 @@
     else if (CH[a]) {
       const changed = current !== a || !main.querySelector('.ch-head');
       current = a;
-      if (changed) { main.innerHTML = chapterView(a); renderToc(a); startSpy(); }
+      if (changed) { main.innerHTML = chapterView(a); renderToc(a); startSpy(); initScenes(); }
       document.title = `${CH[a].num} ${CH[a].title} · The .NET Backend Book`;
       if (b) { const el = document.getElementById(b); if (el) { el.scrollIntoView(); scroll = false; } }
       else if (changed && scroll) window.scrollTo(0, 0);
@@ -238,8 +238,8 @@
     return runner.loading;
   }
   async function runSnippet(btn) {
-    const figure = btn.closest('figure.code');
-    const pre = figure.querySelector('pre');
+    const figure = btn.closest('figure.code, figure.walk');
+    const pre = figure.querySelector('pre[data-src]');
     const out = figure.querySelector('.run-output');
     const code = decodeURIComponent(escape(atob(pre.dataset.src)));
     const label = btn.querySelector('.run-arrow');
@@ -269,8 +269,65 @@
     }
   }
 
+  // ---------- step-through scenes (see renderScene in tools/build.mjs) ----------
+  // "2" = from step 2 on, "2-3" = steps 2 to 3 only, "1,4" = steps 1 and 4 onward
+  const inRange = (spec, n) => spec.split(',').some(r => { const [a, b] = r.split('-'); return b === undefined ? n >= +a : n >= +a && n <= +b; });
+  function setStep(fig, n) {
+    const total = +fig.dataset.steps;
+    n = Math.max(1, Math.min(total, n));
+    fig.dataset.at = n;
+    if (fig.classList.contains('walk')) {
+      const li = fig.querySelector(`.scene-says li[data-step="${n}"]`);
+      const on = new Set((li.dataset.lines || '').split(',').filter(Boolean));
+      fig.querySelectorAll('.wl').forEach(l => {
+        const cur = on.has(l.dataset.ln);
+        l.classList.toggle('cur', cur);
+        l.classList.toggle('err', cur && !!li.dataset.err);
+        const old = l.querySelector('.werr'); if (old) old.remove();
+        if (cur && li.dataset.err && l.dataset.ln === [...on][0]) { const e = document.createElement('div'); e.className = 'werr'; e.textContent = '✗ ' + li.dataset.err; l.appendChild(e); }
+      });
+      const first = fig.querySelector('.wl.cur');
+      const pane = fig.querySelector('.walk-code');
+      if (first && pane) { const top = first.offsetTop - pane.clientHeight / 3; pane.scrollTo({ top: Math.max(0, top), behavior: 'smooth' }); }
+      fig.querySelectorAll('.walk-state').forEach(st => { st.hidden = +st.dataset.step !== n; });
+    }
+    fig.querySelectorAll('[data-s]').forEach(el => el.classList.toggle('on', inRange(el.dataset.s, n)));
+    fig.querySelectorAll('[data-hl]').forEach(el => el.classList.toggle('hl', el.dataset.hl.split(',').map(Number).includes(n)));
+    fig.querySelectorAll('[data-mv]').forEach(el => {
+      const [at, xy] = el.dataset.mv.split(':'); const [x, y] = xy.split(',').map(Number);
+      el.style.transform = n >= +at ? `translate(${x}px, ${y}px)` : '';
+    });
+    fig.querySelectorAll('.scene-says li').forEach(li => { li.hidden = +li.dataset.step !== n; });
+    fig.querySelectorAll('.scene-dot').forEach(d => d.classList.toggle('on', +d.dataset.sc === n));
+    fig.querySelector('.scene-count').textContent = `Step ${n} of ${total}`;
+    fig.querySelector('[data-sc="prev"]').disabled = n === 1;
+    const nx = fig.querySelector('[data-sc="next"]');
+    nx.textContent = n === total ? '↺ Start over' : 'Next ▶';
+  }
+  function stopPlay(fig) {
+    clearInterval(fig._play); fig._play = null;
+    const b = fig.querySelector('[data-sc="play"]'); if (b) b.textContent = '▶ Play';
+  }
+  function initScenes() { main.querySelectorAll('figure.scene, figure.walk').forEach(f => setStep(f, 1)); }
+  function sceneClick(btn) {
+    const fig = btn.closest('figure.scene, figure.walk'), total = +fig.dataset.steps, at = +fig.dataset.at, a = btn.dataset.sc;
+    if (a === 'play') {
+      if (fig._play) { stopPlay(fig); return; }
+      if (at === total) setStep(fig, 1);
+      btn.textContent = '❚❚ Pause';
+      fig._play = setInterval(() => { const k = +fig.dataset.at; if (k >= total) stopPlay(fig); else setStep(fig, k + 1); }, 3200);
+      return;
+    }
+    stopPlay(fig);
+    if (a === 'next') setStep(fig, at === total ? 1 : at + 1);
+    else if (a === 'prev') setStep(fig, at - 1);
+    else setStep(fig, +a);
+  }
+
   // ---------- events ----------
   main.addEventListener('click', e => {
+    const sc = e.target.closest('[data-sc]');
+    if (sc) { sceneClick(sc); return; }
     const run = e.target.closest('.run');
     if (run) { runSnippet(run); return; }
     const cp = e.target.closest('.copy');
@@ -340,6 +397,10 @@
   document.addEventListener('keydown', e => {
     const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
     if (e.key === '/' && !typing) { e.preventDefault(); q.focus(); return; }
+    const fig = document.activeElement.closest && document.activeElement.closest('figure.scene, figure.walk');
+    if (fig && !typing && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault(); stopPlay(fig); setStep(fig, +fig.dataset.at + (e.key === 'ArrowRight' ? 1 : -1)); return;
+    }
     if (typing || !location.hash.startsWith('#/questions') || qb.mode !== 'drill') return;
     if (e.key === ' ') { e.preventDefault(); drill('reveal'); }
     if (e.key === 'ArrowRight') drill('next');

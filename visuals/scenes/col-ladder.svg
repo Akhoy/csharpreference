@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 290" role="img" aria-label="The collection interface ladder: each rung promises one more ability; methods should ask for the lowest rung they need">
+<text class="t-cap" x="24" y="28">EACH RUNG PROMISES ONE MORE ABILITY</text>
+<g data-s="1" class="fly"><rect x="24" y="226" width="260" height="40" rx="6" class="b-good" data-hl="4"/><text class="t-c" x="36" y="251" style="font-size:12px">IEnumerable&lt;T&gt;</text><text class="t-s" x="300" y="251">you can foreach over it. That's all.</text></g>
+<g data-s="2" class="fly"><rect x="54" y="178" width="260" height="40" rx="6" class="b"/><text class="t-c" x="66" y="203" style="font-size:12px">IReadOnlyCollection&lt;T&gt;</text><text class="t-s" x="330" y="203">+ Count</text></g>
+<g data-s="2" class="fly"><rect x="84" y="130" width="260" height="40" rx="6" class="b" data-hl="5"/><text class="t-c" x="96" y="155" style="font-size:12px">IReadOnlyList&lt;T&gt;</text><text class="t-s" x="360" y="155">+ read by position: list[3]</text></g>
+<g data-s="3" class="fly"><rect x="114" y="82" width="260" height="40" rx="6" class="b"/><text class="t-c" x="126" y="107" style="font-size:12px">ICollection&lt;T&gt;</text><text class="t-s" x="390" y="107">+ Add, Remove, Clear</text></g>
+<g data-s="3" class="fly"><rect x="144" y="40" width="260" height="36" rx="6" class="b-warn"/><text class="t-c" x="156" y="63" style="font-size:12px">IList&lt;T&gt; / List&lt;T&gt;</text><text class="t-s" x="420" y="63">+ write by position, Insert</text></g>
+<text class="t-s t-good" x="420" y="210" data-s="4-4">Sum(IEnumerable&lt;Order&gt;): it only loops,</text><text class="t-s t-good" x="420" y="228" data-s="4-4">so lists, arrays and queries all fit.</text>
+<text class="t-s t-info" x="420" y="210" data-s="5">Return IReadOnlyList&lt;Order&gt;: callers</text><text class="t-s t-info" x="420" y="228" data-s="5">can read and count, but not Add.</text>
+</svg>

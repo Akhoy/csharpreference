@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 250" role="img" aria-label="One long night and day at Kettle: seven problems, each solved by an advanced C# feature">
+<text class="t-cap" x="24" y="28">KETTLE · ONE LONG NIGHT, SEVEN PROBLEMS</text>
+<line x1="40" y1="120" x2="690" y2="120" class="ln-m"/>
+<circle cx="70" cy="120" r="18" class="b-dash"/>
+<g data-s="1" data-hl="1" class="fly"><text class="t-cap" x="70" y="86" text-anchor="middle">01:00</text><circle cx="70" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="70" y="125" text-anchor="middle">1</text><text class="t-h hlt" x="70" y="166" text-anchor="middle" style="font-size:13.5px">Import</text><text class="t-m" x="70" y="184" text-anchor="middle" style="font-size:11px">read, don't copy</text></g>
+<line x1="90" y1="120" x2="147" y2="120" class="ln-acc" data-s="2"/>
+<circle cx="167" cy="120" r="18" class="b-dash"/>
+<g data-s="2" data-hl="2" class="fly"><text class="t-cap" x="167" y="86" text-anchor="middle">01:40</text><circle cx="167" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="167" y="125" text-anchor="middle">2</text><text class="t-h hlt" x="167" y="166" text-anchor="middle" style="font-size:13.5px">Chunks</text><text class="t-m" x="167" y="184" text-anchor="middle" style="font-size:11px">borrow buffers</text></g>
+<line x1="187" y1="120" x2="244" y2="120" class="ln-acc" data-s="3"/>
+<circle cx="264" cy="120" r="18" class="b-dash"/>
+<g data-s="3" data-hl="3" class="fly"><text class="t-cap" x="264" y="86" text-anchor="middle">02:30</text><circle cx="264" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="264" y="125" text-anchor="middle">3</text><text class="t-h hlt" x="264" y="166" text-anchor="middle" style="font-size:13.5px">Repricing</text><text class="t-m" x="264" y="184" text-anchor="middle" style="font-size:11px">change in place</text></g>
+<line x1="284" y1="120" x2="341" y2="120" class="ln-acc" data-s="4"/>
+<circle cx="361" cy="120" r="18" class="b-dash"/>
+<g data-s="4" data-hl="4" class="fly"><text class="t-cap" x="361" y="86" text-anchor="middle">04:00</text><circle cx="361" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="361" y="125" text-anchor="middle">4</text><text class="t-h hlt" x="361" y="166" text-anchor="middle" style="font-size:13.5px">Labels</text><text class="t-m" x="361" y="184" text-anchor="middle" style="font-size:11px">talk to C</text></g>
+<line x1="381" y1="120" x2="438" y2="120" class="ln-acc" data-s="5"/>
+<circle cx="458" cy="120" r="18" class="b-dash"/>
+<g data-s="5" data-hl="5" class="fly"><text class="t-cap" x="458" y="86" text-anchor="middle">09:00</text><circle cx="458" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="458" y="125" text-anchor="middle">5</text><text class="t-h hlt" x="458" y="166" text-anchor="middle" style="font-size:13.5px">Audit</text><text class="t-m" x="458" y="184" text-anchor="middle" style="font-size:11px">label it, read it</text></g>
+<line x1="478" y1="120" x2="535" y2="120" class="ln-acc" data-s="6"/>
+<circle cx="555" cy="120" r="18" class="b-dash"/>
+<g data-s="6" data-hl="6" class="fly"><text class="t-cap" x="555" y="86" text-anchor="middle">11:00</text><circle cx="555" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="555" y="125" text-anchor="middle">6</text><text class="t-h hlt" x="555" y="166" text-anchor="middle" style="font-size:13.5px">Cold start</text><text class="t-m" x="555" y="184" text-anchor="middle" style="font-size:11px">work at build time</text></g>
+<line x1="575" y1="120" x2="632" y2="120" class="ln-acc" data-s="7"/>
+<circle cx="652" cy="120" r="18" class="b-dash"/>
+<g data-s="7" data-hl="7" class="fly"><text class="t-cap" x="652" y="86" text-anchor="middle">14:00</text><circle cx="652" cy="120" r="18" class="b-acc"/><text class="t-h t-acc" x="652" y="125" text-anchor="middle">7</text><text class="t-h hlt" x="652" y="166" text-anchor="middle" style="font-size:13.5px">Reports</text><text class="t-m" x="652" y="184" text-anchor="middle" style="font-size:11px">queries as data</text></g>
+<text class="t-m" x="24" y="230">Moon = overnight batch jobs. Sun = daytime traffic.</text>
+<text x="40" y="60" style="font-size:18px">🌙</text><text x="470" y="60" style="font-size:18px">☀️</text>
+</svg>

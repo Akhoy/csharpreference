@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 310" role="img" aria-label="Attributes are labels stored in assembly metadata; reflection reads that metadata at runtime to find labelled methods and audit them automatically">
+<defs><marker id="rf-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<text class="t-cap" x="24" y="28">Kettle.dll</text><text class="t-cap" x="420" y="28" data-s="3">AT STARTUP: REFLECTION READS IT</text>
+<rect x="24" y="40" width="360" height="200" rx="12" class="b-sunk"/>
+<rect x="40" y="56" width="150" height="36" rx="6" class="b"/><text class="t-c" x="52" y="79" style="font-size:12px">IL (the code)</text>
+<rect x="200" y="56" width="168" height="36" rx="6" class="b-info" data-hl="1"/><text class="t-c" x="212" y="79" style="font-size:12px">metadata tables</text>
+<g><rect x="40" y="106" width="328" height="36" rx="6" class="b" data-hl="3"/><text class="t-c" x="52" y="129" style="font-size:12px">OrderAdmin.Refund(…)</text></g>
+<g><rect x="40" y="150" width="328" height="36" rx="6" class="b" data-hl="3"/><text class="t-c" x="52" y="173" style="font-size:12px">OrderAdmin.Cancel(…)</text></g>
+<g><rect x="40" y="194" width="328" height="36" rx="6" class="b"/><text class="t-c" x="52" y="217" style="font-size:12px">OrderAdmin.Get(…)</text></g>
+<g data-s="2" class="fly-r"><rect x="250" y="110" width="112" height="28" rx="14" class="b-warn"/><text class="t-c" x="306" y="129" text-anchor="middle" style="font-size:10.5px">[Audit("refund")]</text>
+<rect x="250" y="154" width="112" height="28" rx="14" class="b-warn"/><text class="t-c" x="306" y="173" text-anchor="middle" style="font-size:10.5px">[Audit("cancel")]</text></g>
+<g data-s="3" class="fly-r"><rect x="420" y="40" width="276" height="110" rx="10" class="b-acc"/>
+<text class="t-c" x="432" y="64" style="font-size:11.5px">GetTypes()</text><text class="t-c" x="432" y="84" style="font-size:11.5px">  → GetMethods()</text><text class="t-c" x="432" y="104" style="font-size:11.5px">  → GetCustomAttribute&lt;Audit&gt;()</text>
+<text class="t-s t-acc" x="432" y="134">found 2 labelled methods</text>
+<path d="M368,124 C390,124 400,100 414,96" class="ln-acc" marker-end="url(#rf-a)"/></g>
+<g data-s="4" class="fly"><rect x="420" y="160" width="276" height="80" rx="10" class="b-good"/><text class="t-s" x="432" y="184">Every call to a labelled method is</text><text class="t-s" x="432" y="204">logged automatically: who, what, when.</text><text class="t-s t-good" x="432" y="226">Nobody can forget to audit.</text></g>
+<text class="t-s" x="24" y="268" data-s="1-1">Every compiled assembly carries metadata: a catalogue of every type, method and attribute.</text>
+<text class="t-s t-warn" x="24" y="268" data-s="2-2">An attribute is just a label in that catalogue. On its own it does nothing at all.</text>
+<text class="t-s t-acc" x="24" y="268" data-s="3-3">Reflection is code reading the catalogue while the program runs.</text>
+<text class="t-s t-good" x="24" y="268" data-s="4-4">Label once, enforce in one place. That's how [Authorize] and [HttpGet] work too.</text>
+<g data-s="5"><text class="t-s t-bad" x="24" y="262">The bill: calling by reflection is ~50× slower than a direct call, renames break at runtime,</text><text class="t-s t-bad" x="24" y="282">and the trimmer / Native AOT can't see what you look up by name.</text></g>
+</svg>

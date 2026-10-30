@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="Queue takes items out in arrival order, Stack takes the most recent first, PriorityQueue takes the most urgent first">
+<defs><marker id="cs-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker></defs>
+<g data-s="1"><text class="t-cap" x="24" y="28">Queue&lt;T&gt; · FIRST IN, FIRST OUT</text>
+<rect x="24" y="40" width="90" height="36" rx="6" class="b-good" data-hl="1"/><text class="t-c" x="36" y="63" style="font-size:11.5px">order 1</text><rect x="120" y="40" width="90" height="36" rx="6" class="b"/><text class="t-c" x="132" y="63" style="font-size:11.5px">order 2</text><rect x="216" y="40" width="90" height="36" rx="6" class="b"/><text class="t-c" x="228" y="63" style="font-size:11.5px">order 3</text>
+<text class="t-s" x="24" y="104">↑ Dequeue() takes order 1 from the front: the one waiting longest. Fair, like a till queue.</text><text class="t-m" x="316" y="63">← Enqueue adds at the back</text></g>
+<g data-s="2"><text class="t-cap" x="24" y="140">Stack&lt;T&gt; · LAST IN, FIRST OUT</text>
+<rect x="24" y="152" width="170" height="26" rx="5" class="b"/><text class="t-c" x="34" y="170" style="font-size:11px">added Sencha</text><rect x="24" y="180" width="170" height="26" rx="5" class="b"/><text class="t-c" x="34" y="198" style="font-size:11px">changed qty</text><rect x="24" y="208" width="170" height="26" rx="5" class="b-good" data-hl="2"/><text class="t-c" x="34" y="226" style="font-size:11px">removed Earl Grey</text>
+<text class="t-s" x="210" y="226">← Pop() takes the newest: "undo" undoes the last thing first</text></g>
+<g data-s="3"><text class="t-cap" x="24" y="262">PriorityQueue&lt;T, P&gt; · MOST URGENT FIRST</text>
+<text class="t-s" x="24" y="284">Enqueue("standard #3", 2), Enqueue("express #9", 1) → Dequeue() gives express #9, though it came second.</text></g>
+</svg>

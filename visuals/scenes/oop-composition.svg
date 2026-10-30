@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="Inheritance needs a class for every combination of features; composition builds any combination from a few wrappers">
+<text class="t-cap" x="24" y="28">INHERITANCE: a class per combination</text><text class="t-cap" x="400" y="28">COMPOSITION: snap small pieces together</text>
+<line x1="380" y1="16" x2="380" y2="310" class="ln-m"/>
+<rect x="125" y="44" width="130" height="30" rx="6" class="b"/><text class="t-c" x="190" y="64" text-anchor="middle">Notifier</text>
+<path d="M190,74 L105,104 M190,74 L275,104" class="ln"/>
+<rect x="30" y="104" width="150" height="30" rx="6" class="b-info"/><text class="t-c" x="105" y="124" text-anchor="middle">EmailNotifier</text>
+<rect x="200" y="104" width="150" height="30" rx="6" class="b-info"/><text class="t-c" x="275" y="124" text-anchor="middle">SmsNotifier</text>
+<g data-s="2" class="fly"><path d="M105,134 L105,152 M275,134 L275,152" class="ln"/>
+<rect x="30" y="152" width="150" height="28" rx="6" class="b-warn"/><text class="t-c" x="105" y="171" text-anchor="middle" style="font-size:11.5px">LoggingEmail…</text>
+<rect x="200" y="152" width="150" height="28" rx="6" class="b-warn"/><text class="t-c" x="275" y="171" text-anchor="middle" style="font-size:11.5px">LoggingSms…</text></g>
+<g data-s="3" class="fly"><path d="M105,180 L105,190 M275,180 L275,190" class="ln"/>
+<rect x="30" y="190" width="150" height="28" rx="6" class="b-bad"/><text class="t-c" x="105" y="209" text-anchor="middle" style="font-size:11.5px">RetryingEmail…</text>
+<rect x="200" y="190" width="150" height="28" rx="6" class="b-bad"/><text class="t-c" x="275" y="209" text-anchor="middle" style="font-size:11.5px">RetryingSms…</text>
+<rect x="30" y="226" width="150" height="28" rx="6" class="b-bad"/><text class="t-c" x="105" y="245" text-anchor="middle" style="font-size:11.5px">RetryingLoggingEmail…</text>
+<rect x="200" y="226" width="150" height="28" rx="6" class="b-bad"/><text class="t-c" x="275" y="245" text-anchor="middle" style="font-size:11.5px">RetryingLoggingSms…</text></g>
+<text class="t-s" x="30" y="290" data-s="1-1">2 classes. Fine so far.</text>
+<text class="t-s t-warn" x="30" y="290" data-s="2-2">"Log every message" → 4 classes.</text>
+<text class="t-s t-bad" x="30" y="290" data-s="3">"Retry on failure" → 8. Next feature: 16.</text>
+<g data-s="4" class="fly">
+<rect x="400" y="50" width="70" height="40" rx="6" class="b-info"/><text class="t-c" x="435" y="75" text-anchor="middle">Email</text>
+<rect x="480" y="50" width="60" height="40" rx="6" class="b-info"/><text class="t-c" x="510" y="75" text-anchor="middle">Sms</text>
+<rect x="550" y="50" width="70" height="40" rx="6" class="b-warn"/><text class="t-c" x="585" y="75" text-anchor="middle">Logging</text>
+<rect x="630" y="50" width="66" height="40" rx="6" class="b-bad"/><text class="t-c" x="663" y="75" text-anchor="middle">Retry</text>
+<text class="t-m" x="400" y="110">4 pieces. Logging and Retry each wrap</text><text class="t-m" x="400" y="126">"any notifier", whatever it is.</text></g>
+<g data-s="5" class="fly">
+<rect x="400" y="146" width="296" height="80" rx="8" class="b-bad"/><text class="t-c" x="410" y="164" style="font-size:11.5px">Retry(</text>
+<rect x="416" y="170" width="264" height="48" rx="6" class="b-warn"/><text class="t-c" x="426" y="187" style="font-size:11.5px">Logging(</text>
+<rect x="432" y="192" width="90" height="22" rx="4" class="b-info"/><text class="t-c" x="477" y="207" text-anchor="middle" style="font-size:11.5px">Email</text><text class="t-c" x="530" y="207" style="font-size:11.5px">))</text>
+<rect x="400" y="236" width="200" height="40" rx="8" class="b-warn"/><text class="t-c" x="410" y="254" style="font-size:11.5px">Logging(</text>
+<rect x="476" y="244" width="60" height="22" rx="4" class="b-info"/><text class="t-c" x="506" y="259" text-anchor="middle" style="font-size:11.5px">Sms</text><text class="t-c" x="542" y="259" style="font-size:11.5px">)</text>
+<text class="t-s t-good" x="400" y="300">Any combination, still only 4 classes.</text></g>
+</svg>

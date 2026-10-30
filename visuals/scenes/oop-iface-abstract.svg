@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="An interface is a contract a class can sign many of; an abstract class is a half-built base with shared code, and a class can extend only one">
+<text class="t-cap" x="24" y="28">INTERFACE: A CONTRACT</text><text class="t-cap" x="380" y="28">ABSTRACT CLASS: A HALF-BUILT BASE</text>
+<line x1="360" y1="16" x2="360" y2="274" class="ln-m"/>
+<g data-s="1"><rect x="24" y="44" width="310" height="70" rx="10" class="b-dash" style="stroke:var(--accent);stroke-width:2"/><text class="t-c" x="40" y="70" style="font-size:12.5px">interface IPaymentMethod</text><text class="t-c" x="40" y="94" style="font-size:12.5px">  string Charge(decimal amount);</text>
+<text class="t-m" x="24" y="132">just the WHAT: names and shapes, no code, no data</text></g>
+<g data-s="2" class="fly"><rect x="24" y="150" width="140" height="44" rx="8" class="b-info"/><text class="t-c" x="36" y="177" style="font-size:12px">GiftCard</text>
+<rect x="194" y="150" width="140" height="44" rx="8" class="b-info"/><text class="t-c" x="206" y="177" style="font-size:12px">CardPayment</text>
+<text class="t-s" x="24" y="220">Unrelated classes can each sign it.</text><text class="t-s" x="24" y="240">One class can sign MANY contracts:</text><text class="t-c t-acc" x="24" y="262" style="font-size:11.5px">class GiftCard : IPaymentMethod, IRefundable</text></g>
+<g data-s="3" class="fly"><rect x="380" y="44" width="316" height="96" rx="10" class="b-acc"/><text class="t-c" x="394" y="68" style="font-size:12px">abstract class PaymentMethod</text>
+<text class="t-c" x="394" y="88" style="font-size:11.5px"> ✓ LogAttempt() { … }   real code</text><text class="t-c" x="394" y="106" style="font-size:11.5px"> ✓ fields, a constructor</text><text class="t-c t-warn" x="394" y="124" style="font-size:11.5px"> ☐ Charge(…)   left for you</text></g>
+<g data-s="4" class="fly"><rect x="380" y="160" width="316" height="44" rx="8" class="b-info"/><text class="t-c" x="394" y="187" style="font-size:12px">CardPayment : PaymentMethod</text>
+<text class="t-s" x="380" y="226">Subclasses inherit the shared code and fill</text><text class="t-s" x="380" y="246">in the blanks. But a class can extend only ONE.</text></g>
+<g data-s="5"><rect x="24" y="282" width="672" height="28" rx="6" class="b-good"/><text class="t-s" x="36" y="301">Interface = "can do". Abstract class = "is a kind of, and shares code". Unsure? Start with an interface.</text></g>
+</svg>

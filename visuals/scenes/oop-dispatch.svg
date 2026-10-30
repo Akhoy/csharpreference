@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" role="img" aria-label="Polymorphism: one call site, and the runtime follows each object to its own type's method table to pick the right Charge code">
+<defs><marker id="od-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-acc"/></marker>
+<marker id="od-arm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="f-m"/></marker></defs>
+<text class="t-cap" x="24" y="28">CHECKOUT CODE (never changes)</text><text class="t-cap" x="270" y="28">OBJECTS</text><text class="t-cap" x="480" y="28">EACH TYPE'S METHOD TABLE</text>
+<rect x="24" y="44" width="220" height="70" rx="8" class="b-sunk"/>
+<text class="t-c" x="36" y="70">foreach (var p in payments)</text><text class="t-c t-acc" x="56" y="94">p.Charge(total);</text>
+<rect x="24" y="140" width="220" height="40" rx="6" class="b-info"/><text class="t-c" x="36" y="165">IPaymentMethod p ●</text>
+<text class="t-m" x="24" y="200" data-s="1-1">The compiler only knows</text><text class="t-m" x="24" y="216" data-s="1-1">"p can Charge". Not how.</text>
+<g><rect x="270" y="60" width="170" height="44" rx="8" class="b" data-hl="2"/><text class="t-c" x="282" y="87">CardPayment</text></g>
+<g><rect x="270" y="130" width="170" height="44" rx="8" class="b" data-hl="3"/><text class="t-c" x="282" y="157">PayPalPayment</text></g>
+<g><rect x="270" y="200" width="170" height="44" rx="8" class="b" data-hl="4"/><text class="t-c" x="282" y="227">GiftCard</text></g>
+<g data-s="5" class="fly"><rect x="270" y="262" width="170" height="44" rx="8" class="b-good"/><text class="t-c" x="282" y="289">ApplePay (new!)</text></g>
+<path d="M440,82 L474,82" class="ln-m" marker-end="url(#od-arm)"/><path d="M440,152 L474,152" class="ln-m" marker-end="url(#od-arm)"/><path d="M440,222 L474,222" class="ln-m" marker-end="url(#od-arm)"/>
+<g><rect x="480" y="60" width="216" height="44" rx="8" class="b-sunk" data-hl="2"/><text class="t-c" x="492" y="87">Charge → charge the card</text></g>
+<g><rect x="480" y="130" width="216" height="44" rx="8" class="b-sunk" data-hl="3"/><text class="t-c" x="492" y="157">Charge → go to PayPal</text></g>
+<g><rect x="480" y="200" width="216" height="44" rx="8" class="b-sunk" data-hl="4"/><text class="t-c" x="492" y="227">Charge → reduce the balance</text></g>
+<g data-s="5" class="fly"><path d="M440,284 L474,284" class="ln-m" marker-end="url(#od-arm)"/><rect x="480" y="262" width="216" height="44" rx="8" class="b-good"/><text class="t-c" x="492" y="289">Charge → ask Apple</text></g>
+<g data-s="2-2"><path d="M228,160 C250,160 245,82 264,82" class="ln-acc" marker-end="url(#od-ar)"/></g>
+<g data-s="3-3"><path d="M228,160 C250,160 245,152 264,152" class="ln-acc" marker-end="url(#od-ar)"/></g>
+<g data-s="4-4"><path d="M228,160 C250,160 245,222 264,222" class="ln-acc" marker-end="url(#od-ar)"/></g>
+<text class="t-s t-good" x="24" y="216" data-s="5">Checkout code: 0 lines changed.</text>
+</svg>

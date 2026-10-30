@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-label="A delegate is a typed slot that holds a method; checkout calls whatever rule is plugged in">
+<text class="t-cap" x="24" y="28">CHECKOUT (written once)</text><text class="t-cap" x="430" y="28">RULES YOU CAN PLUG IN</text>
+<rect x="24" y="44" width="360" height="200" rx="12" class="b-sunk"/>
+<text class="t-c" x="40" y="72">decimal Total(decimal subtotal,</text>
+<text class="t-c t-acc" x="40" y="94">    Func&lt;decimal, decimal&gt; rule)</text>
+<text class="t-c" x="40" y="118">  =&gt; <tspan class="t-acc">rule</tspan>(subtotal);</text>
+<rect x="60" y="140" width="240" height="64" rx="10" class="b-dash" style="stroke:var(--accent);stroke-width:2"/>
+<text class="t-cap" x="60" y="228">THE SLOT: decimal in → decimal out</text>
+<g data-s="2-2" data-mv="2:-336,58"><g class="fly-r" data-s="2-2"><rect x="400" y="92" width="232" height="44" rx="10" class="b-good"/><text class="t-c" x="412" y="119">TenPercentOver50</text></g></g>
+<g data-s="3-3" data-mv="3:-336,-2"><rect x="400" y="152" width="232" height="44" rx="10" class="b-info"/><text class="t-c" x="412" y="179">ChristmasSpecial</text></g>
+<g data-s="4-4" data-mv="4:-336,-64"><rect x="400" y="214" width="232" height="44" rx="10" class="b-warn"/><text class="t-c" x="412" y="241" style="font-size:12px">s =&gt; s &gt;= 30 ? s - 5 : s</text></g>
+<g data-s="1-4"><rect x="400" y="92" width="232" height="44" rx="10" class="b-good" style="opacity:.25"/><text class="t-c" x="412" y="119" style="opacity:.4">TenPercentOver50</text>
+<rect x="400" y="152" width="232" height="44" rx="10" class="b-info" style="opacity:.25"/><text class="t-c" x="412" y="179" style="opacity:.4">ChristmasSpecial</text>
+<rect x="400" y="214" width="232" height="44" rx="10" class="b-warn" style="opacity:.25"/><text class="t-c" x="412" y="241" style="opacity:.4;font-size:12px">s =&gt; s &gt;= 30 ? s - 5 : s</text></g>
+<text class="t-s" x="24" y="270" data-s="1-1">The slot's TYPE says what shape of method fits. It's empty for now.</text>
+<text class="t-s t-good" x="24" y="270" data-s="2-2">Plug in TenPercentOver50: £50 subtotal → £45.</text>
+<text class="t-s t-info" x="24" y="270" data-s="3-3">Swap the rule. Checkout's code didn't change at all.</text>
+<text class="t-s t-warn" x="24" y="270" data-s="4-4">A lambda: a rule written inline, right where you pass it.</text>
+<g data-s="5"><rect x="400" y="92" width="296" height="60" rx="10" class="b-bad"/><text class="t-c" x="412" y="116" style="font-size:12px">string SayHello(int n)</text><text class="t-s t-bad" x="412" y="138">✗ wrong shape: won't compile</text>
+<text class="t-s t-bad" x="24" y="270">The compiler only lets a matching method into the slot.</text></g>
+</svg>
