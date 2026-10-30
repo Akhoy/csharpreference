@@ -291,7 +291,7 @@ The difference that justifies the extra ceremony: `IMiddleware` instances are **
 
 ### 3. Inline with app.Use
 
-Best for a handful of lines you genuinely won't reuse anywhere else. Since .NET 6 there's an overload, `app.Use(async (context, next) => …)`, where `next` is a plain `RequestDelegate` rather than the older `Func<Task>` — worth knowing because it avoids an extra allocation per request compared with the older form.
+Best for a handful of lines you genuinely won't reuse anywhere else. Since .NET 6 there's an overload, `app.Use(async (context, next) => …)`, where `next` is the next middleware's `RequestDelegate` (you call `next(context)`) rather than the older `Func<Task>` (you call `next()`). The difference is an allocation. With the old form, `next()` takes no arguments, yet it still has to call the next middleware *with this request's context*. So for **every request** the framework built a small lambda that captured `context` (a closure plus a delegate, as in [Delegates](ch:delegates-events#closures-a-lambda-packs-a-backpack)). With the new form, `next` is the same delegate object for every request, built once when the pipeline was assembled, and you pass the context in yourself. Nothing is allocated per request.
 
 ## Short-circuiting and terminal middleware {i}
 

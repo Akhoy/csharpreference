@@ -16,7 +16,7 @@ next: auth, observability-aspire, cqrs-mediator-result
 - `app.UseExceptionHandler()` must be the outermost middleware, so it can catch exceptions from everything registered after it. `IExceptionHandler` implementations are tried in registration order until one claims the exception.
 - **ProblemDetails** (RFC 9457) is a standard JSON shape for API errors — `type`/`title`/`status`/`detail` everywhere — so any client can handle errors from any endpoint the same way.
 - `ILogger<T>` is one API with pluggable destinations (console, Application Insights, Serilog). Log with **message templates** (`"{OrderId}"`), not string interpolation, so fields stay queryable.
-- **Scopes** attach extra fields (like `OrderId`) to every log line written inside a block, even across an `await`, because they ride on `AsyncLocal`.
+- **Scopes** attach extra fields (like `OrderId`) to every log line written inside a block, even across an `await`. They're stored in an `AsyncLocal<T>`, a variable whose value travels with the logical flow of the work (copied into each continuation) rather than staying with one thread, so it's still there after an `await` resumes on a different thread.
 - Never log secrets, tokens, or full PII. Log IDs, not whole objects, and reach for `[LoggerMessage]` in hot paths where the logging call itself costs enough to matter.
 
 ## Two very different audiences for the same failure {b}
@@ -235,7 +235,9 @@ using (logger.BeginScope(new Dictionary<string, object> { ["OrderId"] = order.Id
 }
 ```
 
-The scope survives across that `await` — even onto a different thread — because it's carried by `AsyncLocal`, the same ambient-state mechanism the async state machine relies on in [Async and await](ch:async-await). Logging didn't have to invent anything new for this. ASP.NET Core uses the same trick automatically: it wraps every request in a scope carrying `RequestId`, `RequestPath`, `TraceId` and `SpanId`, so any log line anywhere in that request's call graph can be traced straight back to its request and its place in a distributed trace. Turn this on in the console provider with `"IncludeScopes": true`.
+The scope survives across that `await`, even when the method resumes on a different thread. To see why that's not automatic, consider the obvious way to store "the current scope": a `[ThreadStatic]` field, one value per thread. That breaks immediately with async code. Thread 7 sets the scope, the method awaits, thread 7 goes off to serve another request, and the continuation runs on thread 3, whose field holds nothing (or worse, some other request's scope).
+
+`AsyncLocal<T>` fixes this by attaching the value to the **flow of execution** instead of the thread. Every time .NET schedules a continuation, it captures the current `ExecutionContext`, a small bundle that contains all `AsyncLocal` values, and restores it when the continuation runs, whichever thread that is. Changes made inside an async method flow *down* into the code it awaits, but don't leak back *up* into its caller. Logging didn't have to invent anything for this: `BeginScope` just pushes onto an `AsyncLocal` stack, and the same mechanism carries `Activity.Current` (the trace ID) and the current culture. ASP.NET Core uses the same trick automatically: it wraps every request in a scope carrying `RequestId`, `RequestPath`, `TraceId` and `SpanId`, so any log line anywhere in that request's call graph can be traced straight back to its request and its place in a distributed trace. Turn this on in the console provider with `"IncludeScopes": true`.
 
 ## High-performance logging: when the logging call itself becomes the bottleneck {a}
 

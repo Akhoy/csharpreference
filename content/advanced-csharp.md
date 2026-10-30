@@ -367,7 +367,7 @@ Setting the price through the alias changes the array.
 The rest of this family is mostly for library authors: `ref readonly` returns, `scoped`, and `Unsafe`, `MemoryMarshal` and `CollectionsMarshal` for expert control over memory.
 
 :::qa What is a defensive copy, and how do `in` and `readonly struct` relate to it?
-Sometimes you call a method on a struct that's meant to stay unchanged, for example one passed by `in` or held in a `readonly` field. If the compiler can't prove the method won't modify the struct, it first copies the struct, so the original is safe. That's a defensive copy. It silently undoes the point of `in`. Declaring the struct `readonly struct` (or its members `readonly`) tells the compiler mutation is impossible, so no copy is needed.
+Some struct values are promised never to change: one passed as an `in` parameter, or one stored in a `readonly` field. Now you call a method on it, say `price.Round()`. Inside that method, `this` refers to the struct, and an ordinary struct method is allowed to assign to its own fields. The compiler can't see inside the method to know whether it does. So, to keep its promise, it calls the method **on a temporary copy** instead of on the original. That's a defensive copy. Nothing breaks, but you pay for copying the whole struct on every call, which silently undoes the point of `in` ("pass by reference so we *don't* copy"). Declaring the type `readonly struct`, or marking individual methods `readonly`, tells the compiler those methods can't write to fields. The compiler checks that, so it can safely call them directly on the original, with no copy.
 :::
 
 ## Act 4 · 04:00 — The label printer only speaks C {a}

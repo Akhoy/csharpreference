@@ -211,8 +211,60 @@ static Func<int> MakeCounter()
     return backpack.Lambda;              // a delegate to a method on that object
 }
 ```
-Three consequences follow. Capturing **allocates** (the backpack plus the delegate). Captured variables are **shared, not copied**, so every lambda that captures `count` sees the same field. And the backpack lives as long as the delegate does. A lambda that captures nothing allocates nothing: the compiler caches it. Mark a lambda `static` (`static x => x * 2`) to get a compile error if it captures by accident.
+Three consequences follow. Capturing **allocates** (the backpack plus the delegate). Captured variables are **shared, not copied**, so every lambda that captures `count` sees the same field. And the backpack lives as long as the delegate does. A lambda that captures nothing allocates nothing: the compiler caches it.
 :::
+
+### Static lambdas: a promise not to capture
+
+You can put `static` in front of a lambda: `static x => x * 2`. To see what that means, start with the `static` you already know. A **static method** has no `this`: it doesn't belong to any object, so it can only use its own parameters, its own locals and other static members. It can't reach into an instance's fields.
+
+A **static lambda** gets the same restriction, applied to the code around it. It may use its parameters, its own locals, constants and static members, but it may **not** use any local variable, parameter or `this` from the method that contains it. In other words, it can't **capture**, so it never needs a backpack.
+
+Why would you want that? Because capturing is easy to do by accident and costs you in two ways:
+
+- **Allocations.** A capturing lambda needs a backpack object, and usually a new delegate, **every time** the surrounding code runs. In a method called a million times a second, that's a million small objects for the GC.
+- **Hidden lifetimes.** If a lambda accidentally uses `this` (say, by reading a field), the backpack holds a reference to the whole object. Store that lambda in a long-lived cache or event, and the object can never be garbage collected.
+
+Here are both kinds, measured:
+
+:::walk What capturing costs, and what `static` guarantees
+```csharp
+int discount = 5;
+Func<int, int> captures = p => p - discount;
+Func<int, int> pure = static p => p * 2;
+Console.WriteLine($"{captures(20)} {pure(20)}");
+Console.WriteLine($"captures lives on: {captures.Target!.GetType().Name}");
+Console.WriteLine($"pure lives on:     {pure.Target!.GetType().Name}");
+
+long before = GC.GetAllocatedBytesForCurrentThread();
+for (int i = 0; i < 1000; i++) MakeCapturing(i);
+Console.WriteLine($"1,000 capturing lambdas: {GC.GetAllocatedBytesForCurrentThread() - before:N0} bytes");
+before = GC.GetAllocatedBytesForCurrentThread();
+for (int i = 0; i < 1000; i++) MakeStatic();
+Console.WriteLine($"1,000 static lambdas:    {GC.GetAllocatedBytesForCurrentThread() - before:N0} bytes");
+
+static Func<int, int> MakeCapturing(int d) => p => p - d;
+static Func<int, int> MakeStatic() => static p => p * 2;
+```
+@1-2 | discount = 5 ; captures = p => p - discount (captures discount)
+`captures` uses the local `discount`, so the compiler moves `discount` into a backpack object and the lambda points at it.
+@3 | discount = 5 ; captures = (captures discount) ; pure = static p => p * 2 (captures nothing)
+`pure` only uses its own parameter. The `static` keyword makes that a **rule**: if someone later edits it to use `discount`, the build fails with error CS8820, "A static anonymous function cannot contain a reference to 'discount'".
+@4 | | > 15 40
+Both work as ordinary lambdas.
+@5 | | > captures lives on: <>c__DisplayClass0_0
+`Target` is the object the delegate's method runs on. For `captures`, that's the compiler-generated backpack class, holding `discount`.
+@6 | | > pure lives on:     <>c
+For `pure`, it's `<>c`: one shared, compiler-generated object that holds every non-capturing lambda in the class. There's no per-call state.
+@8-10 | | > 1,000 capturing lambdas: 81,032 bytes
+`MakeCapturing(i)` captures its parameter `d`, so each call allocates a new backpack and a new delegate. That's about 80 bytes per call.
+@11-13 | | > 1,000 static lambdas:    64 bytes
+`MakeStatic()` captures nothing. The compiler creates the delegate **once**, caches it in a static field, and hands back the same one every time. Effectively zero allocations.
+@16 | -
+One honest detail: the caching comes from **not capturing**, not from the keyword. A lambda without `static` that happens to capture nothing is cached too. What `static` adds is a guarantee: the compiler will reject any future edit that would quietly start capturing, and allocating, again.
+:::
+
+Use `static` on lambdas in hot paths and in long-lived registrations (caches, events, `ConcurrentDictionary.GetOrAdd` factories). There, an accidental capture is either a steady stream of allocations or a memory leak.
 
 ### The loop trap
 
@@ -301,7 +353,52 @@ Both run, but a call can only return one value, so you get the **last** one. The
 
 ![A multicast delegate's invocation list running in add order; only the last subscriber's return value survives](visuals/multicast-invocation-list.svg)
 
-Two sharp edges. With a return value, you only get the **last** method's result. And if one method throws, the rest **never run**. Delegates are also **immutable**: `+=` builds a *new* delegate and reassigns the variable, which is why `handler?.Invoke(...)` is safe even while another thread is subscribing.
+Two sharp edges. With a return value, you only get the **last** method's result. And if one method throws, the rest **never run**.
+
+### Delegates never change: `+=` makes a new one
+
+There's a third property, and it matters as soon as two threads are involved. A delegate object is **immutable**: once it exists, its list of methods can never change. So what does `notify += sms` do? It builds a **brand-new** delegate whose list is "the old list plus `sms`", then points the variable at the new one. The old delegate object is untouched. Anyone who was still holding it still has the old, complete list.
+
+:::walk `+=` doesn't change the delegate, it replaces it
+```csharp
+Action notify = () => Console.WriteLine("  email");
+Action snapshot = notify;
+notify += () => Console.WriteLine("  sms");
+Console.WriteLine($"same object? {ReferenceEquals(notify, snapshot)}");
+Console.WriteLine("calling the snapshot:");
+snapshot();
+Console.WriteLine("calling the variable:");
+notify();
+```
+@1 | notify = → delegate #1 [email]
+A delegate object holding one method.
+@2 | notify = → delegate #1 [email] ; snapshot = → delegate #1 [email]
+Copy the **reference** into a second variable. Both point at the same object.
+@3 | notify = → delegate #2 [email, sms] ; snapshot = → delegate #1 [email]
+`+=` doesn't add `sms` to delegate #1. It creates **delegate #2** with both methods, and points `notify` at it. Delegate #1 still exists, unchanged, and `snapshot` still points at it.
+@4 | | > same object? False
+Proof: after `+=`, the variable holds a different object.
+@5-6 | | > calling the snapshot: | >   email
+The snapshot still calls only `email`. Nothing that happened to `notify` could reach into the object `snapshot` holds.
+@7-8 | | > calling the variable: | >   email | >   sms
+The variable now calls both.
+:::
+
+Now the threading problem this solves. Raising an event the old way looked like this:
+
+```csharp norun
+if (PriceChanged != null)        // 1. check the field
+    PriceChanged(this, args);    // 2. read the field AGAIN and call it
+```
+
+The field is read **twice**. Between line 1 and line 2, another thread can run `PriceChanged -= OnPrice`, and if that was the last subscriber the field becomes `null`. Line 2 then reads `null` and throws `NullReferenceException`. That's a classic race: correct on one thread, intermittently broken on two.
+
+`PriceChanged?.Invoke(this, args)` reads the field **once**, into a hidden temporary, then null-checks and calls *the temporary*. It's the `snapshot` from the walk above. Other threads can do all the `+=` and `-=` they like: each one swaps the field to a new delegate, but your temporary keeps pointing at the object it read, and that object can never change. So the call can't see half a change or a sudden `null`.
+
+Two consequences to know:
+
+- A handler that unsubscribes a microsecond before you raise the event **can still be called once**, because your snapshot was taken just before it left. Handlers must cope with that, for example by checking whether their own object has been disposed.
+- The `+=` and `-=` themselves are also safe across threads for **field-like events** (`public event EventHandler? X;`). The compiler generates `add` and `remove` methods that build the new delegate and swap it in with `Interlocked.CompareExchange`, retrying if another thread swapped first, so no subscription is lost.
 
 ## Events: a delegate with a safety lock {i}
 

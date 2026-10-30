@@ -589,7 +589,8 @@ public void MoveNext()
 What follows from it:
 
 - If every awaited task is **already finished**, the method runs straight through, synchronously and cheaply.
-- The first real pause **copies the state machine to the heap**. That's why locals in async methods live on the heap, and why a `Span<T>` can't cross an `await` ([Episode 10](ch:advanced-csharp)).
+- The first real pause **copies the state machine to the heap**. Here's why it has to. The state machine starts life as a struct in the calling method's stack frame. But when the method pauses, it *returns*, and its stack frame is popped. The locals still have to exist when the method resumes later, maybe on another thread with a completely different stack. So the runtime boxes the struct onto the heap, where it survives, and the continuation points at that heap copy. Your "local variables" are now fields of a heap object.
+- That's also why a `Span<T>` can't be used across an `await`. A span may point at **stack memory** (from `stackalloc`), which is gone once the frame is popped. If a span were stored as a field of the heap-boxed state machine, it would point at a dead stack frame after the pause. The compiler forbids it rather than let that happen ([Episode 10](ch:advanced-csharp#why-span-has-strict-rules-ref-structs)).
 - `await` works on anything with a `GetAwaiter()` method, not only `Task`.
 
 :::qa What does the compiler generate for an async method?

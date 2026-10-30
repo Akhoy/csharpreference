@@ -613,7 +613,7 @@ Fill it, then spread its values into an array.
 @6 | | > Chai / Sencha,Assam / orders
 `^1` is the last item. `..2` is a range: items 0 and 1. `nameof(orders)` is the variable's name as a string, checked by the compiler, so it updates if you rename the variable.
 @8 | twice = static x => x * 2
-A **static lambda** promises not to capture anything. If it accidentally used a local variable, that would be a compile error, so it can never allocate a closure.
+A **static lambda** follows the same rule as a static method: no `this`, and no access to the surrounding method's locals or parameters. It can use only its own parameters and static members. So it can never **capture** anything, which means it never needs a hidden closure object, and the compiler can create the delegate once and reuse it. If someone later edits it to use a local, the build fails (error CS8820) instead of quietly starting to allocate. [Delegates](ch:delegates-events#static-lambdas-a-promise-not-to-capture) measures the difference.
 @9 | | > ORD-42
 @11 | -
 `Label` is a **local function**: a helper declared inside the code that uses it, invisible to the rest of the program.
