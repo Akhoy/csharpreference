@@ -875,3 +875,196 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
   - A lock's TTL can expire while the work is still running, letting a second holder start, so use **fencing tokens** or idempotent work. Acquire with `SET NX PX` and release only if your token still matches.
 - **Search and vectors are projections**: keep the source of truth in SQL or Cosmos, and project into Azure AI Search or Elasticsearch through the change feed or events, for full-text, facets, synonyms, semantic ranking and hybrid vector search. Vector stores include Azure AI Search, Cosmos DB, pgvector, SQL Server 2025, Redis and Qdrant, accessed through `Microsoft.Extensions.VectorData` and `Microsoft.Extensions.AI`.
 - **Choosing a store**: relational for business data; documents for whole aggregates and global scale; Redis for caches, sessions, counters, locks, leaderboards and limits; **Blob Storage** for files (store the URL in the database, never the file); search indexes for relevance; Event Hubs or Kafka for high-volume replayable streams; Data Explorer for telemetry; graph databases for path queries. Don't use a cache as the system of record, and don't pick NoSQL to dodge migrations: schema-on-read still needs versioning (a `schemaVersion` field plus code that handles old shapes).
+
+## Part V · Architecture and Design
+
+Layer 4: how you organise your own code so that change stays cheap as the system grows.
+
+### 5.1 · Design principles: SOLID and beyond
+
+[Full chapter →](ch:design-principles)
+
+- **Every principle exists to make change cheap**, meaning a requirement change touches as few places as possible without breaking unrelated things.
+- **S, Single Responsibility**: a module has **one reason to change**, meaning it answers to one actor (one source of requirements). An `OrderService` that prices (sales), persists (DBA) and emails (marketing) is edited by three teams for unrelated reasons, which brings merge conflicts and cross-breakage. Warning signs: names with Manager/Helper/Utils, 2,000-line services, 10+ constructor dependencies. SRP is about **cohesion around a reason to change**, not one method per class; over-splitting scatters logic.
+- **O, Open/Closed**: add behaviour by adding code, not by editing working code. A carrier `switch` must be edited for every new carrier, risking the existing ones; an `IShippingRate` per carrier makes FedEx a new class plus one registration line. ASP.NET Core is built this way: middleware, DI registrations, filters, interceptors, `DelegatingHandler`s and configuration, logging and authorization providers are all extension points.
+- **L, Liskov Substitution**: a subtype must be usable wherever its base is expected **without breaking correctness**. That means no stronger preconditions, no weaker postconditions, no surprising exceptions, and the base's invariants preserved. `Square : Rectangle` breaks callers who set width and height independently, because "is-a" must mean "behaves like". A `ReadOnlyOrderRepository` that throws on `Add` breaks everyone coding against `IOrderRepository`. .NET's own famous violation is arrays implementing `IList<T>` and throwing on `Add`. The test: would every test written for the base type pass for the subtype?
+- **I, Interface Segregation**: clients shouldn't depend on methods they don't use. A fat `IUserService` forces a reporting job to depend on write methods and makes mocks implement 12 members. Split it by role (`IUserReader`, `IUserWriter`), and the read-only repository from the LSP example simply never implements the writer, so the problem disappears instead of being patched. .NET examples: `IEnumerable` → `IReadOnlyCollection` → `IList`, `IOptions<T>` per settings section, CQRS read/write split.
+- **D, Dependency Inversion**: high-level policy and low-level detail both depend on abstractions, and **the high-level side owns the interface**, phrased in business terms. At run time, control still flows from `OrderService` to SQL. But at compile time `OrderService` mentions only `IOrderRepository`, defined in the domain or application project and implemented in infrastructure, so the source-code dependency points **inward**, opposite to the flow of control. DIP is the principle; DI is the mechanism that wires it up; Clean, Onion and Hexagonal architecture are DIP applied to a whole solution.
+- **Coupling and cohesion are what SOLID is really about.** High **cohesion**: related things together (a `Money` type with its arithmetic, not a `Utils` grab-bag). Low **coupling**: modules don't depend on each other's internals. Coupling from worst to best:
+  - **content**: reflecting into private state;
+  - **common**: shared mutable statics, or one table written by two services;
+  - **control**: flag parameters like `Save(order, sendEmail: true)`;
+  - **stamp**: passing a whole object when one field is needed;
+  - **data**: passing just the needed values;
+  - **message**: communicating only through events or messages.
+
+  **Connascence** names the ways two parts must change together (name, type, meaning, position, algorithm, timing). Keep strong forms inside one module, never across team boundaries.
+- **DRY is about knowledge, not text.** Two snippets that look identical but change for different reasons (a shipping formula and a tax formula that both compute `base * rate` today) are not duplication, and merging them couples unrelated business rules. "Prefer duplication over the wrong abstraction"; the **Rule of Three** says abstract on the third occurrence, once the real pattern is clear. **KISS**: few moving parts, clear intent (simple isn't the same as easy). **YAGNI**: don't build for hypothetical requirements, but don't ignore known ones either.
+- **Other principles**:
+  - **composition over inheritance**;
+  - **Law of Demeter**: `order.Customer.Address.City.Name` couples you to four classes' structure, so prefer `order.ShippingCity()`;
+  - **Tell, Don't Ask**: `account.Withdraw(50)` enforces its own rule instead of `if (balance >= 50) balance -= 50` outside it, which is the root of rich domain models;
+  - **separation of concerns**;
+  - **least astonishment**: `GetUser` shouldn't create a user;
+  - **fail fast**: constructor guards, `ValidateOnStart`;
+  - **Command-Query Separation**: a method either changes state or returns data, never both; CQRS scales this up;
+  - the **Hollywood principle** ("don't call us, we'll call you"), which is Inversion of Control;
+  - **package principles**: depend toward stability; no cycles between projects, which the compiler enforces.
+- **Over-applying principles is its own anti-pattern**:
+  - an interface for every class, each with one never-mocked implementation;
+  - abstracting stable things (wrapping `DateTime` is useful for testability; wrapping `string.Join` is not);
+  - 40 classes for one feature;
+  - plugin systems for variations that never come;
+  - a shared `Customer` class across billing, shipping and marketing, coupling three teams.
+
+  The test is whether the abstraction **pays for itself** through testability, a real variation point, or isolating something volatile (I/O, third parties, time). If not, keep it concrete and refactor later, which is cheap when tests exist.
+
+### 5.2 · Design patterns: the GoF catalogue in modern .NET
+
+[Full chapter →](ch:design-patterns)
+
+- **A pattern is a named shape for a recurring problem**, and knowing the name lets you predict unfamiliar framework code ("that's a Decorator") without reading it. The Gang of Four catalogued 23 in three groups: **creational** (how objects are made), **structural** (how they're composed) and **behavioural** (how they collaborate). Modern C# and DI absorb many of them: a delegate replaces a one-method Strategy, `yield` *is* Iterator, and the container replaces hand-written Singletons and Factories. To answer "tell me about a pattern you used", give the problem, the pattern, the .NET example and the trade-off.
+- **Creational**:
+  - **Factory Method / simple factory**: a method decides which concrete type to create, so callers depend on an abstraction. Examples: `IHttpClientFactory`, `ILoggerFactory`, `IDbContextFactory`, DI factory lambdas; keyed services often replace hand-written factories.
+  - **Abstract Factory** creates **families** that must be swapped together (Azure blob, queue and secrets vs local file, channel and user secrets); `DbProviderFactory` is one.
+  - **Builder** constructs complex objects step by step with a fluent API and validates once at `Build()`. It's everywhere: `WebApplicationBuilder`, `IServiceCollection`, `ConfigurationBuilder`, `StringBuilder`, `ModelBuilder`, policy builders. **Test data builders** are a great use.
+  - **Singleton**: the classic static `Instance` is hidden global state (invisible dependencies, not replaceable in tests, tests interfere with each other, a fixed lifetime). A **DI singleton** gives "one instance" with explicit, replaceable dependencies, and either way it must be thread-safe.
+  - **Prototype** copies existing objects: record `with`, `MemberwiseClone`; `ICloneable` is discouraged because shallow vs deep is ambiguous.
+- **Structural**:
+  - **Adapter** translates an incompatible interface into the one your code expects. A `StripePaymentAdapter : IPaymentGateway` keeps vendor types out of your domain; it's the "adapter" in Ports & Adapters.
+  - **Decorator** wraps an object with another implementing the **same interface** to add behaviour before or after delegating, and stacks: `Logging → Caching → Sql`, like nested middleware. N behaviours need N classes instead of 2^N subclasses. Examples: `DelegatingHandler`, `GZipStream`/`CryptoStream` around a `Stream`, MediatR behaviours.
+  - **Proxy** also keeps the same interface, but **controls access**: lazy (EF lazy-loading proxies, `Lazy<T>`), remote (gRPC or Refit clients), protection, dynamic (`DispatchProxy`, Castle, which Moq and NSubstitute use). Decorator vs Proxy is about *why* you wrapped: adding behaviour vs controlling whether and when the real object is reached.
+  - **Facade** puts a simple interface over a complex subsystem (`CreateBuilder`, `File.ReadAllTextAsync`, a `CheckoutFacade`).
+  - **Composite** treats individual objects and groups uniformly (a `CompositeRule` *is* a rule; `CompositeFileProvider`; configuration sections).
+  - **Bridge** separates abstraction from implementation (`ILogger` over providers, `DbConnection` over drivers).
+  - **Flyweight** shares common state (string interning, `ArrayPool`, `Task.CompletedTask`, cached `JsonSerializerOptions`).
+- **Behavioural**:
+  - **Strategy** is interchangeable algorithms behind an interface, chosen at run time: keyed DI services, `IComparer`, `IEqualityComparer`, authentication schemes, `JsonNamingPolicy`, Polly strategies. It's the most used pattern in DI-based code.
+  - **Observer**: a subject notifies observers without knowing them (C# events, `IObservable`, `IOptionsMonitor.OnChange`, change tokens, `DiagnosticListener`, MediatR notifications); at system scale it becomes pub/sub through a broker.
+  - **Command** makes a request an object, so it can be queued, logged, retried or undone (CQRS commands, MediatR requests, queue messages, Hangfire jobs). Commands are imperative (`PlaceOrder`) and can be rejected; events are past tense (`OrderPlaced`) and already happened.
+  - **Chain of Responsibility** passes a request along handlers that each handle, pass on, or both. The middleware pipeline is the defining example, along with `DelegatingHandler`, filters, MediatR behaviours and authorization handlers.
+  - **Mediator** routes communication through a central object (MediatR, which has needed a commercial licence for larger companies since 2025; the source-generated Mediator library; Wolverine; Brighter; SignalR hubs; aggregate roots). The trade-off is decoupling plus a central pipeline vs indirection, since "go to definition" no longer finds the handler.
+  - **Template Method**: a base class fixes the algorithm's skeleton and subclasses fill in steps (`BackgroundService.ExecuteAsync`, `AuthenticationHandler`, `OnModelCreating`, `JsonConverter<T>`). Strategy is preferred when steps vary independently.
+  - **State**: each state is a class, so `Placed.Pay()` returns `Paid`, instead of status `if`s everywhere. Simpler lifecycles use an enum plus a transition table, or the Stateless library; MassTransit sagas are state machines across services.
+  - **Iterator** is built in (`IEnumerable`, `yield`, `IAsyncEnumerable`). **Visitor** adds operations to a hierarchy through double dispatch (`ExpressionVisitor` is how EF translates queries; Roslyn syntax visitors); pattern matching often replaces simple visitors. **Memento** captures and restores state; **Interpreter** evaluates small languages.
+- **Architecture-scale patterns** live in other chapters: DI and Service Locator, Options, Repository, Unit of Work and Specification, CQRS and Result, Aggregate and Value Object, Outbox, Inbox and Saga, Retry and Circuit Breaker, API Gateway, BFF and Strangler Fig, Cache-Aside.
+
+### 5.3 · Application architectures: layered, Clean, hexagonal, vertical slice, modular monolith
+
+[Full chapter →](ch:app-architectures)
+
+- **At solution scale, architecture is about which parts may depend on which.** Good architecture keeps **business rules independent of delivery** (HTTP, UI, messages) **and infrastructure** (databases, queues, vendors). Logic is then testable without a server or database, frameworks can be swapped with local changes, teams don't collide, and the structure says what the system *does* (orders, payments), not what it's built with.
+- **Classic layered (n-tier)** stacks presentation → business → data access → database. It's simple and familiar, but **business logic depends on data access**: rules couple to persistence, entities get shaped by tables, testing needs the data layer, and one feature is scattered across every layer. It tends toward anemic models with all the logic in "service" classes.
+- **Onion (Palermo), Hexagonal / Ports & Adapters (Cockburn) and Clean (Uncle Bob) are one fix with three names**: put the **domain at the centre** and make **every compile-time dependency point inward**. Inner layers define the interfaces they need (ports: `IOrderRepository`, `IPaymentGateway`); outer layers implement them (adapters: `EfOrderRepository`, a Stripe adapter). Hexagonal distinguishes **driving** adapters (HTTP, CLI and tests call the core) from **driven** ones (the database and email, called by the core). It's DIP applied to the whole solution.
+- **A Clean solution**: `Domain` references nothing (entities, value objects, domain events, repository interfaces); `Application` references Domain (use-case handlers, DTOs, validators, ports); `Infrastructure` implements the ports with EF Core, brokers and vendor SDKs; `Api` is the composition root. Domain tests run in milliseconds with nothing to fake. Swapping Stripe for Adyen is a new adapter, and a gRPC or message entry point reuses the same handlers. The use-case folders "scream" what the system does. Common mistakes: leaking EF into the domain (`[Table]`, `DbSet`, `IQueryable` from repositories); letting Application reference Infrastructure "just once" (the rule is binary); ceremony overload on trivial CRUD; and an anemic model behind a clean structure.
+- **Repository and Unit of Work vs EF Core.** A repository acts as an in-memory collection of **aggregates** (clusters like an `Order` with its lines, saved and loaded as one unit), and a unit of work commits changes together. **EF Core already implements both**: `DbSet` is a repository and `DbContext` a unit of work. So the real question is whether to wrap them:
+  - using the context directly gives full power but couples Application to EF;
+  - a **generic repository** usually **adds nothing**, hiding EF features or leaking `IQueryable` (often called an anti-pattern);
+  - **specific per-aggregate repositories** speak domain language, define how an aggregate loads, keep EF out of inner layers and are easy to fake.
+
+  A common modern answer: **aggregate repositories for writes, direct projections (EF or Dapper) for reads**. Expose `IUnitOfWork` as the `DbContext` itself. The Specification pattern encapsulates query criteria as objects so repositories don't sprout `GetByXAndY` methods.
+- **Vertical Slice Architecture** (Bogard) organises by **feature**, not technical role. Each use case owns its request, validator, handler and endpoint in one file, so a change touches one place and features share little. The risks are duplication and business logic leaking into handlers. It combines well with a rich shared domain: the slice's handler still calls `order.Cancel(...)`. Minimal APIs, CQRS and REPR (FastEndpoints) fit slices naturally.
+- **A modular monolith** is one deployable split into strongly separated **modules**, one per bounded context, each with its own domain, its own schema or `DbContext`, and a small public API. Modules talk only through public contracts or integration events, never through another module's tables or internal classes. It delivers most of microservices' boundary benefits (clear ownership, independent evolution) **without** network failures, distributed transactions or many deployments. A module can be extracted into a service later with little rework, because the boundary already exists. Many teams now treat it as the **default starting architecture**.
+- **Enforce boundaries, or they erode within a sprint**: project references (the compiler rejects undeclared dependencies, the strongest guarantee), `internal` by default, **architecture tests** (NetArchTest, ArchUnitNET: "Domain must not depend on EF Core", "modules must not reference each other's internals") in CI, analyzers, and **ADRs** (Architecture Decision Records) documenting why.
+- **Choosing**: small CRUD → minimal APIs plus EF directly, in feature folders. Rich rules on a long-lived product → Clean with a DDD domain and CQRS reads. Many features and a fast team → slices over a shared domain. Several bounded contexts and few teams → modular monolith. Independent scaling, many teams and mature DevOps → microservices, often extracted from a modular monolith.
+
+### 5.4 · CQRS, the mediator pipeline and the Result pattern
+
+[Full chapter →](ch:cqrs-mediator-result)
+
+- **CQS → CQRS.** CQS (Meyer) is a method rule: change state or return data, never both, so asking a question never changes the answer. **CQRS** (Greg Young) scales it to architecture: **separate models and code paths for writes and reads**. Their needs differ. Writes need rich behaviour and invariants (load an aggregate, apply rules, save atomically). Reads need speed and shape (flat DTOs per screen, joins across aggregates, no tracking, caching). One model serving both ends up mediocre at both, with UI fields polluting entities and N+1 queries. Reads usually outnumber writes 10–100×, so splitting lets each side scale and optimise separately.
+- **CQRS is a spectrum.**
+  - Level 0: one model for everything.
+  - **Level 1**: separate command and query handlers over the **same database**, with immediate consistency and low complexity. **A great default.**
+  - Level 2: denormalised read tables in the same database, updated in the same transaction or by triggers.
+  - **Level 3**: separate read stores (Cosmos, Elasticsearch, Redis) updated **asynchronously** from events, which brings **eventual consistency**: an immediate GET after a POST may not see the change, and the UI must cope. This is where complexity jumps, with projections, replay and lag handling.
+  - Event sourcing on top: store events, not state.
+
+  CQRS **is not** event sourcing. They're independent, though event-sourced systems usually need CQRS read models.
+- **Commands vs queries in code**: commands are imperative records (`PlaceOrderCommand`) handled by loading aggregates and calling their methods, returning little (an ID, a Result). Queries never modify state, can bypass the domain entirely and project straight from `DbSet` to DTOs. One handler per command or query.
+- **The mediator's real value is the pipeline.** Dispatching a request to its single handler is a modest convenience. **Pipeline behaviours** that wrap every handler (logging, validation, authorization, transactions, caching) give cross-cutting concerns one home, the way middleware does for HTTP. A `ValidationBehavior` runs the FluentValidation validators and either calls `next()` or short-circuits with a failure; registration order decides the wrapping order. MediatR **notifications** provide in-process pub/sub for domain events.
+- **Do you need a library?** MediatR has needed a commercial licence for larger organisations since v13 (2025); Mediator (source-generated, MIT, very fast); Wolverine (mediator plus messaging plus outbox); Brighter; or **no library**: inject handlers directly and use decorators or endpoint filters, which keeps it explicit and makes "go to definition" work. The honest trade-off: indirection that hides call graphs ("service locator in disguise" when overused) and ceremony in small apps, vs a uniform pipeline and a repeatable per-use-case structure that scales with the number of use cases.
+- **The Result pattern makes expected failure part of the contract.** "Not found", "insufficient stock", "already registered" and "card declined" are normal outcomes. As exceptions they're **invisible in the signature** (`Task<Order> PlaceAsync()` hides five ways to fail), expensive under load, turn control flow into distant `try/catch`, and are easy to forget. A `Result<T>` is either a success value or a typed `Error(Code, Message, Type)`. Implicit conversions let handlers simply `return order.Id;` or `return OrderErrors.PaymentDeclined;`. Map Results to HTTP **once** at the edge (`ToHttp`, `ToProblem`), so every endpoint agrees on what "not found" means. Libraries: ErrorOr, FluentResults, Ardalis.Result, OneOf, CSharpFunctionalExtensions; "railway-oriented programming" chains them with `Map`/`Bind`. C# still has no built-in discriminated unions, which is why these exist.
+- **Exceptions vs Results**: exceptions for bugs and broken invariants, infrastructure failures (database down, timeouts), things the caller can't meaningfully handle, and constructors or framework callbacks. Results for business rejections, validation failures and anything the caller is *expected* to branch on. Both coexist, with a global `IExceptionHandler` as the backstop for the unexpected.
+
+### 5.5 · Domain-Driven Design
+
+[Full chapter →](ch:ddd)
+
+- **DDD's premise**: in complex domains (insurance, logistics, banking, healthcare, large e-commerce), the hardest problem is understanding and encoding the business correctly, not the technology. Rules scattered across controllers, services and SQL get duplicated, contradict each other and become impossible to change safely. DDD concentrates them in one explicit **domain model** built *with* domain experts, in their language. **Strategic DDD** splits a big system into parts (bounded contexts, language, subdomains, context maps) and shapes teams and service boundaries. **Tactical DDD** gives building blocks inside one part (entities, value objects, aggregates, events).
+- **Ubiquitous language**: the same precise vocabulary in conversation, documents and code. If the business says a policy is "bound", the code says `policy.Bind()`, not `SetStatus(3)`, and when the language changes, the code changes.
+- **Bounded contexts**: an explicit boundary within which a model and its language are consistent. The **same word legitimately means different things** in different contexts. "Product" is name and images in Catalog; prices and discounts in Pricing; stock and locations in Inventory; weight in Shipping; a snapshot of SKU, name and price in Ordering. One shared `Product` class for all five becomes a battleground where a Pricing change breaks Shipping. Give each context its own small model, connected by IDs, APIs and events.
+- **Subdomains decide where to invest**: **core** (your competitive edge, like a pricing engine) gets the rich model and the best people; **supporting** (necessary but not differentiating) gets simpler models, maybe CRUD; **generic** (identity, payments, email) should be bought (Entra ID, Stripe, SendGrid). Full tactical DDD belongs in the core.
+- **Context maps** describe how contexts relate: shared kernel, customer/supplier, conformist (adopt upstream's model as-is), **anti-corruption layer** (translate a legacy or third-party model into yours through adapters, so its quirks don't leak in), open host service with a published language, and separate ways. **Event Storming** is the sticky-note workshop for discovering events, commands, aggregates and boundaries.
+- **Entities vs value objects.** An **entity** has an identity that outlives its state: two orders with identical data are still different orders, so equality is by ID (with strongly typed IDs, e.g. `Guid.CreateVersion7()`). A **value object** (`Money`, `Address`, `EmailAddress`, `DateRange`) has no identity, is immutable and is compared by value, which records give you for free. Value objects cure **primitive obsession** (`decimal price, string currency` passed separately and swappable; a `string email` never validated): validation runs **once at creation**, so holding an `EmailAddress` *guarantees* it's valid. Behaviour lives with the data (`Money.Add` rejects mixed currencies), and signatures document themselves (`Charge(Money amount)`).
+- **Aggregates are the key tactical pattern**: a cluster of entities and value objects changed as **one unit**, behind one **root**, forming a **consistency boundary** whose invariants ("an order has at least one line", "no lines after placing", "can't cancel after shipping") hold within one transaction. Vaughn Vernon's rules:
+  1. All changes go **through the root**: no public setters, nobody adds to `Lines` directly.
+  2. **Keep aggregates small**, because big ones mean big loads, lock contention and concurrency conflicts.
+  3. **Reference other aggregates by ID only** (`CustomerId`, not a `Customer` navigation). A navigation would let a transaction wander into and modify another aggregate, breaking the boundary.
+  4. **One transaction modifies one aggregate**; other aggregates are updated **eventually** through domain events.
+  5. Load and save whole aggregates through repositories.
+
+  "Place order" therefore saves the `Order` and raises `OrderPlaced`, and handlers update Inventory and Loyalty afterwards. If the business truly needs one atomic rule spanning them, the boundaries are wrong.
+- **Domain events** are past-tense facts in the ubiquitous language (`OrderPlaced`), collected by the aggregate root. When to dispatch them:
+  - before commit, in the same transaction: atomic, but couples handlers to it;
+  - after commit, in-process: simple, but lost if the process crashes between commit and dispatch;
+  - **outbox**: events written in the same transaction and published by a worker, giving reliable at-least-once delivery with idempotent handlers. Use this for anything that matters.
+
+  **Domain events** stay inside a context, in-process. **Integration events** cross contexts through a broker with stable, versioned schemas, and are often translated from domain events.
+- **Building blocks**:
+  - **domain services** hold domain logic that fits no single entity, in domain terms (`TransferService`), and can contain real rules;
+  - **application services** (use-case handlers) only orchestrate (load, call domain methods, save, publish) and make **no business decisions**;
+  - **factories** guarantee valid creation;
+  - **repositories** give collection-like access to **aggregate roots only**;
+  - **specifications** are reusable business predicates.
+- **Rich vs anemic models**: in an anemic model, `Order` is a bag of public setters and the rule lives in `OrderService.Cancel`. Anyone can still write `order.Status = "Cancelled"` and bypass it, and in a big codebase someone will. Fowler calls this an anti-pattern: you pay for extra types and get none of the protection. Rich models put behaviour with data (`order.Cancel(reason)`), which is Tell, Don't Ask.
+- **Persisting with EF Core** without polluting the model: Fluent API configuration, value converters for strongly typed IDs, `CustomerId` mapped as a plain property (enforcing "reference by ID" at the persistence layer), private setters, private constructors, backing fields, and owned or complex types. The purest alternative is separate persistence models plus mapping: more code, zero coupling.
+- **When DDD is overkill**: tactical DDD costs types, mapping, a learning curve and eventual consistency, so use it for **complex core domains with rich, changing rules**. For CRUD and supporting subdomains, a simple EF model with validation is better. **Strategic DDD** (contexts and language) pays off almost everywhere.
+
+### 5.6 · Monoliths, microservices and distributed architecture
+
+[Full chapter →](ch:microservices)
+
+- **One spectrum, not old vs new.**
+  - A **monolith** has one deployable, often weak internal boundaries, one database and ACID everywhere.
+  - A **modular monolith** has one deployable, **strong** modules with data owned per module, and events between modules.
+  - **Microservices** have many deployables, boundaries enforced by the network, a **database per service**, local transactions only plus sagas, per-service scaling, high team autonomy and **high operational complexity**.
+
+  A monolith isn't bad; a big ball of mud is. Shopify, Stack Overflow and Basecamp run well-structured monoliths at scale.
+- **Real benefits**: independent deployment (no release train), independent scaling, fault isolation (if designed for it), technology freedom, and team ownership aligned to business capabilities (Conway's Law, Team Topologies). **Real costs** are the **fallacies of distributed computing**: assumptions in-process calls let you make for free ("the network is reliable, latency is zero…"), which microservices force you to confront:
+  - every call can fail or be slow, so you need timeouts, retries and circuit breakers;
+  - there are no distributed transactions, so you need eventual consistency, sagas, outbox and idempotency;
+  - cross-service joins become API composition or replicated data;
+  - you need distributed tracing;
+  - contract testing;
+  - compatible API and message versioning;
+  - per-service pipelines, containers, discovery and gateways;
+  - cognitive and on-call load.
+- **"Should we use microservices?"** They solve **organisational scaling** (many teams needing independent deployment) and **uneven scaling**, at the cost of distributed-systems complexity. With one or two teams and an evolving domain, start with a **modular monolith** and extract a service only for a concrete reason: a different scaling profile, release cadence, team or isolation need.
+- **Boundaries are the most expensive decision.** Services that must change together, call each other constantly or share data pay the full cost of distribution for no benefit. Good boundaries:
+  - follow **bounded contexts and business capabilities**, not technical layers ("the validation service") or entities ("the Customer service everyone calls");
+  - give high cohesion inside and low coupling outside;
+  - **own their data and rules**;
+  - let a service do its main job when others are down (local copies of data, fed by events);
+  - fit one team.
+
+  Start **coarse**: splitting later is a refactor, merging chatty nano-services is a rewrite.
+- **Database per service**: other services access data only through the owner's API or events. A shared schema couples services at the deepest level: any change can silently break a team that wasn't told, which kills independent deployment, the whole point. Cross-service queries use **API composition** (a gateway or BFF fans out; fine for small fan-out), **data replication via events** (Shipping keeps customer addresses from `CustomerAddressChanged`), or a **CQRS read model** built from many services' events. All are eventually consistent.
+- **Prefer async events between services.** Synchronous calls couple services in time and cascade failures. In a chain, the availabilities **multiply**: four services at 99.9% each give 0.999⁴ ≈ 99.6%, about **4×** the downtime of any single service, and longer chains are worse. Messaging decouples in time, buffers load and isolates failures, at the cost of eventual consistency. Use sync calls for queries needing an immediate answer.
+- **Gateways and meshes**: an **API gateway** is the single entry point for routing, TLS, auth offload, rate limiting, caching, aggregation and versioning (YARP, Azure API Management, Front Door). A **BFF** is a gateway per client type that shapes responses and, for SPAs, holds tokens server-side. A **service mesh** uses sidecar proxies for **mTLS** (both sides prove their identity with certificates), retries, traffic splitting and telemetry (Istio, Linkerd, Dapr, Container Apps' built-in features). **Service discovery**: platform DNS (Kubernetes Services, Container Apps internal ingress) or `Microsoft.Extensions.ServiceDiscovery` (`https+http://ordering`), plus central configuration.
+- **Strangler fig migration**: a big-bang rewrite hides all value behind one risky cutover. Instead:
+  1. Put a proxy (YARP) in front of the monolith.
+  2. Pick one well-bounded capability.
+  3. Build it as a new service and route its paths to it.
+  4. Sync data (events or **change data capture** such as Debezium) while both exist, then delete the old code.
+  5. Repeat.
+
+  Supporting techniques: anti-corruption layers, branch by abstraction, feature flags.
+- **Anti-patterns**:
+  - the **distributed monolith** (deploy-together services, a shared database, sync chains, one change touching five services): all the costs, without the independent deployment that justified them;
+  - nano-services (a service per entity, every request fanning out to ten);
+  - a shared domain library coupling every service's model and release cycle (sharing contracts and infrastructure helpers is fine);
+  - chatty sync chains;
+  - no observability;
+  - microservices first (a new product, one team, 15 services).
+- **Readiness checklist**: CI/CD and infrastructure as code per service, containers and an orchestrator or PaaS, centralised logs, metrics and **distributed tracing**, resilience on every outbound call, a broker with outbox and idempotency practices, API versioning and contract tests, health checks with autoscaling and graceful shutdown, service-to-service identity (managed identity, client credentials, mTLS) and clear on-call ownership.
