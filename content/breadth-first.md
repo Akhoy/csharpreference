@@ -687,3 +687,191 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 
   MAUI Blazor Hybrid reuses the same components in native apps. (A full part on MVC and Blazor is coming.)
 - **Others**: GraphQL via Hot Chocolate (exact-field queries over one endpoint; hard to cache over HTTP, needs query cost limits, and has an N+1 risk solved by DataLoaders), OData (`$filter`/`$select`/`$expand` over `IQueryable`), raw WebSockets, Server-Sent Events (`TypedResults.ServerSentEvents`, .NET 10) and health-check endpoints.
+
+## Part IV · Data Access
+
+Layer 5: where data lives and how to get it efficiently. Most real performance problems end up here.
+
+### 4.1 · Relational database fundamentals
+
+[Full chapter →](ch:relational-fundamentals)
+
+- **Tables link through keys.** A primary key uniquely identifies a row; a foreign key references another table's primary key and enforces **referential integrity**; unique and check constraints enforce rules at the data level. Prefer **surrogate** primary keys (generated IDs) plus unique constraints on natural keys like email. One-to-many puts a foreign key on the "many" side; one-to-one uses a unique foreign key; many-to-many needs a **join table**.
+- **Normalisation stores each fact once**, so changing it is one `UPDATE`. Duplicating a customer's name across 500 order rows invites an update that misses one, leaving a contradiction. 1NF means atomic values; 2NF means every non-key column depends on the *whole* key; 3NF means no column depends on another non-key column. **Denormalisation** deliberately duplicates for read speed (a stored `Order.Total`, a read-model table) when reads vastly outnumber writes and you've decided how to keep the copies in sync. **Snapshot data isn't duplication**: an order line's price at purchase is a different fact from the product's current price.
+- **SQL you must be able to write**: filtering, sorting and paging (`OFFSET … FETCH`), `GROUP BY` with `HAVING`, CTEs, `CASE`, `COALESCE`, `EXISTS` vs `IN`, `UNION ALL` (which skips `UNION`'s duplicate-removing sort), and joins: inner, left (unmatched right side becomes NULL), full, cross (Cartesian product) and self joins.
+- **Indexes turn scans into seeks.** Without one, finding rows means reading every row: fine at hundreds of rows, about 4 seconds instead of 2 ms at fifty million, and the most common cause of slow-endpoint tickets. An index is a sorted **B+tree**, so lookups are O(log n). In SQL Server, the **clustered** index *is* the table, stored in key order (one per table, usually the primary key). **Non-clustered** indexes are separate trees pointing back at the clustered key, so each row found needs a **key lookup** for any column the index lacks, unless `INCLUDE` makes it **covering**.
+- **Index design rules**:
+  - index columns used in WHERE, JOIN, ORDER BY and GROUP BY on large tables, including foreign keys;
+  - in composite indexes, put **equality columns first, then range or sort columns**;
+  - make hot queries covering with `INCLUDE`;
+  - prefer selective columns, and use a filtered index (`WHERE IsDeleted = 0`) instead of indexing a boolean;
+  - remember every index slows every write.
+
+  The **leftmost-prefix rule** follows from the physical sort order. `(CustomerId, CreatedAt)` is sorted by customer, then by date within each customer, like a phone book sorted by surname then first name. It answers "this customer" and "this customer after this date", but not "everyone after this date", just as a phone book can't find everyone named John.
+- **Sargability**: the raw column must be compared directly for a seek to work. `YEAR(CreatedAt) = 2026` (a function on the column), `LIKE '%board'` (a leading wildcard) and implicit type conversions all force scans, because the engine must compute the expression for every row. Rewrite as a range (`CreatedAt >= '2026-01-01' AND CreatedAt < '2027-01-01'`).
+- **The clustered key should be narrow, unique, static and ever-increasing.** An increasing key always inserts at the end of the B-tree, which is cheap. A random `Guid` inserts mid-tree, causing **page splits** and fragmentation, and its 16 bytes widen every non-clustered index. Use `IDENTITY`, sequential GUIDs (`NEWSEQUENTIALID`, EF Core's default for SQL Server, or **`Guid.CreateVersion7()`** in .NET 9, which is time-ordered), or keep a GUID primary key non-clustered.
+- **Execution plans** show the optimiser's decisions, which it bases on **statistics** about how data is distributed:
+  - Index Seek: good;
+  - Scan: bad on big tables;
+  - Key Lookup: fix with `INCLUDE`;
+  - join algorithms: nested loops, hash, merge;
+  - Sort: may spill to tempdb;
+  - implicit conversion warnings.
+
+  Use SSMS actual plans, `SET STATISTICS IO, TIME`, Query Store for regressions, and `EXPLAIN (ANALYZE, BUFFERS)` in Postgres. **Parameter sniffing**: SQL Server caches a plan built for the *first* parameter values it saw. A plan optimised for a customer with one order is then reused for a customer with a million and performs terribly. Fixes: `OPTION (RECOMPILE)`, `OPTIMIZE FOR`, better indexes, Query Store plan forcing, or Parameter Sensitive Plan optimisation (SQL Server 2022).
+- **ACID transactions**: **Atomicity** (all or nothing: a crash between debit and credit can't lose money), **Consistency** (constraints hold), **Isolation** (concurrent transactions don't see each other's partial work, to a chosen degree) and **Durability** (committed data survives crashes, through the write-ahead log). EF Core wraps each `SaveChanges` in a transaction; explicit ones are for spanning several calls or mixing in raw SQL. **Keep transactions short**, and never wait on HTTP or user input inside one, because every lock is held until commit.
+- **Isolation levels choose which anomalies you accept in exchange for less blocking.** The anomalies:
+  - **dirty read**: seeing another transaction's uncommitted data;
+  - **non-repeatable read**: the same row read twice gives different values;
+  - **phantom**: a range query gains new rows;
+  - **lost update**: two read-modify-writes, one overwrites the other;
+  - **write skew**: disjoint writes that together break a rule, like two doctors both going off call.
+
+  The levels:
+  - Read Uncommitted allows dirty reads.
+  - **Read Committed** is the default in SQL Server (locking) and Postgres (MVCC).
+  - **RCSI** (read committed snapshot) gives readers the last committed version, so **readers don't block writers**; it's Azure SQL's default.
+  - Repeatable Read holds shared locks until commit.
+  - **Snapshot** gives a transaction-consistent versioned view and raises update conflicts.
+  - **Serializable** behaves as if transactions ran one at a time, using range locks, with the most blocking.
+
+  `NOLOCK` is not a performance fix: it can return uncommitted data and **skip or double-read rows** during page splits. RCSI or Snapshot give non-blocking reads correctly.
+- **Locks and deadlocks.** Writers take exclusive locks and readers shared ones (row, page or table, escalating as needed). **Blocking** is waiting for a lock. A **deadlock** is a cycle: transaction A holds row 1 and wants row 2 while B holds row 2 and wants row 1. Waiting can never resolve it, so the database kills a victim (SQL Server error **1205**), which you **retry**. Prevent deadlocks by touching rows in a consistent order, keeping transactions short, indexing so updates lock fewer rows, using RCSI, and enabling automatic retries (EF Core's `EnableRetryOnFailure`). **Pessimistic locking** (`WITH (UPDLOCK, ROWLOCK)` or `SELECT … FOR UPDATE`) is for cases like seat reservation where no race is tolerable; web apps usually prefer **optimistic** version columns, which hold no locks across client round trips.
+- **Connection pooling**: opening a physical connection (TCP, TLS, authentication) is expensive, so providers keep a pool per connection string. `Open` borrows and `Dispose` returns, with a default maximum of 100 in SqlClient. "Timeout expired… obtaining a connection from the pool" comes from undisposed connections or contexts, long transactions, slow queries, sync-over-async holding connections while blocked, or more parallel work than the pool can serve. Open late, close early.
+- **SQL Server vs PostgreSQL**: SqlClient vs Npgsql drivers. Locking with optional row versioning vs MVCC by default. Columnstore, temporal tables and Query Store vs JSONB, arrays, `ON CONFLICT` and extensions like PostGIS and pgvector. Commercial vs open source. EF Core hides most differences for CRUD, but tuning details differ.
+
+### 4.2 · ADO.NET and Dapper
+
+[Full chapter →](ch:ado-dapper)
+
+- **ADO.NET is the layer everything else sits on**: `DbConnection` (pooled), `DbCommand` (SQL or stored procedure plus parameters), `DbDataReader` (fast forward-only streaming), `DbParameter`, `DbTransaction` and, since .NET 7, `DbDataSource` (a connection factory). Each database provides implementations (`SqlConnection`, `NpgsqlConnection`). Use `Microsoft.Data.SqlClient`, not the legacy `System.Data.SqlClient`. `ExecuteReader` returns rows, `ExecuteScalar` returns one value, and `ExecuteNonQuery` returns rows affected.
+- **Always parameterise.** Concatenating input (`WHERE Email = '{email}'`) is SQL injection: `' OR 1=1 --` becomes part of the SQL. Parameters are sent as **data**, never parsed as SQL, and they let the database **reuse cached plans**, while concatenated literals compile a new plan for every value. Prefer typed `Add` over `AddWithValue` to avoid type-inference problems (and implicit conversions that kill seeks).
+- **Transactions**: `BeginTransactionAsync(isolationLevel)`, then pass the transaction to every command, commit, or roll back on failure. `TransactionScope` gives ambient transactions but **silently escalates to MSDTC distributed transactions** when more than one connection is involved, which most cloud setups can't use. With async code it needs `TransactionScopeAsyncFlowOption.Enabled`, or the transaction won't flow across `await`.
+- **Bulk operations**: inserting 100,000 rows one at a time takes minutes, because each pays a round trip and a log write. Use `SqlBulkCopy` or Npgsql binary `COPY` (fastest; stream into a staging table, then a set-based `MERGE`), table-valued parameters, batched multi-row inserts (EF Core batches automatically), or `ExecuteUpdate`/`ExecuteDelete` for set-based changes.
+- **Dapper is a micro-ORM**: extension methods on `IDbConnection` where **you write the SQL and Dapper maps rows to objects** (and anonymous objects to parameters), matching column names to properties or constructor parameters case-insensitively. Performance is near raw ADO.NET, with no change tracking, LINQ or migrations. **Multi-mapping** (`QueryAsync<Order, Customer, Order>(sql, map, splitOn: "Id")`) rebuilds nested objects from flat joined rows; `splitOn` says where the second object's columns begin, because a row carries no structure of its own. For one-to-many, de-duplicate parents with a dictionary. `QueryMultiple` reads several result sets in one round trip; `DynamicParameters` handles stored procedures and output parameters; type handlers map custom types such as strongly typed IDs.
+- **Connections in DI**: `AddNpgsqlDataSource` registers a singleton factory for pooled connections; for SQL Server, a small connection factory keeps code testable.
+- **Dapper vs EF Core is about the job, not popularity.** EF Core gives LINQ, change tracking, a unit of work, migrations, relationships and typed queries, at the cost of a steeper learning curve; the performance gap has shrunk a lot since EF Core 6–8. Dapper gives explicit SQL, a natural fit for CTEs, window functions and hints, and minimal overhead. The common pragmatic split follows CQRS: **EF Core for writes** (aggregates, rules, migrations) and **Dapper or EF raw SQL for reads** (flat DTO queries with no tracking). EF Core alone can do raw reads with `Database.SqlQuery<T>($"…")`, which is still parameterised because it's an interpolated-string handler.
+
+### 4.3 · EF Core fundamentals
+
+[Full chapter →](ch:efcore-fundamentals)
+
+- **An ORM does four jobs** you'd otherwise hand-write for every entity: **mapping** classes to tables (and references to foreign keys), **querying** (LINQ to SQL, then rows materialised into objects), **change tracking** (remembering what you loaded and detecting changes) and **persistence** (`SaveChanges` generating INSERT/UPDATE/DELETE in one transaction). **Migrations** version the schema alongside the code. The cost is a learning curve and the risk of bad SQL if you don't understand what it generates.
+- **`DbContext` is one unit of work**: it holds the connection, the **model** (mapping metadata) and the **change tracker**, and each `DbSet<T>` is the entry point to one table. Register it **scoped** (one per request). `AddDbContextPool` reuses instances from a pool and resets their state, which saves setup cost at high throughput (but don't keep per-request state in fields). `AddDbContextFactory` suits background services, Blazor Server and parallel work. A context is **not thread-safe**: never share one across threads (no `Task.WhenAll` on one context), never make it a singleton, and never keep it alive for long, because its tracker only grows.
+- **Conventions infer most of the model**:
+  - a property named `Id` or `<Type>Id` is the key (`int` becomes an identity column; `Guid` gets a client-generated sequential GUID);
+  - nullability decides `NULL`/`NOT NULL`;
+  - a navigation plus a `<Nav>Id` property makes a foreign key;
+  - a `List<T>` navigation means one-to-many;
+  - a `string` becomes `nvarchar(max)` and a `decimal` becomes `decimal(18,2)` with a warning, so configure both;
+  - enums become ints unless you use `HasConversion<string>()`.
+
+  EF can use **private setters, backing fields and parameterised constructors**, so entities can protect their invariants (DDD).
+- **Fluent API vs data annotations.** Annotations (`[MaxLength]`, `[Required]`, `[Index]`) cover simple cases. The Fluent API in `IEntityTypeConfiguration<T>` classes can do *everything* (keys, relationships, conversions, owned types, filters, seeding), **wins on conflicts**, and keeps persistence concerns like column lengths out of domain classes. Many teams use it exclusively.
+- **Keys and generation**: composite keys, alternate keys (unique, and usable as foreign-key targets), identity columns, `HasDefaultValueSql`, computed columns. Strongly typed IDs map through value converters (`HasConversion(id => id.Value, v => new OrderId(v))`).
+- **Relationships and delete behaviour**: `HasOne/WithMany/HasForeignKey`, one-to-one with `HasForeignKey<TDependent>`, and many-to-many with an automatic join table (EF 5+), or `UsingEntity` when the link needs extra columns. On delete: `Cascade` (the default for required relationships), `Restrict`/`NoAction`, `SetNull` (the default for optional ones) and client-side variants that only act on tracked entities. SQL Server rejects multiple cascade paths, so set `Restrict` somewhere.
+- **Value objects**: **owned types** (`OwnsOne` puts columns inline, like `ShippingAddress_Street`; `OwnsMany` uses a separate table; `ToJson` stores JSON) and **complex types** (EF 8, true value semantics; nullable since EF 9/10). Also: inheritance mapping (**TPH**, one table with a discriminator, the default and fastest; **TPT**, a table per type; **TPC**, a table per concrete type), shadow properties, keyless entities for views, table splitting, temporal tables, and primitive collections stored as JSON.
+- **Change tracking is snapshot diffing.** Every tracked entity has a state: `Added` (INSERT), `Unchanged`, `Modified` (UPDATE of only the changed columns), `Deleted` and `Detached`. When an entity is loaded, EF keeps a **snapshot** of its original values. `DetectChanges` (run by `SaveChanges`) compares every tracked entity's current values with its snapshot, property by property. Nothing told EF that `Price` changed; it found out by diffing. That's why tracking thousands of entities is expensive, and why read-only queries should use `AsNoTracking()` or projections. `SaveChanges` runs `DetectChanges`, orders commands to respect foreign keys, batches them, runs them in one transaction, propagates generated keys and resets states. **Disconnected updates** (a DTO arriving with nothing tracked): load and then update (safe, one extra read), attach a stub and mark specific properties modified, or use set-based `ExecuteUpdateAsync` (EF 7+), which loads nothing.
+- **Migrations** turn model changes into versioned schema changes. Each one has `Up`/`Down` methods plus an updated **model snapshot**, which the next migration diffs against. Applied migrations are recorded in `__EFMigrationsHistory`, so `database update` is safe to rerun. In production, generate an **idempotent SQL script** (reviewable) or a **migration bundle** in the pipeline. Calling `MigrateAsync()` at startup races across replicas, needs DDL permissions and slows startup. For zero-downtime deploys, old and new code run side by side, so migrations must be **backward-compatible** (**expand/contract**): add nullable columns, backfill, make them required a release later; rename by adding the new column, copying, switching the code and dropping the old one later. Database-first `scaffold` generates entities from an existing schema.
+- **Seeding**: `HasData` (reference data, part of migrations) and `UseSeeding`/`UseAsyncSeeding` (EF 9, development and test data). **Providers**: SQL Server, Npgsql, SQLite, Pomelo MySQL, Cosmos (a document database with very different query capabilities), Oracle. The InMemory provider is for testing only, and even there it's discouraged, because it isn't relational and hides real behaviour.
+
+### 4.4 · EF Core querying and performance
+
+[Full chapter →](ch:efcore-querying)
+
+- **Nothing runs until a terminating operator.** `Where`, `OrderBy` and `Select` build an expression tree; `ToListAsync`, `FirstOrDefaultAsync`, `CountAsync`, `AnyAsync`, `ExecuteUpdateAsync` or `await foreach` over `AsAsyncEnumerable()` compile it into parameterised SQL, execute it through ADO.NET and **materialise** the rows (tracked by default). Re-enumerating a query runs it again.
+- **See the SQL before tuning.** Use `LogTo` with `EnableSensitiveDataLogging` (parameter values, development only), the `Microsoft.EntityFrameworkCore.Database.Command` log category, `ToQueryString()` and `TagWith`. In production, OpenTelemetry EF instrumentation records every query as a span, and Query Store shows the slowest statements.
+- **Tracking vs no-tracking.** Tracking keeps snapshots so changes can be saved. `AsNoTracking()` skips them: fastest and least memory, for read-only queries, but duplicate rows become separate objects. `AsNoTrackingWithIdentityResolution()` shares instances within one query. Read-heavy apps can make no-tracking the context default and opt in with `AsTracking()`.
+- **Projection is the single biggest win.** `Select(o => new OrderSummary(o.Id, o.Customer.Name, o.Lines.Count))` fetches only the needed columns, tracks nothing (DTOs are never tracked) and **translates navigations into joins or subqueries**, which avoids N+1 without any `Include`. Make projection the default for read endpoints. AutoMapper's `ProjectTo` and Mapperly can generate the projection.
+- **Loading related data**: **eager** (`Include`/`ThenInclude`, including filtered includes) when you need entities to modify; **projection** for reads; **explicit** (`Entry(o).Collection(...).LoadAsync()`) on demand; **lazy** (proxies) loads on first property access, which hides N+1, so avoid it.
+- **N+1 is the most common EF performance bug**: one query loads 200 orders, then accessing `o.Customer.Name` in a loop (lazy loading), or querying inside a loop, issues 200 more. Each takes 1–2 ms and looks harmless in review, but 201 round trips add hundreds of milliseconds and grow with the data. Detect it with the same SQL shape repeating in logs, dozens of tiny identical spans in a trace, or a high queries-per-request count. Fix it with projection, `Include`, batching (`Where(p => ids.Contains(p.Id))` becomes `IN (…)`) or GraphQL DataLoaders.
+- **Cartesian explosion**: including two collections in one query **multiplies** rows. One blog with 100 posts and 20 contributors returns 2,000 rows, each repeating the blog's columns. `AsSplitQuery()` (or the global `QuerySplittingBehavior.SplitQuery`) runs separate queries instead: more round trips and no single consistent snapshot without a transaction, but no multiplication. EF logs a warning when it spots the risk.
+- **Translation errors**: EF Core can translate standard operators, many `string`/`Math`/`DateTime` members, `EF.Functions` and mapped database functions. A call to your own C# method in `Where` throws "could not be translated" (EF Core 3+). EF 1–2 silently loaded the whole table and filtered in memory, which looked fine on test data and dragged entire production tables over the network. The final `Select` may evaluate client-side, after the server has filtered. If you must filter in memory, do it explicitly, **after** a server-side filter. Reusable predicates should be `Expression<Func<…>>` properties or `IQueryable` extensions, so EF receives a tree it can read.
+- **Paging and counting**: offset paging needs `OrderBy(...).ThenBy(Id)` for deterministic pages; keyset paging (`Where(p => p.Id > lastId)`) has constant cost. A total count on a large filtered table is itself a near-scan, so for "is there more?" fetch `size + 1` rows instead. Use `AnyAsync` rather than `CountAsync() > 0`.
+- **Raw SQL**: `FromSql` (entities, composable with LINQ on top), `Database.SqlQuery<T>` (arbitrary DTOs and scalars, EF 8) and `ExecuteSql` all take a **`FormattableString`**, so `$"… {categoryId}"` becomes a real parameter. The `…Raw` variants take plain strings, and concatenating input into them is SQL injection.
+- **Async**: use the async operators with a `CancellationToken` so abandoned requests cancel their SQL. Never run concurrent operations on one context. Stream large results with `AsAsyncEnumerable()` rather than buffering them all with `ToListAsync`.
+- **Performance toolbox**:
+  - context pooling;
+  - **compiled queries** (`EF.CompileAsyncQuery`), which remove even the query-cache lookup for very hot queries;
+  - **compiled models** (`dotnet ef dbcontext optimize`), for faster startup with huge models and required for Native AOT;
+  - `ExecuteUpdate`/`ExecuteDelete`;
+  - automatic `SaveChanges` batching;
+  - no-tracking plus projection;
+  - indexes matching your queries, checked in the plan;
+  - split queries;
+  - `EnableRetryOnFailure` for transient Azure SQL errors;
+  - caching.
+- **Slow-endpoint checklist, in order**:
+  1. Trace it: is the time in the database, serialization or app code?
+  2. Read the SQL.
+  3. Count queries per request (N+1, queries in loops).
+  4. Too many columns or rows? Project, page, filter on the server.
+  5. Unnecessary tracking?
+  6. Cartesian explosion?
+  7. Read the execution plan: missing indexes, scans, key lookups, implicit conversions.
+  8. Sync calls or `.Result`?
+  9. Hot, stable data? Cache it.
+  10. Bulk writes? Use set-based operations.
+
+### 4.5 · EF Core advanced: concurrency, transactions, interceptors, filters
+
+[Full chapter →](ch:efcore-advanced)
+
+- **Optimistic concurrency detects lost updates without locks.** Alice and Bob both load order 42. Alice saves a new address, then Bob saves a status change from his older copy and silently overwrites her address. A **version column** (`[Timestamp] byte[] RowVersion`, a SQL Server `rowversion` incremented by the database on every update; Postgres uses `xmin` or a manually incremented token) is added to the `UPDATE`'s `WHERE` clause: `WHERE Id = @id AND RowVersion = @original`. Bob's version no longer exists, so his update matches **zero rows**, and EF throws **`DbUpdateConcurrencyException`**. You then reload, merge, retry, or return 409/412 (the API's ETag is this same token). It also protects business invariants: two requests reserving the last unit of stock conflict on the product's version, so one retries and sees zero stock instead of overselling, without a pessimistic lock.
+- **`SaveChanges` is already one transaction.** Explicit transactions (`BeginTransactionAsync(isolationLevel)`) are for when several `SaveChanges` calls, `ExecuteUpdate` or raw SQL, or Dapper on the same connection must be atomic together, or you need a specific isolation level. Savepoints allow partial rollback. **`EnableRetryOnFailure`** retries transient errors (Azure SQL failovers, throttling, deadlock victims), but a retry must redo the *whole* unit of work, so manual transactions go inside `db.Database.CreateExecutionStrategy().ExecuteAsync(...)`.
+- **No distributed transactions across services.** A transaction covers one database connection. "Save the order, publish to Service Bus, call the payment API" can't be one atomic unit, because those systems share no commit protocol. The answer is the **outbox** and sagas.
+- **`ExecuteUpdate`/`ExecuteDelete`** (EF 7+) run set-based SQL without loading entities: much faster for bulk changes. Three consequences follow from loading nothing: they run **immediately** (not at the next `SaveChanges`), they **bypass the change tracker** (tracked copies stay stale), and they **bypass SaveChanges interceptors** (auditing and soft delete there won't run). Global query filters still apply to their `WHERE`.
+- **Interceptors** add cross-cutting behaviour without touching business code:
+  - `SaveChangesInterceptor`: audit fields, soft delete, domain events, outbox;
+  - `DbCommandInterceptor`: hints, slow-SQL logging, tagging;
+  - `DbConnectionInterceptor`: session context for row-level security, access tokens;
+  - `DbTransactionInterceptor`;
+  - `IMaterializationInterceptor`: post-processing loaded entities.
+
+  An audit interceptor stamps `CreatedAt`/`UpdatedBy` on every `IAuditable` entity in the tracker, with nothing for developers to remember to call.
+- **Global query filters** (`HasQueryFilter`) are appended to every query against an entity. Soft delete uses `!IsDeleted`, paired with an interceptor that turns `Deleted` states into `Modified` with `IsDeleted = true`; `IgnoreQueryFilters` covers admin and restore views. Multi-tenancy uses `TenantId == tenant.TenantId`, which closes over a **scoped** tenant service and so is evaluated per context, scoping every query to the current request's tenant. Trap: a **required** navigation to a filtered-out row becomes an INNER JOIN that makes the *parent* vanish from results, so make it optional or filter consistently. EF 10 adds **named filters** you can disable selectively. Add database row-level security as a second line of defence. Multi-tenancy alternatives are a schema per tenant or a database per tenant, trading isolation against cost.
+- **Domain events and the outbox in `SaveChanges`.** Entities collect domain events; a `SaveChanges` interceptor (or override) converts them into **outbox rows in the same transaction** as the business data, so the order and its "order placed" event commit or roll back together, with no window where one exists without the other. A separate publisher then sends them. MassTransit, NServiceBus and Wolverine ship ready-made EF outboxes.
+- **Other features**:
+  - temporal tables (`TemporalAsOf`), JSON columns (`ToJson`), primitive collections;
+  - `SqlQuery<T>` for unmapped types, keyless entities for views, user-defined function mapping;
+  - sequences and HiLo key generation;
+  - **multiple DbContexts**, one per bounded context or module, each with its own schema and migrations;
+  - **vector search** (EF 10 with SQL Server 2025 or Azure SQL: `SqlVector<float>`, `VECTOR_DISTANCE`);
+  - read-replica contexts.
+- **Testing EF code**: avoid the **InMemory** provider, which isn't relational: no constraints or real transactions and different query semantics, so tests can pass while production fails. SQLite in-memory is real SQL but a different dialect. A **real database in a container (Testcontainers)** gives the highest fidelity and is recommended for repositories and queries. Mock repository interfaces only when unit-testing application logic.
+
+### 4.6 · NoSQL, Redis and choosing a data store
+
+[Full chapter →](ch:nosql-redis)
+
+- **"NoSQL" is a set of families, each optimised for one access pattern**:
+  - **key-value** (Redis, Table Storage): ultra-fast lookup by key, useless for anything else;
+  - **document** (Cosmos DB, MongoDB): aggregates read and written whole, flexible schema, horizontal scale; weak at joins and multi-document transactions;
+  - **wide-column** (Cassandra): massive write throughput;
+  - **graph** (Neo4j, Gremlin): relationship traversal;
+  - **search** (Elasticsearch, Azure AI Search): relevance, facets, typo tolerance; never the source of truth;
+  - **time series**: metrics and IoT;
+  - **vector**: embeddings for semantic search and RAG.
+
+  Relational stays the default for business data. Reach for NoSQL for horizontal scale, very low latency at volume, nested or flexible schemas, global distribution or a specialised pattern. Many systems use several (**polyglot persistence**).
+- **CAP and PACELC.** When the network between replicas breaks (a **P**artition, which really happens), each side must either refuse to answer (keeping **C**onsistency) or answer with possibly stale data (keeping **A**vailability); it can't do both until the network heals. **PACELC** adds the normal case: **E**lse, with no partition, you still trade **L**atency against **C**onsistency, because waiting for every replica to confirm is slower than letting them catch up. Consistency models run from **strong/linearizable** through **bounded staleness**, **session** (read-your-writes within a client: Cosmos DB's default and right for most apps) and **consistent prefix** to **eventual**. Cosmos lets you choose per account and relax per request.
+- **Document modelling follows access patterns, not normal forms**: store together what's read together. **Embed** data that's read and updated together and bounded in size (order lines). **Reference** data that's shared, unbounded or independently changing (products, all of a customer's orders). Copying the product name into an order line is a correct historical record, not a bug. Keep copies that must stay in sync updated with change feeds or events.
+- **The partition key is the decision you can't undo.** It decides scale, cost and which queries are cheap for the container's whole life. It needs **high cardinality**, **evenly distributed traffic** (partitioning by `date` sends every one of today's writes to one **hot partition**) and to appear in **most queries**: single-partition queries are cheap, cross-partition fan-outs cost more Request Units. Transactions are limited to one logical partition, and a logical partition holds 20 GB, so large tenants need **hierarchical keys** (tenantId → userId). Cosmos charges in **Request Units**: a 1 KB point read by id plus partition key costs about 1 RU, and queries cost more, so watch `RequestCharge`. Use one singleton `CosmosClient`; ETags give optimistic concurrency. The **change feed** streams every insert and update in order per partition. It's the basis for materialised views, event integration and keeping a search index in sync.
+- **Redis is an in-memory data-structure server**, not just a cache: sub-millisecond operations, optional persistence (RDB snapshots, AOF log), replication and clustering. On Azure it's Azure Managed Redis; Valkey and Garnet (Microsoft's, written in C#) are compatible alternatives. Its structures **are** algorithms:
+  - strings: cache values, `INCR` counters, `SET NX PX` locks, idempotency keys;
+  - hashes: carts and sessions;
+  - lists: simple queues;
+  - sets: unique visitors, "who's online";
+  - **sorted sets**: leaderboards (`ZRANGE` for the top 10, no app-side sorting), priority queues, sliding-window rate limits;
+  - **streams**: an event log with consumer groups;
+  - pub/sub: SignalR backplane, cache invalidation;
+  - HyperLogLog, bitmaps, geo, and JSON, search and vector modules.
+- **Redis pitfalls**:
+  - Create **one `ConnectionMultiplexer`** for the app; one per request is the HttpClient socket bug again.
+  - **Big or hot keys** hurt every client on that shard, because commands are processed mostly single-threaded per shard.
+  - `KEYS *` blocks the server; use `SCAN`.
+  - Set `maxmemory`, an eviction policy and TTLs, or the cache becomes an ever-growing permanent store.
+  - **Pub/sub isn't durable**: offline subscribers miss messages, so use streams or a broker.
+  - A lock's TTL can expire while the work is still running, letting a second holder start, so use **fencing tokens** or idempotent work. Acquire with `SET NX PX` and release only if your token still matches.
+- **Search and vectors are projections**: keep the source of truth in SQL or Cosmos, and project into Azure AI Search or Elasticsearch through the change feed or events, for full-text, facets, synonyms, semantic ranking and hybrid vector search. Vector stores include Azure AI Search, Cosmos DB, pgvector, SQL Server 2025, Redis and Qdrant, accessed through `Microsoft.Extensions.VectorData` and `Microsoft.Extensions.AI`.
+- **Choosing a store**: relational for business data; documents for whole aggregates and global scale; Redis for caches, sessions, counters, locks, leaderboards and limits; **Blob Storage** for files (store the URL in the database, never the file); search indexes for relevance; Event Hubs or Kafka for high-volume replayable streams; Data Explorer for telemetry; graph databases for path queries. Don't use a cache as the system of record, and don't pick NoSQL to dodge migrations: schema-on-read still needs versioning (a `schemaVersion` field plus code that handles old shapes).
