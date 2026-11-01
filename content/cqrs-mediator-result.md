@@ -76,7 +76,7 @@ They're often mentioned together, but they're independent. You can do CQRS witho
 A command handler loads the domain model, applies the rules and saves. A query handler skips the domain model and projects straight from the database to a DTO.
 :::
 
-```csharp
+```csharp norun
 // ── Commands: intent to change state; imperative names; return little (an id, a Result) ──
 public sealed record PlaceOrderCommand(CustomerId CustomerId, IReadOnlyList<OrderLineInput> Lines, string PaymentToken);
 
@@ -130,7 +130,7 @@ Endpoint ─▶ mediator.Send(cmd) ─▶ [Logging] ─▶ [Validation] ─▶ [
 
 With **MediatR** (the best-known library):
 
-```csharp
+```csharp norun
 public sealed record PlaceOrderCommand(…) : IRequest<Result<OrderId>>;
 public sealed class PlaceOrderHandler(…) : IRequestHandler<PlaceOrderCommand, Result<OrderId>>
 {
@@ -204,7 +204,7 @@ Instead of throwing for expected problems like 'out of stock', a method returns 
 
 **Result pattern:** return an object that is **either a success with a value or a failure with an error**, and make callers handle both — turning "this can fail" from something buried in documentation (or nowhere) into something the compiler can see.
 
-```csharp
+```csharp norun
 public sealed record Error(string Code, string Message, ErrorType Type = ErrorType.Failure)
 {
     public static readonly Error None = new("", "");
@@ -244,7 +244,7 @@ Notice the two implicit operators on `Result<T>`: they're what let `PlaceOrderHa
 
 Using it, and mapping to HTTP **once** at the edge:
 
-```csharp
+```csharp norun
 // Domain/application code returns errors as values
 public Result Cancel(string reason)
 {

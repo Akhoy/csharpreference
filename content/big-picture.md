@@ -297,7 +297,7 @@ A DI service is any class registered in the dependency injection container in on
 
 Most claims here are about *names and layers*, not runtime behaviour, so there's little to assert about infrastructure or cloud pieces — trust [Further reading](#further-reading) for those. What *is* checkable locally: that managed code really runs under the CLR, that a `Task` really represents work completing later, and that the GC really reclaims unreachable objects. Run with `dotnet run` (plain console app, .NET 8/9, no extra packages).
 
-```csharp
+```csharp norun
 // Claim: "Managed code" runs under the CLR, which reports its own runtime version.
 var asm = System.Reflection.Assembly.GetExecutingAssembly();
 if (string.IsNullOrEmpty(asm.ImageRuntimeVersion))

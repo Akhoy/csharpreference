@@ -33,6 +33,10 @@ next: linq, threading-concurrency
 | **immutable** | Can never change. "Changes" return a new version. |
 | **thread-safe** | Safe to use from several threads at the same moment. |
 
+:::note What you need first
+- **[Generics: Write It Once, for Any Type](ch:generics)**: `List<T>` and friends work for any type `T` while staying type-checked, and constraints say what `T` must support.
+:::
+
 ## Previously, and the problem {b}
 
 In [Episode 4](ch:delegates-events) Kettle learned to swap discount rules and notify subscribers about every order. Business took off. There are 200,000 orders in memory, and the order-status page is slow. On launch day it was instant, with 300 orders. Nothing in the code changed since. Only the amount of data did, and that's the clue: the code does more work for every order that exists.

@@ -81,7 +81,7 @@ Your code + libraries ──(ILogger · Meter · ActivitySource)──▶ OpenTe
 A few lines in Program.cs turn on traces and metrics for ASP.NET Core, HttpClient and EF Core, and send them to a backend over OTLP.
 :::
 
-```csharp
+```csharp norun
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r
         .AddService(serviceName: "kettle-api", serviceVersion: "1.4.2")
@@ -150,7 +150,7 @@ Recording every span of every request is expensive at scale. **Head sampling** d
 Add your own spans around important work and your own counters and histograms for business numbers, using ActivitySource and Meter.
 :::
 
-```csharp
+```csharp norun
 public sealed class CheckoutTelemetry
 {
     public static readonly ActivitySource Source = new("Kettle.Checkout", "1.0");
@@ -259,7 +259,7 @@ Aspire describes your whole system in C#, runs it locally with one command, wire
 
 A C# project that **describes your whole system** and runs it locally with one command — a single source of truth for "what does this system consist of," instead of a docker-compose file, a README, and tribal knowledge about which environment variables to set:
 
-```csharp
+```csharp norun
 // Kettle.AppHost/Program.cs
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -364,7 +364,7 @@ By the end of Part VIII, Kettle's services talk through a broker, survive each o
 
 Run with `dotnet run` (a plain console app, .NET 8/9; `System.Diagnostics.Activity` and `System.Diagnostics.Metrics` are part of the BCL, no extra packages). It checks the actual .NET telemetry primitives directly: that `StartActivity` is a no-op without a listener, that nested spans form a parent/child trace tree, that a `Counter<T>` is observable, and that a `traceparent` header built from a real `Activity` matches the W3C format. Exporting to a real OpenTelemetry Collector, Azure Monitor or the Aspire dashboard needs a live backend, so that part is left to the Further reading links instead of faked here.
 
-```csharp
+```csharp norun
 // Verify this chapter: run with `dotnet run`. No external packages needed --
 // System.Diagnostics.Activity and System.Diagnostics.Metrics are in the BCL.
 // This checks the .NET APIs the chapter describes directly; it does not spin

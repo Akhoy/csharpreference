@@ -163,7 +163,7 @@ Client ─▶ Front Door (CDN cache for hot redirects) ─▶ Redirect service (
 Create path: API → ID allocator (sequence block) → Cosmos DB → (prime cache)
 ```
 
-```csharp
+```csharp norun
 app.MapGet("/{code:regex(^[a-zA-Z0-9]{{6,10}}$)}", async (string code, HybridCache cache, ILinkStore store, IClickPublisher clicks, HttpContext ctx) =>
 {
     var url = await cache.GetOrCreateAsync($"link:{code}", async ct => await store.GetUrlAsync(code, ct),
@@ -257,7 +257,7 @@ Many .NET interviews include "low-level design": design a parking lot, a rate li
 4. Discuss **concurrency** (what's shared, how it's protected), **testability** (DI, interfaces at boundaries) and **extensibility** (new types without modification).
 5. Write a little real C# for the core logic.
 
-```csharp
+```csharp norun
 // Classic: LRU cache, O(1) get/put with Dictionary + LinkedList, thread-safe with a lock
 public sealed class LruCache<TKey, TValue>(int capacity) where TKey : notnull
 {
@@ -326,7 +326,7 @@ You've seen every topic once. Now make it stick. [Episode 2 · What's next →](
 
 Run with `dotnet run` (plain console app, .NET 8/9, no extra packages).
 
-```csharp
+```csharp norun
 // 1) Back-of-the-envelope numbers table: "1 million requests/day ~= 12 RPS average".
 double requestsPerDay = 1_000_000;
 double secondsPerDay = 86_400;

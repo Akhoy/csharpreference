@@ -161,7 +161,7 @@ Partners ───┘   (or a BFF per   └──▶ Payments service
 
 The BFF row connects directly back to a decision from [Auth](ch:auth#cookies-vs-bearer-tokens-the-tradeoff-behind-how-do-i-stay-l): it's the same cookie-holding server-side component recommended there for SPAs, now framed as a specific flavour of gateway rather than purely an auth concern.
 
-```csharp
+```csharp norun
 // YARP gateway in a few lines
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 app.MapReverseProxy();

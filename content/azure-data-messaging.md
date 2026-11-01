@@ -148,7 +148,7 @@ Objects ("blobs") in **containers**: images, documents, exports, backups, logs, 
 
 **Lifecycle management policies** move or delete blobs automatically by age. **Soft delete**, **versioning** and **immutable storage** (WORM, legal hold) protect against accidental and malicious deletion.
 
-```csharp
+```csharp norun
 builder.Services.AddAzureClients(c =>
 {
     c.AddBlobServiceClient(new Uri("https://stkettleprod.blob.core.windows.net"));
@@ -235,7 +235,7 @@ The modern **Azure SDK** (`Azure.*` packages: `Azure.Storage.Blobs`, `Azure.Mess
 - **Async APIs and `CancellationToken`** everywhere; paging via `AsyncPageable<T>` (`await foreach`).
 - **Aspire integrations** (`builder.AddAzureBlobClient("blobs")`, `AddAzureServiceBusClient`, `AddAzureCosmosClient`) set all of this up with health checks.
 
-```csharp
+```csharp norun
 builder.Services.AddAzureClients(c =>
 {
     c.AddServiceBusClientWithNamespace("sb-kettle-prod.servicebus.windows.net");

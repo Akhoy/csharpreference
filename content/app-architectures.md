@@ -129,7 +129,7 @@ tests/
 
 Notice what the `src/Kettle.Domain/` comment says — "references: NOTHING" — and what that absence actually buys the test projects below it: `Kettle.Domain.Tests` can run in milliseconds with no database, no HTTP server, no mocking framework needed for infrastructure, because the domain project genuinely has nothing external to fake.
 
-```csharp
+```csharp norun
 // Domain: pure C#, rules inside the model
 public sealed class Order : Entity<OrderId>
 {
@@ -200,7 +200,7 @@ Here's the thing worth being direct about before picking a side: **EF Core alrea
 
 A balanced answer, and a common modern choice: **specific aggregate repositories for the write side** (DDD), and **query handlers using DbContext or Dapper with projections for the read side** — which mirrors the exact write/read split [ADO.NET & Dapper](ch:ado-dapper#dapper-vs-ef-core-the-real-decision-not-a-popularity-contest) recommended for its own, narrower reasons.
 
-```csharp
+```csharp norun
 public interface IUnitOfWork { Task<int> SaveChangesAsync(CancellationToken ct = default); }
 public sealed class KettleDb(DbContextOptions<KettleDb> o) : DbContext(o), IUnitOfWork { /* SaveChangesAsync already exists */ }
 builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<KettleDb>());
@@ -228,7 +228,7 @@ Validators/   OrderValidator                  CancelOrder.cs
                                           → one feature is one file or folder
 ```
 
-```csharp
+```csharp norun
 public static class CancelOrder
 {
     public sealed record Command(int OrderId, string Reason);
@@ -292,7 +292,7 @@ Boundaries that aren't enforced erode — a well-drawn diagram on a wiki page st
 2. **`internal` by default**: only expose what other projects need.
 3. **Architecture tests** with NetArchTest or ArchUnitNET:
 
-```csharp
+```csharp norun
 [Fact]
 public void Domain_has_no_dependency_on_other_layers() =>
     Types.InAssembly(typeof(Order).Assembly).ShouldNot()

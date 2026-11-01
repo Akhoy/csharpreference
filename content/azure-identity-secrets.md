@@ -111,7 +111,7 @@ The `Azure.Identity` library provides **`TokenCredential`** implementations that
 
 Notice what this chain actually buys you: the **same code** authenticates as **you** on your laptop (via Visual Studio or `az login`, step 4 or 5) and as the **managed identity** in Azure (step 3) — no `#if DEBUG`, no environment-specific branching in application code, just the credential chain quietly resolving to whichever mechanism is actually available in a given environment.
 
-```csharp
+```csharp norun
 var credential = new DefaultAzureCredential();
 var blobs = new BlobServiceClient(new Uri("https://stkettleprod.blob.core.windows.net"), credential);
 var bus = new ServiceBusClient("sb-kettle-prod.servicebus.windows.net", credential);
@@ -155,7 +155,7 @@ Access with **Azure RBAC** (recommended; e.g. *Key Vault Secrets User* for apps 
 
 ### Using Key Vault from .NET
 
-```csharp
+```csharp norun
 // 1. As a configuration provider: secrets become IConfiguration keys ("Payments--ApiKey" → "Payments:ApiKey")
 builder.Configuration.AddAzureKeyVault(
     new Uri($"https://{builder.Configuration["KeyVaultName"]}.vault.azure.net/"),
@@ -217,7 +217,7 @@ steps:
 
 Step 4 here is exactly the five-step JWT validation walked through in [Auth](ch:auth#jwt-bearer-authentication-traced-claim-by-claim) — Entra ID is simply the issuer whose discovery document and signing keys get fetched.
 
-```csharp
+```csharp norun
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));      // Microsoft.Identity.Web
 builder.Services.AddAuthorizationBuilder()

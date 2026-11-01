@@ -117,7 +117,7 @@ Timing code with `Stopwatch` in a loop gives misleading numbers. Four things thr
 
 **BenchmarkDotNet** handles all four: it runs a separate process in Release mode, does warm-up and pilot runs, takes many iterations, and applies statistics — so the number you get back reflects your code, not noise.
 
-```csharp
+```csharp norun
 // dotnet new console; dotnet add package BenchmarkDotNet; run with: dotnet run -c Release
 [MemoryDiagnoser]                         // allocations per operation + GC counts
 [SimpleJob(RuntimeMoniker.Net80)]

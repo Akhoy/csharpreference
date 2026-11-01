@@ -194,7 +194,7 @@ Polly is .NET's resilience library. One line, AddStandardResilienceHandler, give
 
 ### The standard HTTP handler
 
-```csharp
+```csharp norun
 builder.Services.AddHttpClient<CatalogClient>(c => c.BaseAddress = new("https://catalog"))
     .AddStandardResilienceHandler(o =>
     {
@@ -216,7 +216,7 @@ Defaults retry transient HTTP failures (5xx, 408, 429, `HttpRequestException`, t
 
 ### Custom pipelines
 
-```csharp
+```csharp norun
 builder.Services.AddResiliencePipeline("inventory-db", pipeline => pipeline
     .AddTimeout(TimeSpan.FromSeconds(5))
     .AddRetry(new RetryStrategyOptions
@@ -296,7 +296,7 @@ A liveness check says the process is alive; a readiness check says it can serve 
 
 Health endpoints let orchestrators and load balancers route around unhealthy instances.
 
-```csharp
+```csharp norun
 builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
     .AddSqlServer(cs, name: "sql", tags: ["ready"])                         // AspNetCore.HealthChecks.* packages
@@ -368,7 +368,7 @@ Liveness tells the orchestrator whether the process is healthy or must be restar
 
 Run with: `dotnet new console -o resiliencecheck && cd resiliencecheck && dotnet add package Polly.Core`, then replace `Program.cs` with the code below and `dotnet run`. This uses real Polly v8 pipelines — the chapter's actual subject — not a simulation.
 
-```csharp
+```csharp norun
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;

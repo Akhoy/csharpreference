@@ -32,6 +32,10 @@ next: oop
 | **lifted operator** | An operator on `int?` that gives `null` if either side is null. |
 | **lowering** | The compiler rewriting a convenient construct into simpler code before compiling it. |
 
+:::note What you need first
+- **[Everyday Types: Numbers, Text, Dates and IDs Done Right](ch:everyday-types)**: strings are immutable, `decimal` is for money, `DateTimeOffset` for moments in time, and parsing must state its culture.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's numbers, strings and dates are under control. Code review keeps finding small things, though: a discount check that called an expensive service even when it didn't need to, a `!` that hid a null until production, a `Money` type where `==` and `Equals` disagreed, and a tuple whose field names "disappeared" when it was serialised.

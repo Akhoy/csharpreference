@@ -33,6 +33,11 @@ next: threading-concurrency, aspnet-hosting, efcore-querying
 | **SynchronizationContext** | A rule some apps (UI apps) have about *which* thread may run the continuation. |
 | **deadlock** | Two things each waiting for the other, forever. |
 
+:::note What you need first
+- **[Delegates: Passing Behaviour Around (Lambdas, Closures, Events)](ch:delegates-events)**: a delegate is a variable that holds a method, and a lambda (`x => x * 2`) is the short way to write one.
+- **[Exceptions and Cleanup: Failing Safely (try/catch, using, IDisposable)](ch:exceptions-disposal)**: exceptions jump to the nearest matching `catch`; `using` guarantees `Dispose` runs to release files and connections.
+:::
+
 ## Previously, and the incident {b}
 
 In [Episode 7](ch:exceptions-disposal) Kettle learned to fail cleanly. Then came **Black Friday**. Traffic jumped 20×, and the site froze. Pages took 30 seconds, then timed out. The odd part was the server's **CPU at 5%**. It wasn't busy. A memory dump showed hundreds of threads, **every one of them waiting** on this line:

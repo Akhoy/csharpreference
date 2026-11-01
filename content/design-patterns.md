@@ -56,7 +56,7 @@ A factory is one place that decides which class to create, so callers ask for 'a
 
 **Intent:** let a method or class decide **which concrete type** to create, so callers depend only on an abstraction.
 
-```csharp
+```csharp norun
 public interface INotifier { Task SendAsync(string to, string message, CancellationToken ct); }
 
 public sealed class NotifierFactory(IServiceProvider sp) : INotifierFactory
@@ -88,7 +88,7 @@ An abstract factory creates a whole family of related objects that must match, s
 
 **Intent:** create **families of related objects** without specifying concrete classes, so a family can be swapped as a whole.
 
-```csharp
+```csharp norun
 public interface IStorageFactory { IBlobStore CreateBlobStore(); IQueueClient CreateQueue(); ISecretStore CreateSecrets(); }
 public sealed class AzureStorageFactory(…) : IStorageFactory { /* Blob Storage, Storage Queues, Key Vault */ }
 public sealed class LocalStorageFactory : IStorageFactory { /* file system, in-memory channel, user secrets */ }
@@ -104,7 +104,7 @@ A builder assembles a complicated object step by step, with readable calls, and 
 
 **Intent:** construct a complex object **step by step**, with a readable fluent API, separating construction from representation and validating once at `Build()`.
 
-```csharp
+```csharp norun
 var report = new ReportBuilder()
     .Titled("Q3 sales")
     .For(DateRange.Quarter(2026, 3))
@@ -133,7 +133,7 @@ A singleton guarantees one shared instance. In .NET, register it as a singleton 
 
 **Intent:** exactly **one instance**, with global access.
 
-```csharp
+```csharp norun
 // The classic thread-safe lazy singleton
 public sealed class Clock
 {
@@ -166,7 +166,7 @@ An adapter wraps a class with an awkward interface, such as a vendor SDK, so it 
 
 **Intent:** make an existing class with an **incompatible interface** work through the interface your code expects. It's a translator.
 
-```csharp
+```csharp norun
 // Your domain's port
 public interface IPaymentGateway { Task<PaymentResult> ChargeAsync(Money amount, string paymentToken, CancellationToken ct); }
 
@@ -195,7 +195,7 @@ A decorator wraps an object with the same interface and adds behaviour around it
 
 **Intent:** wrap an object with **another object implementing the same interface**, adding behaviour before/after delegating. Decorators can be stacked, and the inner object doesn't know.
 
-```csharp
+```csharp norun
 public interface IProductRepository { Task<Product?> GetAsync(int id, CancellationToken ct); }
 
 public sealed class SqlProductRepository(KettleDb db) : IProductRepository
@@ -255,7 +255,7 @@ A facade gives a simple front door to a complicated subsystem, so most callers o
 
 **Intent:** provide a **simple, unified interface** over a complex subsystem.
 
-```csharp
+```csharp norun
 public sealed class CheckoutFacade(ICartService carts, IPricingService pricing, IInventory inventory, IPaymentGateway payments, IOrderRepository orders)
 {
     public async Task<Result<OrderId>> CheckoutAsync(Guid cartId, string paymentToken, CancellationToken ct)
@@ -282,7 +282,7 @@ A composite treats a group of items and a single item the same way, like a bundl
 
 **Intent:** treat **individual objects and groups of objects uniformly** through one interface (tree structures).
 
-```csharp
+```csharp norun
 public interface IPriceRule { decimal Apply(decimal price, Order o); }
 public sealed class PercentOff(decimal pct) : IPriceRule { public decimal Apply(decimal p, Order o) => p * (1 - pct); }
 public sealed class CompositeRule(params IPriceRule[] rules) : IPriceRule
@@ -308,7 +308,7 @@ A strategy is an interchangeable algorithm behind an interface, such as differen
 
 **Intent:** define a **family of interchangeable algorithms** behind one interface and choose one at runtime.
 
-```csharp
+```csharp norun
 public interface IDiscountStrategy { string Name { get; } decimal Discount(Order o); }
 public sealed class NoDiscount : IDiscountStrategy { public string Name => "none"; public decimal Discount(Order o) => 0; }
 public sealed class VipDiscount : IDiscountStrategy { public string Name => "vip"; public decimal Discount(Order o) => o.Subtotal * 0.10m; }
@@ -342,7 +342,7 @@ An observer subscribes to be told when something happens. C# events and IObserva
 
 **Intent:** a **subject** notifies a list of **observers** when something happens, without knowing who they are.
 
-```csharp
+```csharp norun
 // Language-level: events
 public event EventHandler<OrderPlacedEventArgs>? OrderPlaced;
 
@@ -364,7 +364,7 @@ A command turns a request into an object, so it can be queued, logged, retried o
 
 **Intent:** encapsulate **a request as an object**, so you can queue it, log it, retry it, undo it, or send it elsewhere.
 
-```csharp
+```csharp norun
 public sealed record PlaceOrder(Guid CustomerId, IReadOnlyList<LineDto> Lines);    // the command: pure data
 public interface ICommandHandler<in TCommand> { Task HandleAsync(TCommand command, CancellationToken ct); }
 public sealed class PlaceOrderHandler(…) : ICommandHandler<PlaceOrder> { /* … */ }
@@ -380,7 +380,7 @@ A request passes along a chain of handlers, each of which can act on it or pass 
 
 **Intent:** pass a request along a **chain of handlers**; each either handles it, passes it on, or both.
 
-```csharp
+```csharp norun
 public abstract class ApprovalHandler
 {
     private ApprovalHandler? _next;
@@ -401,7 +401,7 @@ A mediator routes messages between objects so they don't reference each other di
 
 **Intent:** objects communicate **through a mediator** instead of referencing each other directly, which reduces many-to-many coupling to one-to-many.
 
-```csharp
+```csharp norun
 app.MapPost("/orders", (PlaceOrder cmd, ISender mediator, CancellationToken ct) => mediator.Send(cmd, ct));
 // The endpoint doesn't know which handler, or which pipeline behaviours (validation, logging, transactions), will run.
 ```
@@ -416,7 +416,7 @@ A base class fixes the steps of an algorithm and lets subclasses fill in some of
 
 **Intent:** a base class defines the **skeleton of an algorithm**, and subclasses fill in specific steps.
 
-```csharp
+```csharp norun
 public abstract class ImportJob
 {
     public async Task RunAsync(CancellationToken ct)          // the template: fixed sequence
@@ -445,7 +445,7 @@ Each state of an object becomes its own class, so behaviour that depends on the 
 
 **Intent:** an object **changes its behaviour when its internal state changes**, with each state as its own class, instead of `if (status == …)` scattered everywhere.
 
-```csharp
+```csharp norun
 public abstract class OrderState
 {
     public virtual OrderState Pay(Order o) => throw Invalid(nameof(Pay));

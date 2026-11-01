@@ -29,6 +29,10 @@ The team knows how code runs. Now Kettle needs a real solution layout, other peo
 
 ## The physical structure of a .NET codebase {b}
 
+:::plain
+A repository holds a solution file, which lists projects; each project is a folder with a `.csproj` and source files, and builds into one assembly. Apps reference libraries; tests reference what they test.
+:::
+
 ```text
 Kettle/                            ← git repository root
 ├── Kettle.slnx                    ← solution: groups projects for IDE/build
@@ -51,6 +55,10 @@ Kettle/                            ← git repository root
 - **Project references** say which assembly may use which. They are how architecture rules (Domain depends on nothing) are enforced physically.
 
 ## SDK-style project files {b}
+
+:::plain
+The `.csproj` file says what kind of project it is, which .NET version it targets, and which packages and other projects it uses. It's short because the SDK fills in sensible defaults for everything else.
+:::
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -103,6 +111,10 @@ Old .NET Framework projects listed every `.cs` file explicitly, so adding a new 
 
 ## Sharing settings: Directory.Build.props and global.json {i}
 
+:::plain
+Put settings that every project shares in one `Directory.Build.props` file at the top of the repository instead of repeating them in each project. `global.json` pins which SDK version builds the repository.
+:::
+
 MSBuild automatically imports the nearest **`Directory.Build.props`** walking up from each project. Put repo-wide settings there instead of repeating them in every csproj:
 
 ```xml
@@ -130,6 +142,10 @@ MSBuild automatically imports the nearest **`Directory.Build.props`** walking up
 
 ## The dotnet CLI {b}
 
+:::plain
+The `dotnet` command does everything: create projects, add packages, build, run, test, publish. Editors call the same commands, so what works on your machine works the same in CI.
+:::
+
 | Command | What it does |
 |---|---|
 | `dotnet new list` / `dotnet new webapi -n Kettle.Api` | List templates / create a project |
@@ -151,6 +167,10 @@ MSBuild automatically imports the nearest **`Directory.Build.props`** walking up
 **Local tools** (`dotnet new tool-manifest`, then `dotnet tool install dotnet-ef`) are pinned per repo in `.config/dotnet-tools.json` and restored with `dotnet tool restore`. They're better than global tools for team consistency.
 
 ## NuGet in depth {b}
+
+:::plain
+NuGet is .NET's package manager. You list the packages you need, and it downloads them and the packages they depend on. Keeping versions in one central file stops projects drifting apart.
+:::
 
 **NuGet** is .NET's package manager. A **package** (`.nupkg`) is a zip containing compiled assemblies for one or more TFMs (`lib/net8.0/`, `lib/netstandard2.0/`), a `.nuspec` manifest with its dependencies, and optionally build props, analyzers or content files.
 
@@ -203,6 +223,10 @@ Companies often publish a shared **contracts** package (message types, DTOs) use
 
 ## Code quality tooling {i}
 
+:::plain
+The compiler can check much more than syntax. Analyzers warn about likely bugs and slow code, `.editorconfig` sets the team's style, and treating warnings as errors keeps them from piling up.
+:::
+
 | Tool | What it does |
 |---|---|
 | **Roslyn analyzers** (built in) | Warnings for bugs, performance and API misuse (`CA1848` use LoggerMessage, `CA2007` ConfigureAwait…) |
@@ -224,6 +248,10 @@ dotnet_naming_rule.private_fields_underscore.severity = warning
 ```
 
 ## The daily toolbox {b}
+
+:::plain
+Beyond the editor, you'll use a tool to send HTTP requests, the diagnostics tools to look inside running apps, and the test runner. Here's what each job's usual tools are.
+:::
 
 | Job | Tools |
 |---|---|
@@ -254,6 +282,10 @@ Authorization: Bearer {{token}}
 ```
 
 ## launchSettings.json and environments {b}
+
+:::plain
+`launchSettings.json` holds settings used only when you run the app on your own machine: which URL to use and which environment (Development) to start in. It isn't used on servers.
+:::
 
 `Properties/launchSettings.json` is **only used on your dev machine** (by `dotnet run` and the IDE). It sets URLs and environment variables such as `ASPNETCORE_ENVIRONMENT=Development`. It is not deployed, and production ignores it. Production gets settings from real environment variables, App Service configuration or Kubernetes manifests. See [Configuration](ch:configuration-options).
 

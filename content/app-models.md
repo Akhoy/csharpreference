@@ -19,6 +19,11 @@ next: relational-fundamentals, messaging-events
 - **Blazor**: UI written in C#, with a choice of where it runs — static HTML, on the server (via SignalR), in the browser (WebAssembly), or both.
 - GraphQL, OData, raw WebSockets and Server-Sent Events cover narrower niches on top of the same host.
 
+:::note What you need first
+- **[ASP.NET Core Architecture and Hosting](ch:aspnet-hosting)**: an ASP.NET Core app is a normal program that builds a host (config, logging, DI, Kestrel) in `Program.cs`, then runs it.
+- **[Routing and Endpoints](ch:routing)**: routing matches a request's URL and method to an endpoint and extracts values such as `{id}` from the URL.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's JSON API is in good shape. Now the business wants an admin site, live order tracking and fast calls between internal services.
@@ -28,6 +33,10 @@ Kettle's JSON API is in good shape. Now the business wants an admin site, live o
 **This episode:** MVC and Razor Pages, Blazor, SignalR, gRPC and worker services, all on one host.
 
 ## One framework, many endpoint types {b}
+
+:::plain
+The same ASP.NET Core host and pipeline can serve JSON APIs, HTML pages, gRPC services, real-time SignalR connections and Blazor apps, side by side.
+:::
 
 Everything in the last several chapters — the host, DI, the middleware pipeline, routing — was described as the foundation *under* your API endpoints. It's worth being explicit about something that follows directly from that: minimal APIs and controllers are not the only thing that foundation supports. The exact same `WebApplication` can simultaneously serve JSON APIs, a high-performance internal RPC protocol, a live push channel to browsers, and fully server-rendered HTML pages — because all of them are just different **endpoint types** sitting on the same shared plumbing.
 
@@ -51,6 +60,10 @@ You can genuinely mix these in one app: a REST API for the mobile client, a gRPC
 
 ## gRPC: when the client is another service, not a browser {i}
 
+:::plain
+gRPC is a fast, strongly-typed way for services to call each other, using a shared contract file and a compact binary format over HTTP/2.
+:::
+
 **gRPC** is a high-performance RPC framework from Google. Its design rests on one assumption: both ends of the call are code you (or a cooperating team) control. Nobody needs to read the wire format by eye, and no browser needs to understand it directly. Because of that assumption, gRPC can afford to be **contract-first** — you define the service in **Protocol Buffers** (`.proto`), and both client and server code are generated from that contract. It also uses a **binary** wire format instead of text JSON (smaller, faster to parse), runs over **HTTP/2**, and treats streaming as a built-in feature instead of a workaround.
 
 ```proto
@@ -72,7 +85,7 @@ message StockReply   { string sku = 1; int32 quantity = 2; }
 </ItemGroup>
 ```
 
-```csharp
+```csharp norun
 // Server
 public sealed class InventoryService(IStockRepository stock) : Inventory.InventoryBase   // base class generated from .proto
 {
@@ -102,6 +115,10 @@ Look at the "Browser support" row — it explains most of the real-world adoptio
 
 ## SignalR: when the server needs to speak first {i}
 
+:::plain
+SignalR keeps a connection open so the server can push messages to browsers the moment something happens, like a stock update or a chat message.
+:::
+
 Every pattern so far in this book has the client going first — it sends a request, and a response comes back. **SignalR** is for the opposite case: the server learns something changed (an order shipped, a chat message arrived) before any client asked about it, and needs to **push** that update immediately, instead of making clients poll for it.
 
 - Transports, negotiated automatically: **WebSockets** → Server-Sent Events → long polling — SignalR picks the best one the client and network actually support, falling back gracefully.
@@ -109,7 +126,7 @@ Every pattern so far in this book has the client going first — it sends a requ
 - Addressing: all clients, a specific connection, a **user** (meaning all of that user's connections, since they might have several tabs open), or **groups**.
 - Clients: JavaScript/TypeScript, .NET, Java, Swift.
 
-```csharp
+```csharp norun
 public interface IOrderClient { Task StatusChanged(int orderId, string status); }      // strongly typed client methods
 
 [Authorize]
@@ -142,6 +159,10 @@ Notice that `ShippingNotifier` is **not** a hub — it's just an ordinary servic
 
 ## Server-rendered HTML: MVC and Razor Pages {b}
 
+:::plain
+MVC and Razor Pages build HTML on the server with C# and Razor templates and send finished pages to the browser. Part IV covers them.
+:::
+
 :::tip The full treatment
 This section is the overview. [MVC and Razor Pages](ch:razor-mvc), in Part IV, covers Razor syntax, forms, validation, antiforgery, filters and how views are compiled.
 :::
@@ -155,7 +176,7 @@ Step away from APIs and real-time push entirely: sometimes the actual deliverabl
 | Good for | Large sites with shared controllers; teams used to MVC | Page-focused apps: forms, admin tools, CRUD |
 | Shared | Tag helpers, layouts, partials, view components, model binding, validation, antiforgery | same |
 
-```csharp
+```csharp norun
 // Razor Page: Pages/Products/Edit.cshtml.cs
 public sealed class EditModel(KettleDb db) : PageModel
 {
@@ -181,6 +202,10 @@ public sealed class EditModel(KettleDb db) : PageModel
 Notice `OnPostAsync` redirects on success rather than returning a view directly — the Post-Redirect-Get pattern, which exists specifically so that refreshing the page after a successful save doesn't resubmit the form a second time. Because this model relies on the browser submitting real HTML forms rather than an API client attaching a bearer token, server-rendered apps use **cookie auth** by default and need **antiforgery** tokens on every form — added automatically by the form tag helpers. This defends against **CSRF** (cross-site request forgery: a malicious site tricking your browser into submitting a form to a real site where you're already logged in, using your cookies without your consent) — exactly the risk [Auth](ch:auth#cookies-vs-bearer-tokens-the-tradeoff-behind-how-do-i-stay-l) flags as cookies' particular weak point.
 
 ## Blazor: C# instead of JavaScript, with a choice of where it actually runs {i}
+
+:::plain
+Blazor lets you build interactive web UIs in C#. The components can run on the server or in the browser via WebAssembly. Part IV covers it in depth.
+:::
 
 :::tip The full treatment
 This section is the overview. Part IV has three chapters on Blazor: [components](ch:blazor-components), [render modes](ch:blazor-render-modes) and [running it in production](ch:blazor-advanced).
@@ -220,6 +245,10 @@ else
 For a backend-focused interview, the useful depth here is knowing what Blazor is, how the render modes trade off against each other, and specifically that Blazor Server relies on SignalR rather than being its own independent real-time mechanism. **.NET MAUI Blazor Hybrid** reuses the same components inside native desktop and mobile apps, for teams wanting one UI codebase across web and native.
 
 ## GraphQL and others, briefly {a}
+
+:::plain
+GraphQL lets clients ask for exactly the fields they need in one query. It's available through libraries such as Hot Chocolate, and suits some front-end-heavy apps.
+:::
 
 - **GraphQL** (via **Hot Chocolate**): clients send queries describing exactly the fields they need across related data, served from a single endpoint. Great for complex front ends aggregating many sources; harder to cache over HTTP, needs query cost limits and has an N+1 risk (solved with DataLoaders).
 - **OData**: queryable REST conventions (`$filter`, `$select`, `$expand`) over `IQueryable`; common in enterprise and Microsoft ecosystems.

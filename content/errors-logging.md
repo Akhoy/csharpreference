@@ -19,6 +19,11 @@ next: auth, observability-aspire, cqrs-mediator-result
 - **Scopes** attach extra fields (like `OrderId`) to every log line written inside a block, even across an `await`. They're stored in an `AsyncLocal<T>`, a variable whose value travels with the logical flow of the work (copied into each continuation) rather than staying with one thread, so it's still there after an `await` resumes on a different thread.
 - Never log secrets, tokens, or full PII. Log IDs, not whole objects, and reach for `[LoggerMessage]` in hot paths where the logging call itself costs enough to matter.
 
+:::note What you need first
+- **[Middleware and the Request Pipeline](ch:middleware)**: every request passes through an ordered chain of middleware, each of which can act before and after the rest.
+- **[Exceptions and Cleanup: Failing Safely (try/catch, using, IDisposable)](ch:exceptions-disposal)**: exceptions jump to the nearest matching `catch`; `using` guarantees `Dispose` runs to release files and connections.
+:::
+
 ## Previously at Kettle {b}
 
 The endpoints work, until they don't. Last night a customer saw a stack trace, and the logs were a wall of unsearchable text.
@@ -29,6 +34,10 @@ The endpoints work, until they don't. Last night a customer saw a stack trace, a
 
 ## Two very different audiences for the same failure {b}
 
+:::plain
+When something fails, the caller needs a clear, safe message, and the developer needs every detail. Never mix the two: details go to logs, not to the response.
+:::
+
 Something goes wrong in your app — a payment fails, a database call times out, a bug throws a `NullReferenceException`. That single event has to serve **two completely different audiences**, each with a different need:
 
 1. **The client** needs a consistent, safe, machine-readable error: the right status code, a predictable body shape, and critically, **no stack traces or internal implementation details** — those are a gift to an attacker and useless to a legitimate caller.
@@ -38,9 +47,13 @@ ASP.NET Core gives you one tool for each: **ProblemDetails** answers the client,
 
 ## Exception handling in the pipeline: where it has to sit, and why {b}
 
+:::plain
+The exception handler must be the first middleware, so that it wraps everything after it and can turn any unhandled error into a proper response.
+:::
+
 An unhandled exception bubbles upward through the middleware chain exactly the way the "after `next()`" code did in [Middleware](ch:middleware#now-heres-the-aha-a-middleware-is-just-a-function-wrapping-a) — except instead of returning normally, it propagates as a thrown exception. For the exception handler to actually catch everything, it has to be the **outermost** wrapper, registered first:
 
-```csharp
+```csharp norun
 builder.Services.AddProblemDetails();                              // standard error bodies
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();     // your handlers, tried in order
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -59,9 +72,13 @@ That split is deliberate, not accidental: you *want* the raw stack trace while y
 
 ## IExceptionHandler: mapping exception types to HTTP responses {i}
 
+:::plain
+An `IExceptionHandler` is a class that decides how to turn a particular kind of exception into an HTTP response, such as a `NotFoundException` into a 404.
+:::
+
 Since .NET 8, this is the standard hook for turning exceptions into responses. Handlers are tried **in registration order**, and each one gets to say "not mine" by returning `false`, letting the next handler have a turn:
 
-```csharp
+```csharp norun
 public sealed class DomainExceptionHandler(IProblemDetailsService problems, ILogger<DomainExceptionHandler> log) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)
@@ -112,6 +129,10 @@ Mapping exceptions centrally like this is convenient, but it's worth being hones
 
 ## ProblemDetails: one shape for every error, across every API you'll ever call {b}
 
+:::plain
+ProblemDetails is a standard JSON format for errors, with a type, title, status and details. Using it everywhere means every client can handle every error the same way.
+:::
+
 **RFC 9457** (which replaced the earlier RFC 7807) defines a standard JSON shape for HTTP API errors, served as `application/problem+json`:
 
 ```json
@@ -144,7 +165,7 @@ Mapping exceptions centrally like this is convenient, but it's worth being hones
 
 You can customise every ProblemDetails response centrally, in one place, instead of repeating logic across every handler:
 
-```csharp
+```csharp norun
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
 {
     ctx.ProblemDetails.Instance = $"{ctx.HttpContext.Request.Method} {ctx.HttpContext.Request.Path}";
@@ -158,9 +179,13 @@ Think about what happens without it: a customer reports "I got an error," and yo
 
 ## The logging abstraction: one API, many destinations {b}
 
+:::plain
+Your code writes logs through `ILogger`, and configuration decides where they go: the console, files, or a central logging service. Changing destination never means changing code.
+:::
+
 `Microsoft.Extensions.Logging` gives your code a single API, **`ILogger<T>`**, and lets the *host* decide where those log entries actually end up — console, a file, Application Insights, several of these at once — through a set of configurable **providers**. Your business code never needs to know or care which.
 
-```csharp
+```csharp norun
 public sealed class PaymentService(ILogger<PaymentService> logger, IPaymentGateway gateway)
 {
     public async Task<PaymentResult> ChargeAsync(Order order, CancellationToken ct)
@@ -210,6 +235,10 @@ This is the exact same layered configuration mechanism from [Configuration](ch:c
 
 ## Structured logging: keeping the data, not just the sentence {b}
 
+:::plain
+Write logs as a message template with named values, like `Order {OrderId} paid`. The values are stored as separate fields you can search and filter on, not just text.
+:::
+
 Here's a distinction easy to miss on a first read: the string `"Charging order {OrderId} for {Amount}"` is a **message template**, not an interpolated string, and that's the whole point of writing it this way. The logger keeps `OrderId` and `Amount` as **named properties**, separately from the rendered text, and a structured sink — Application Insights, Seq, Elasticsearch, Loki, Datadog — stores each one as a real, queryable field rather than burying it inside an opaque sentence:
 
 ```text
@@ -222,7 +251,7 @@ OrderId = 1042 and @Level = 'Error'
 
 Now compare the three calls below, because the difference between the first and the other two is exactly what makes structured logging valuable in the first place:
 
-```csharp
+```csharp norun
 logger.LogInformation("Order {OrderId} placed", order.Id);        // ✔ structured: OrderId is a field
 logger.LogInformation($"Order {order.Id} placed");                // ✘ one opaque string; also allocates even if Information is disabled
 logger.LogInformation("Order placed: {@Order}", order);           // @ = destructure the object (Serilog); careful with size and PII
@@ -232,9 +261,13 @@ The second line *looks* equivalent and produces visually identical console outpu
 
 ## Log scopes: attaching context to everything inside a block {i}
 
+:::plain
+A scope attaches values, such as an order ID, to every log line written inside a block of code, without passing them to each log call.
+:::
+
 A scope attaches a set of properties to **every single log line written inside it**, for as long as the block is open — which is exactly the mechanism correlation IDs rely on:
 
-```csharp
+```csharp norun
 using (logger.BeginScope(new Dictionary<string, object> { ["OrderId"] = order.Id, ["CustomerId"] = order.CustomerId }))
 {
     logger.LogInformation("Reserving stock");     // carries OrderId and CustomerId
@@ -249,9 +282,13 @@ The scope survives across that `await`, even when the method resumes on a differ
 
 ## High-performance logging: when the logging call itself becomes the bottleneck {a}
 
+:::plain
+In hot paths, logging can cost real time and memory. The `[LoggerMessage]` source generator produces logging methods that cost almost nothing when the level is turned off.
+:::
+
 Every ordinary `logger.LogInformation(template, args)` call does real work before it even checks whether anything will be written: it boxes value-type arguments into an `object[]`, and looks up the (cached) parsed template. That overhead adds up in a hot path — something called thousands of times a second — and the source-generated **`[LoggerMessage]`** attribute exists to eliminate it:
 
-```csharp
+```csharp norun
 public static partial class OrderLog
 {
     [LoggerMessage(EventId = 1001, Level = LogLevel.Information, Message = "Order {OrderId} placed by customer {CustomerId}")]
@@ -268,6 +305,10 @@ The generated method checks `IsEnabled` as the very first thing, before touching
 
 ## Providers and Serilog: where the log lines actually go {i}
 
+:::plain
+Providers are the destinations for logs. The built-in ones cover the console and debugging; libraries like Serilog or OpenTelemetry send logs to files and central systems.
+:::
+
 | Provider / library | Notes |
 |---|---|
 | Console, Debug, EventSource, EventLog | Built in |
@@ -276,7 +317,7 @@ The generated method checks `IsEnabled` as the very first thing, before touching
 | **Serilog** | The most popular third-party library: rich sinks (Seq, Elasticsearch, files, Splunk), enrichers, structured destructuring |
 | NLog | Long-standing alternative |
 
-```csharp
+```csharp norun
 // Serilog setup
 builder.Host.UseSerilog((ctx, services, cfg) => cfg
     .ReadFrom.Configuration(ctx.Configuration)
@@ -292,7 +333,11 @@ In containerised deployments specifically, the standard pattern is to **log JSON
 
 ## HTTP request logging {i}
 
-```csharp
+:::plain
+Built-in middleware can log every request and response: method, path, status and timing. Useful, but choose carefully what it records.
+:::
+
+```csharp norun
 builder.Services.AddHttpLogging(o =>
 {
     o.LoggingFields = HttpLoggingFields.RequestMethod | HttpLoggingFields.RequestPath | HttpLoggingFields.ResponseStatusCode | HttpLoggingFields.Duration;
@@ -304,6 +349,10 @@ app.UseHttpLogging();
 Be deliberate about which fields you enable here: bodies and headers routinely contain tokens, cookies and personal data, and logging them by default is how sensitive data quietly ends up sitting in a log aggregator for months.
 
 ## What to log and what never to log {i}
+
+:::plain
+Log what you'd need to understand a problem later: what happened, to which record, and why. Never log passwords, tokens, card numbers or personal data you don't need.
+:::
 
 | ✔ Log | ✘ Never log |
 |---|---|
@@ -372,7 +421,7 @@ Anyone can call DELETE /orders/42. [Episode 8 · Who are you, and may you? →](
 
 The checks below cover exception-to-status mapping, structured logging vs interpolation, scopes surviving an `await`, and `IsEnabled` gating — all pure C#, no ASP.NET host needed. Save as a console app (`dotnet new console`, `dotnet add package Microsoft.Extensions.Logging`), then `dotnet run`.
 
-```csharp
+```csharp norun
 using Microsoft.Extensions.Logging;
 
 // Claim: exception-type-to-status mapping (the shape of IExceptionHandler.TryHandleAsync in this chapter).

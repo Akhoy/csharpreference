@@ -19,6 +19,11 @@ next: middleware, azure-identity-secrets
 - Secrets never belong in a committed file: **User Secrets** in development, **Key Vault**/platform secret stores (or better, no secret at all via managed identity) in production.
 - **Feature flags** separate *deploying* code from *releasing* it — ship a feature switched off, then turn it on gradually without a redeploy.
 
+:::note What you need first
+- **[ASP.NET Core Architecture and Hosting](ch:aspnet-hosting)**: an ASP.NET Core app is a normal program that builds a host (config, logging, DI, Kestrel) in `Program.cs`, then runs it.
+- **[Dependency Injection in Depth](ch:dependency-injection)**: classes ask for what they need in their constructor, and the container supplies it with the right lifetime: singleton, scoped or transient.
+:::
+
 ## Previously at Kettle {b}
 
 The services are wired by the container. Last week, though, the staging site charged real cards, because the payment key was hard-coded and nobody changed it per environment.
@@ -28,6 +33,10 @@ The services are wired by the container. Last week, though, the staging site cha
 **This episode:** layered configuration, typed and validated options, and where secrets belong.
 
 ## The same build, four different places, four different answers {b}
+
+:::plain
+The same compiled app runs on your laptop, in CI, in staging and in production, and needs different settings in each. So settings must come from outside the code.
+:::
 
 Here's a constraint that sounds simple but shapes this entire chapter: the **exact same compiled binary** has to run on your laptop, in a CI pipeline, in staging, and in production — and in each of those four places, it needs a different database connection string, a different payment-gateway URL, and a set of secrets that absolutely cannot be the same ones twice.
 
@@ -43,6 +52,10 @@ That compiles fine on your laptop. The moment you deploy it to staging, it's sti
 ASP.NET Core's answer is **layered configuration**: several independent sources — a JSON file, environment variables, command-line arguments, a secrets store — each contribute key/value pairs, and later sources **override** earlier ones for the same key. Your code never reads any of those sources directly. It reads one merged, flattened view called `IConfiguration`, and has no idea — and doesn't need to know — which layer any particular value actually came from.
 
 ## The five layers, lowest priority to highest {b}
+
+:::plain
+ASP.NET Core reads settings from several sources in order: `appsettings.json`, the per-environment file, user secrets (in development), environment variables, then the command line. A later source overrides an earlier one.
+:::
 
 `WebApplication.CreateBuilder` wires up these sources automatically, in this exact order:
 
@@ -78,9 +91,13 @@ That's the whole mental model: **each layer only needs to mention the keys it wa
 
 ## Reading the merged view: keys, sections, and converting types {b}
 
+:::plain
+All the sources merge into one set of keys like `Payments:TimeoutSeconds`. You can read a single value, a whole section, or convert a section to a typed object.
+:::
+
 Configuration ends up as one flat dictionary of string keys, with `:` marking a level of nesting — `Payments:BaseUrl`, `Logging:LogLevel:Default` — and arrays addressed by index: `AllowedOrigins:0`, `AllowedOrigins:1`.
 
-```csharp
+```csharp norun
 IConfiguration config = builder.Configuration;
 
 string? url = config["Payments:BaseUrl"];                              // raw string
@@ -94,6 +111,10 @@ bool exists = section.Exists();
 Reading `IConfiguration` directly like this is completely fine in `Program.cs` — you're wiring things up once, at startup. But scattering `config["Payments:TimeoutSeconds"]` calls across your actual business logic is a trap worth avoiding, for a reason that becomes obvious once you hit it: a typo in that string key doesn't fail to compile, it just silently returns `null` or the default value at runtime, and you find out in production. The **Options pattern**, a few sections below, exists specifically to close that hole.
 
 ## Environment variables need their own naming convention {b}
+
+:::plain
+Environment variables can't contain `:` on every OS, so a double underscore stands for it: `Payments__TimeoutSeconds` sets `Payments:TimeoutSeconds`.
+:::
 
 Here's a wrinkle worth knowing before it costs you a debugging session: the `:` that separates configuration levels isn't a character every platform allows in an environment variable name. So the environment-variable provider uses a **double underscore** `__` instead, translated automatically back to `:` when it's read:
 
@@ -112,9 +133,13 @@ Get the underscores wrong — a single `_` instead of `__`, say — and nothing 
 
 ## The Options pattern: turning strings-with-typos into a typed class {b}
 
+:::plain
+Instead of reading settings by string name everywhere, bind a section to a small class once and inject that class. You get type checking, defaults and validation in one place.
+:::
+
 So you've got a merged `IConfiguration`. The next question is how your actual services should consume it — and the answer the framework steers you toward is: **don't**, not directly. Instead, bind a configuration section onto a strongly typed class once, register that class in DI, and let services ask for the type instead of a string key.
 
-```csharp
+```csharp norun
 public sealed class PaymentOptions
 {
     public const string SectionName = "Payments";
@@ -149,6 +174,10 @@ Notice what `.ValidateOnStart()` buys you specifically, because it's the single 
 
 ## Three flavours of "give me the options", and why there are three {i}
 
+:::plain
+`IOptions` reads settings once, `IOptionsSnapshot` reads them fresh for each request, and `IOptionsMonitor` tells you when they change. Pick the one that matches how often your settings can change.
+:::
+
 This is the part that trips people up, so let's be precise about *why* three interfaces exist instead of one. The question each one answers is: **when configuration changes while the app is already running, who sees the new value, and when?**
 
 | Interface | Lifetime | Picks up changes? | Use when |
@@ -161,7 +190,7 @@ This is the part that trips people up, so let's be precise about *why* three int
 
 But suppose you want a feature flag that an operator can flip without restarting the app — say, during an incident, to kill a misbehaving feature in seconds rather than waiting for a full redeploy. `IOptions<T>` can't do that; it already baked in its answer the first time anyone asked. `IOptionsMonitor<T>` is built for exactly this: it's still a singleton, so it's safe to inject into another singleton or a long-lived background service, but its `CurrentValue` property re-reads the live configuration every single time you access it, and it offers an `OnChange` callback you can subscribe to the moment a change lands.
 
-```csharp
+```csharp norun
 public sealed class FeatureGate(IOptionsMonitor<FeatureOptions> monitor, ILogger<FeatureGate> log)
 {
     private readonly IDisposable? _sub = monitor.OnChange(o => log.LogInformation("Features changed: {@F}", o));
@@ -179,9 +208,13 @@ One detail worth being precise about, because it isn't automatic: `appsettings.j
 
 ## Named options and post-configuration: when one options type isn't enough {a}
 
+:::plain
+Sometimes you need several configurations of the same class, such as two HTTP clients with different timeouts. Named options handle that, and post-configuration lets you adjust values after binding.
+:::
+
 Sometimes the same *shape* of settings needs several independent *instances* — think storage settings for invoices and storage settings for images, structurally identical but pointing at different containers:
 
-```csharp
+```csharp norun
 builder.Services.Configure<StorageOptions>("invoices", builder.Configuration.GetSection("Storage:Invoices"));
 builder.Services.Configure<StorageOptions>("images",   builder.Configuration.GetSection("Storage:Images"));
 
@@ -206,6 +239,10 @@ builder.Services.ConfigureOptions<ConfigureCors>();
 For high-performance, AOT-friendly validation — relevant once you're on Native AOT, from [How code runs](ch:how-code-runs#what-if-you-skipped-the-jit-completely) — use the source-generated validator instead of the reflection-based `.ValidateDataAnnotations()`: `[OptionsValidator] public partial class PaymentOptionsValidator : IValidateOptions<PaymentOptions> { }`.
 
 ## Secrets: the layer system's hardest case {b}
+
+:::plain
+Passwords and keys must never be in source control. On your machine they go in user secrets; on servers in environment variables, mounted files or a secret store such as Key Vault.
+:::
 
 Everything above assumes the values themselves are safe to see. Passwords, API keys, connection strings with embedded credentials, and signing keys are a different category entirely — they must **never** be committed to source control, and that includes `appsettings.Development.json`, which people forget is still a file in the repo.
 
@@ -232,9 +269,13 @@ That last row is worth sitting with for a moment, because it's a genuinely diffe
 
 ## Feature flags: configuration that controls *behaviour*, not just values {i}
 
+:::plain
+A feature flag is a setting that switches a feature on or off without deploying new code. It lets you release code dark, turn features on for some users, and switch them off quickly if something goes wrong.
+:::
+
 **Azure App Configuration** extends this same layered model into a centrally managed, shared store — useful once several services need the same settings, with per-environment labels, live change notifications, and specifically, **feature flags**:
 
-```csharp
+```csharp norun
 builder.Configuration.AddAzureAppConfiguration(o => o
     .Connect(new Uri(builder.Configuration["AppConfig:Endpoint"]!), new DefaultAzureCredential())
     .Select(KeyFilter.Any, labelFilter: builder.Environment.EnvironmentName)
@@ -251,11 +292,15 @@ The reason this matters more than it first looks is that it separates two things
 
 ## How the provider mechanism actually works underneath {a}
 
+:::plain
+Each source is a provider that loads its keys into a dictionary. The configuration object asks the providers from last to first and returns the first answer, which is why later sources win.
+:::
+
 Pulling back the curtain on the merge itself: each provider implements `IConfigurationProvider`, loading its source into a flat `Dictionary<string,string?>`. `IConfigurationRoot` queries all the registered providers **in reverse order** — last-added first — and returns the first value it finds for a given key. That single rule, "ask the latest provider first," is the entire precedence mechanism; there's no separate priority system layered on top.
 
 `builder.Configuration` is specifically a `ConfigurationManager`, which means you can add more sources during phase 1 and have later reads immediately see them — unlike a plain `IConfigurationRoot`, which is built once and fixed. Besides the five defaults, other built-in providers worth knowing exist: INI, XML, in-memory (`AddInMemoryCollection`, genuinely useful in tests), key-per-file (how Docker and Kubernetes secrets commonly get mounted), and `AddJsonStream`. Binding (`Bind`, `Get<T>`) uses reflection by default; setting `<EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>` switches that to a source generator instead, for AOT-friendly binding with no reflection at all.
 
-```csharp
+```csharp norun
 // Tests: override configuration without files
 builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
 {

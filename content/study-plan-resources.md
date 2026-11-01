@@ -231,7 +231,7 @@ That's the end of Kettle's story. Everything an interviewer can ask about lives 
 
 This chapter is mostly study advice and a reading list, which isn't something code can verify. One concrete, checkable claim it does make — in the sample interview answer about scoped vs singleton services — is that a singleton capturing a scoped dependency ("captive dependency") is a real bug, and that DI's scope validation catches it. Run with `dotnet new console -o studyplancheck && cd studyplancheck && dotnet add package Microsoft.Extensions.DependencyInjection`, replace `Program.cs`, then `dotnet run`:
 
-```csharp
+```csharp norun
 using Microsoft.Extensions.DependencyInjection;
 
 // Reproduces the "captive dependency" bug from the sample interview answer above, with real DI.

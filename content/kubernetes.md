@@ -327,7 +327,7 @@ By the end of Part XI, Kettle runs on infrastructure it doesn't have to babysit,
 
 Almost everything in this chapter is Kubernetes's own orchestration behavior — scheduling, probes, rolling updates — which genuinely needs a real cluster to observe; a C# program on its own can't fake that honestly. The one claim that *is* pure .NET runtime behavior, and the same cgroup-awareness mechanism that makes .NET respect a container's memory limit under Kubernetes or Docker, is verified below by actually setting a hard GC memory ceiling and reading it back. Save as a console app (`dotnet new console`), then `dotnet run`.
 
-```csharp
+```csharp norun
 using System.Diagnostics;
 
 if (Environment.GetEnvironmentVariable("VERIFY_CHILD") == "1")

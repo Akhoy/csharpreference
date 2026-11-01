@@ -316,7 +316,7 @@ Kettle has an image. Now run the whole stack (proxy, API, worker, database) from
 
 Most of this chapter needs an actual Docker daemon or container runtime to exercise for real (building images, cgroup limits). What you *can* verify directly, with no Docker involved, is the exact SIGTERM mechanism that `docker stop` relies on. Run with `dotnet run` (plain console app, .NET 8/9, BCL only; Linux/macOS — it uses the `kill` command to send itself a real signal).
 
-```csharp
+```csharp norun
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 

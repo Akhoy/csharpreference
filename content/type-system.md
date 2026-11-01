@@ -32,6 +32,11 @@ next: everyday-types, oop, generics, memory-gc
 | **immutable** | Can't be changed after it's created. "Changing" it really makes a new one. |
 | **hash code** | A number worked out from an object's contents. Collections use it like a shelf number. |
 
+:::note What you need first
+- **[Your First .NET App, End to End](ch:first-app)**: how to create, run, debug and test a project, and what `Program.cs`, namespaces and `using` are.
+- **[How Your Code Runs: Compilation, IL, the CLR and the JIT](ch:how-code-runs)**: C# compiles to IL in an assembly, and the runtime's JIT turns it into machine code as the app runs.
+:::
+
 ## Previously, and the bug {b}
 
 Kettle's first feature is simple: a shopper can **save their basket for later** and keep shopping. The idea is to keep a snapshot of the basket, so the shopper can carry on changing the live one. You write it the obvious way, and it passes a quick test. Then the support emails start: "I added a tea to my saved list and it appeared in my basket too."

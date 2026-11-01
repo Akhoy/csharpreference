@@ -18,6 +18,12 @@ next: configuration-options, middleware, design-principles
 - Outside a request (background jobs, startup code) there's no scope automatically; create one yourself with `IServiceScopeFactory`.
 - `Program.cs` is the **composition root** — the one place that should know about concrete types. Everywhere else should depend only on interfaces.
 
+:::note What you need first
+- **[Classes: Objects That Guard Their Own Rules (OOP)](ch:oop)**: classes bundle data with the methods that guard it; interfaces are contracts that let you swap implementations.
+- **[Generics: Write It Once, for Any Type](ch:generics)**: `List<T>` and friends work for any type `T` while staying type-checked, and constraints say what `T` must support.
+- **[ASP.NET Core Architecture and Hosting](ch:aspnet-hosting)**: an ASP.NET Core app is a normal program that builds a host (config, logging, DI, Kestrel) in `Program.cs`, then runs it.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's API is up. But Program.cs has turned into a wall of `new`: every class builds its own database connection, payment client and logger.
@@ -28,7 +34,11 @@ Kettle's API is up. But Program.cs has turned into a wall of `new`: every class 
 
 ## Start with the version that goes wrong {b}
 
-```csharp
+:::plain
+When a class creates the things it needs with `new`, it's welded to them: you can't swap them, test them separately, or control how long they live. That's the problem dependency injection solves.
+:::
+
+```csharp norun
 // Without DI: OrderService creates its own dependencies
 public class OrderService
 {
@@ -48,7 +58,7 @@ This looks completely normal, and plenty of real code looks exactly like it. So 
 
 Four real, concrete problems, all stemming from one root cause: `OrderService` is responsible for *deciding* what talks to SQL and SMTP, on top of its actual job of placing an order. Now look at the fix:
 
-```csharp
+```csharp norun
 // With DI: dependencies are given to the class ("injected")
 public class OrderService(IOrderRepository repo, IEmailSender email)
 {
@@ -70,6 +80,10 @@ Notice what actually changed: `OrderService` no longer creates *anything*. It ju
 
 ## What the container is actually doing {b}
 
+:::plain
+Instead of creating its dependencies, a class lists them in its constructor. At startup you tell the container which class to use for each one, and it builds the whole chain for you whenever something is needed.
+:::
+
 Once `OrderService` declares what it needs instead of creating it, *something* has to supply those dependencies at runtime. That something is a three-step pipeline, and understanding the three steps as separate moments — not one blurred-together thing — is what makes the rest of this chapter click:
 
 ```text
@@ -79,7 +93,7 @@ IServiceCollection  ──Build()──▶  IServiceProvider  ──GetService<T
   with lifetime L")                each type & caches by lifetime)           dependencies)
 ```
 
-```csharp
+```csharp norun
 builder.Services.AddScoped<IOrderRepository, EfOrderRepository>();   // recipe
 builder.Services.AddScoped<IEmailSender, SendGridEmailSender>();
 builder.Services.AddScoped<OrderService>();                           // concrete type registered as itself
@@ -106,6 +120,10 @@ Step one — **registration** — just builds up a list of recipes: "if anyone a
 
 ## Service lifetimes: the question the container has to answer every time {b}
 
+:::plain
+For each service, you choose how long one instance lives: one for the whole app (singleton), one per request (scoped), or a new one every time it's asked for (transient).
+:::
+
 Here's a question you might not have thought to ask yet: when two different parts of your code both ask for `IEmailSender`, does the container build a brand-new one each time, or hand back the same instance twice? The answer is: **it depends on how you registered it** — and that choice is called the service's **lifetime**.
 
 | Lifetime | Register with | One instance per… | Disposed when | Typical services |
@@ -116,7 +134,7 @@ Here's a question you might not have thought to ask yet: when two different part
 
 The clearest way to actually feel the difference is to watch one tiny service resolved under all three lifetimes:
 
-```csharp
+```csharp norun
 public class GuidService { public Guid Id { get; } = Guid.NewGuid(); }
 
 // Within ONE request, resolving it in two places gives:
@@ -143,13 +161,17 @@ When none of that gives you a confident answer, **scoped** is the safe default f
 
 ## Scopes, made concrete {i}
 
+:::plain
+A scope is a short-lived container for scoped services. ASP.NET Core creates one for each request and disposes it, along with everything created in it, when the request ends.
+:::
+
 You've been told "scoped means one instance per scope" several times now — but what, physically, *is* a scope? It's a **child container**: a smaller `IServiceProvider` nested inside the main one, with its own private cache of scoped instances, that gets thrown away (and everything disposable inside it disposed) as one unit when it ends.
 
 **ASP.NET Core creates exactly one scope per HTTP request**, automatically, via middleware near the very start of the pipeline. It exposes that scope as `HttpContext.RequestServices`. Every service resolved anywhere during the request — your handler, any middleware after that point, anything they call into — pulls from that one scope. That's the entire mechanism behind "scoped = one per request": scoped services don't know anything special about HTTP requests. There's just one scope created per request, and scoped services are cached per scope.
 
 Here's the detail that catches people out: **outside of a request, there is no scope, unless you explicitly create one.** A background service, startup code, a message consumer — none of these are running inside an HTTP request, so none of them have a scope handed to them automatically. If any of that code needs a scoped service, like `DbContext`, it has to ask for a fresh scope itself:
 
-```csharp
+```csharp norun
 public class NightlyCleanup(IServiceScopeFactory scopeFactory, ILogger<NightlyCleanup> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -177,6 +199,10 @@ Notice the pattern: `NightlyCleanup` itself is a long-lived singleton (hosted se
 
 ## The captive dependency: the single most common DI bug {i}
 
+:::plain
+If a long-lived service holds on to a shorter-lived one (a singleton keeping a scoped `DbContext`), that short-lived object is kept forever and shared by every request. It looks fine in testing and breaks under load.
+:::
+
 Here's a rule worth memorising exactly, because almost every tricky DI bug you'll ever debug traces back to breaking it: **a service must never depend on a service with a shorter lifetime than its own.**
 
 ```text
@@ -189,7 +215,7 @@ Transient  ──depends on──▶  anything    ✔
 
 Why does this matter so much for the singleton row specifically? A singleton is constructed exactly **once** — the first time anything asks for it. Whatever gets passed into its constructor at that moment is what it's stuck with for the rest of the process's life. If one of those constructor arguments is a scoped service, the singleton doesn't get "a fresh one per request" the way scoped is supposed to work. It gets whichever instance happened to exist at that one moment, and holds onto it permanently. That's a **captive dependency**: the scoped object is taken captive by something that will never let it go.
 
-```csharp
+```csharp norun
 builder.Services.AddSingleton<PriceCache>();     // lives forever
 builder.Services.AddScoped<KettleDb>();          // should live one request
 
@@ -208,17 +234,82 @@ That mismatch produces three distinct, nasty symptoms, worth being able to name 
 
 **How do you catch this before it ships?** In Development, `ValidateScopes = true` makes the container actively check for exactly this shape and throw a clear `InvalidOperationException: Cannot consume scoped service 'KettleDb' from singleton 'PriceCache'` the moment it would happen — turning a subtle runtime bug into a loud startup failure. It's usually worth enabling everywhere, not just in Development, for the small extra startup cost:
 
-```csharp
+```csharp norun
 builder.Host.UseDefaultServiceProvider(o => { o.ValidateScopes = true; o.ValidateOnBuild = true; });
 ```
 
 **The fix**, once you've found one: either make the consumer scoped too (if that's actually appropriate for what it does), or — the usual answer for something that genuinely needs to be a singleton — inject `IServiceScopeFactory` (or `IDbContextFactory<T>`) instead of the scoped service directly, and create a fresh scope or context for each individual operation, exactly the way `NightlyCleanup` did in the previous section.
 
+:::walk A 30-line container, and the captive dependency it creates
+```csharp
+var services = new MiniContainer();
+services.AddScoped<Basket>();
+services.AddSingleton<BasketReporter>();     // the bug: a singleton that needs a scoped Basket
+
+using (var request1 = services.CreateScope())
+{
+    request1.Get<Basket>().Items.Add("Assam");
+    Console.WriteLine($"request 1 basket: {request1.Get<Basket>().Items.Count}, reporter: {request1.Get<BasketReporter>().Count}");
+}
+
+using (var request2 = services.CreateScope())
+{
+    Console.WriteLine($"request 2 basket: {request2.Get<Basket>().Items.Count}, reporter: {request2.Get<BasketReporter>().Count}");
+}
+
+class MiniContainer
+{
+    readonly Dictionary<Type, string> lifetimes = new();
+    readonly Dictionary<Type, object> singletons = new();
+    public void AddSingleton<T>() => lifetimes[typeof(T)] = "singleton";
+    public void AddScoped<T>() => lifetimes[typeof(T)] = "scoped";
+    public Scope CreateScope() => new(this);
+
+    public object Resolve(Type type, Scope scope)
+    {
+        var cache = lifetimes[type] == "singleton" ? singletons : scope.Instances;
+        if (cache.TryGetValue(type, out var existing)) return existing;
+        var ctor = type.GetConstructors()[0];
+        var args = ctor.GetParameters().Select(p => Resolve(p.ParameterType, scope)).ToArray();
+        return cache[type] = ctor.Invoke(args);
+    }
+}
+
+class Scope(MiniContainer container) : IDisposable
+{
+    public Dictionary<Type, object> Instances { get; } = new();
+    public T Get<T>() => (T)container.Resolve(typeof(T), this);
+    public void Dispose() => Instances.Clear();
+}
+
+class Basket { public List<string> Items { get; } = []; }
+class BasketReporter(Basket basket) { public int Count => basket.Items.Count; }
+```
+@16-22 | -
+A toy container: it remembers a lifetime per type, keeps singletons in one dictionary for the whole app, and creates scopes.
+@24-30 | -
+Resolving is the whole trick of DI: pick the right cache for the lifetime, return the existing instance if there is one, otherwise find the constructor, **resolve each parameter the same way**, and call it. Real containers do this too, and cache a fast compiled version.
+@34-38 | -
+A scope holds the scoped instances for one unit of work. ASP.NET Core creates one per request, and disposes it when the request ends.
+@41-42 | -
+`Basket` is per request (scoped). `BasketReporter` is a singleton that asks for a `Basket` in its constructor.
+@7 | request1.Basket = [Assam]
+Request 1 gets its own basket and adds a tea.
+@8 | singleton reporter = → request 1's basket | > request 1 basket: 1, reporter: 1
+The reporter is created now, as a **singleton**, and it's given the basket from the scope that happened to be active: request 1's. It will keep that basket forever.
+@13 | request2.Basket = [] ; singleton reporter = → request 1's basket | > request 2 basket: 0, reporter: 1
+Request 2 has a fresh, empty basket, but the singleton reporter still holds request 1's. On a real site, that's one customer's data showing up for another, or a `DbContext` shared by every request at once. The fix: make the reporter scoped too, or have it create a scope when it needs one. ASP.NET Core's `ValidateScopes` throws on this at startup in Development.
+:::
+
 ## A tour of the registration API {i}
+
+:::plain
+There are several ways to register a service: by type, with a factory function, as an existing instance, with keys, or only if nothing else is registered. Each fits a different situation.
+:::
 
 Registering a simple interface-to-implementation mapping is the common case, but the container supports several other shapes worth knowing:
 
-```csharp
+```csharp norun
 // Interface → implementation
 services.AddScoped<IOrderRepository, EfOrderRepository>();
 
@@ -256,7 +347,7 @@ That last one is worth a second look if you haven't seen it before: registering 
 
 ### What happens when two implementations share an interface
 
-```csharp
+```csharp norun
 services.AddScoped<INotificationChannel, EmailChannel>();
 services.AddScoped<INotificationChannel, SmsChannel>();
 services.AddScoped<INotificationChannel, PushChannel>();
@@ -273,7 +364,7 @@ This is a genuinely sharp edge worth knowing about in advance: asking for `INoti
 
 ### Keyed services, for picking a specific one by name
 
-```csharp
+```csharp norun
 services.AddKeyedSingleton<IPaymentGateway, StripeGateway>("stripe");
 services.AddKeyedSingleton<IPaymentGateway, AdyenGateway>("adyen");
 
@@ -287,7 +378,7 @@ Keyed services (.NET 8) solve exactly the ambiguity the previous example ran int
 
 ### Keeping Program.cs readable
 
-```csharp
+```csharp norun
 public static class InfrastructureRegistration
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
@@ -307,9 +398,13 @@ An extension method per feature or architectural layer is the convention every l
 
 ## Decorators and assembly scanning {a}
 
+:::plain
+A decorator wraps a service to add behaviour (caching, logging) without changing it. Scanning registers many classes automatically by convention instead of one line each.
+:::
+
 Two capabilities the built-in container deliberately leaves out, on purpose, to stay small and simple:
 
-```csharp
+```csharp norun
 // Manual decorator: wrap the real implementation
 services.AddScoped<SqlProductRepository>();
 services.AddScoped<IProductRepository>(sp =>
@@ -328,12 +423,20 @@ You can still build a **decorator** — a class that wraps another implementatio
 
 ## Who disposes what {i}
 
+:::plain
+The container disposes the objects it created, at the end of their lifetime. Objects you created yourself and handed to it are yours to dispose.
+:::
+
 - The container disposes **`IDisposable`/`IAsyncDisposable` instances it created itself**, the moment their scope ends (and singletons at app shutdown).
 - It does **not** dispose instances *you* registered directly with `AddSingleton(instance)` — you created that one, you own its lifetime.
 - **Transient disposables resolved directly from the root provider** (not from a scope) are tracked until the whole app shuts down. Do that repeatedly and you've built yourself a slow, steady memory leak. Resolve from a scope instead.
 - As a rule: never dispose a dependency that was injected into you. If the container gave it to you, the container owns cleaning it up.
 
 ## Patterns that look reasonable and aren't {i}
+
+:::plain
+Some DI habits seem convenient but cause trouble later: asking the container for services inside business code, constructors with a dozen dependencies, or injecting the container itself.
+:::
 
 | Anti-pattern | Why it hurts | Instead |
 |---|---|---|
@@ -349,6 +452,10 @@ You can still build a **decorator** — a class that wraps another implementatio
 The first row deserves a closer look, because "just inject `IServiceProvider` and resolve what you need inside the method" can look, at first glance, almost identical to normal DI — it isn't. Constructor injection makes a class's real dependencies visible from the outside, right there in its signature, which is exactly what lets the container catch a missing registration at startup instead of three steps deep into a request at 2 a.m. Reaching into `IServiceProvider` by hand hides every one of those dependencies behind a string or a type lookup buried in a method body, where nothing — not the compiler, not `ValidateOnBuild` — can check it for you in advance.
 
 ## How the container pulls this off internally {a}
+
+:::plain
+At startup the container records how to build each service. The first time one is requested, it works out the constructor to call and caches a fast way to build it, so later requests are cheap.
+:::
 
 A short look under the hood, for the curious. On `Build()`, your `ServiceCollection` of registrations becomes a real `ServiceProvider`. For each registration it holds a **call-site**: a description of exactly how to construct that type. The first time a given type is actually resolved, the container analyses its full constructor dependency graph and compiles a resolution plan for it. That starts out using plain reflection, but for services resolved often, it switches to **compiled expression trees or IL emit** instead, which is substantially faster ([confirmed in the runtime's own `ServiceLookup` source](https://github.com/dotnet/runtime/tree/main/src/libraries/Microsoft.Extensions.DependencyInjection/src/ServiceLookup)) — so the expensive analysis happens once, and every later resolution of the same type is cheap. Singletons are cached once, in the root container; scoped instances are cached per-scope, in each scope's own dictionary; transients aren't cached at all, only tracked so they can be disposed correctly. **`ValidateOnBuild`**, mentioned earlier alongside `ValidateScopes`, walks every registration right at startup to confirm it can actually be constructed — catching a missing registration the moment the app starts, instead of the first time a request happens to need it. One more detail worth knowing: `ActivatorUtilities.CreateInstance<T>(sp, extraArgs)` can construct a type that *isn't even registered*, mixing resolved DI services with explicit arguments you pass in yourself. This is precisely how conventional middleware classes get constructed, since they aren't registered as services in the usual sense.
 
@@ -414,7 +521,7 @@ The payment key differs on a laptop, in staging and in production. [Episode 3 ·
 
 Run with `dotnet run` in a plain console project (`dotnet new console`, then `dotnet add package Microsoft.Extensions.DependencyInjection`). It checks all three lifetimes, the captive-dependency detection, "last registered wins vs `IEnumerable<T>` gives all", open generics, and `TryAddSingleton`.
 
-```csharp
+```csharp norun
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 

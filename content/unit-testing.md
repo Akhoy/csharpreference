@@ -60,7 +60,7 @@ dotnet test                                   # discovers and runs all tests
 dotnet test --filter "FullyQualifiedName~Orders&Category=Unit"
 ```
 
-```csharp
+```csharp norun
 public class MoneyTests
 {
     [Fact]
@@ -150,7 +150,7 @@ Rules: **one behaviour per test** (multiple asserts are fine if they verify one 
 An assertion is the check that fails the test. Assert one behaviour per test, and make the failure message say what was expected.
 :::
 
-```csharp
+```csharp norun
 // Built-in xUnit
 Assert.Equal(expected, actual);
 Assert.True(order.IsPaid);
@@ -188,7 +188,7 @@ The key distinction cutting across this whole table: **stubs** support **state v
 
 ### NSubstitute and Moq
 
-```csharp
+```csharp norun
 // NSubstitute: concise, popular
 var payments = Substitute.For<IPaymentGateway>();
 payments.ChargeAsync(Arg.Any<Money>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -231,7 +231,7 @@ Anything that depends on the clock, random numbers or timing must be injected, s
 
 Code that calls `DateTime.UtcNow`, `Guid.NewGuid()` or `Random` directly is non-deterministic — the exact same test can pass today and fail tomorrow purely because the clock moved. The fix is the same dependency-injection discipline the rest of this book applies everywhere else: inject the source of non-determinism instead of calling it directly.
 
-```csharp
+```csharp norun
 // Production: register TimeProvider.System; code takes TimeProvider (.NET 8)
 public sealed class SubscriptionService(TimeProvider clock)
 {
@@ -297,7 +297,7 @@ Builders create valid test objects with sensible defaults, so each test states o
 
 Tests drown in setup code without builders — constructing a valid `Order` by hand, every single time, for a test that only cares about one specific edge case, is exactly the kind of repetitive ceremony that makes a test suite unpleasant to maintain. The **Test Data Builder** pattern (or "Object Mother") — the same Builder from [Design patterns](ch:design-patterns#builder) — gives valid defaults and lets each test override only what actually matters to it:
 
-```csharp
+```csharp norun
 public sealed class OrderBuilder
 {
     private CustomerId _customer = CustomerId.New();

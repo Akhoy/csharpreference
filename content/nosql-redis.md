@@ -120,7 +120,7 @@ Notice how directly the first three bullets connect: picking `customerId` as the
 
 Cosmos DB charges in **Request Units (RU/s)**, provisioned or serverless/autoscale. A 1 KB point read by id + partition key costs about 1 RU; queries cost more, which is precisely why the SDK example below reads `RequestCharge` directly — it's the concrete feedback loop for whether a given access pattern is actually cheap.
 
-```csharp
+```csharp norun
 // Cosmos DB .NET SDK (singleton CosmosClient)
 builder.Services.AddSingleton(_ => new CosmosClient(endpoint, new DefaultAzureCredential(),
     new CosmosClientOptions { SerializerOptions = new() { PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase } }));
@@ -166,7 +166,7 @@ Redis keeps data in memory and offers ready-made structures: strings, hashes, li
 | **HyperLogLog, Bitmaps, Geo** | `PFADD`, `SETBIT`, `GEOSEARCH` | Approximate counts, flags, location queries |
 | **JSON, Search, Vector** (modules) | `JSON.SET`, `FT.SEARCH` | Document storage, secondary indexes, vector similarity |
 
-```csharp
+```csharp norun
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));   // ONE per app: thread-safe, multiplexed
 
 public sealed class RedisPatterns(IConnectionMultiplexer mux)
