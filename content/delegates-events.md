@@ -553,7 +553,7 @@ Almost everything you write in an ASP.NET Core `Program.cs` is a method handed t
 Look at a typical `Program.cs` again. Every lambda in it is exactly what this chapter is about, a method handed to someone else to call later:
 
 ```csharp norun
-builder.Services.AddDbContext<ShopDb>(options => options.UseSqlServer(cs));   // Action<DbContextOptionsBuilder>
+builder.Services.AddDbContext<KettleDb>(options => options.UseSqlServer(cs)); // Action<DbContextOptionsBuilder>
 builder.Services.AddScoped<IClock>(sp => new SystemClock());                   // Func<IServiceProvider, IClock>: a factory
 app.Use(async (context, next) => { /* before */ await next(context); });      // middleware
 app.MapGet("/orders/{id}", (int id, IOrderService s) => s.Get(id));           // an endpoint is just a delegate

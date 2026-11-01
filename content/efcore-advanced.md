@@ -19,6 +19,14 @@ next: ddd, messaging-events, integration-testing
 - **Global query filters** (soft delete, multi-tenancy) apply automatically to every query against that entity — watch for a required navigation pulling a filtered-out row back in through an `INNER JOIN`.
 - Writing outbox rows in the *same* `SaveChanges` transaction as the business data is what makes "save the order and record the event" atomic, without needing a real distributed transaction.
 
+## Previously at Kettle {b}
+
+Queries are fast. Now two staff members edit the same order, and the second save silently wipes out the first.
+
+**The problem:** Two staff members edit the same order. The second save silently wins.
+
+**This episode:** optimistic concurrency, transactions, global filters, bulk updates and interceptors.
+
 ## Optimistic concurrency: catching a lost update without ever locking {i}
 
 Here's the concrete failure this section exists to prevent: two users both load order 42 at the same moment. Alice changes the shipping address and saves. Bob, still holding the version he loaded a moment earlier — before Alice's save — changes the status and saves too, and his save **overwrites Alice's change** with the old address he never actually touched. Nobody did anything wrong individually; the collision is purely a timing accident. This is a **lost update**, the same anomaly named in [Relational fundamentals](ch:relational-fundamentals#isolation-levels-and-the-anomalies-each-one-actually-prevent).
@@ -169,7 +177,7 @@ public sealed class AuditInterceptor(TimeProvider clock, ICurrentUser user) : Sa
 }
 
 builder.Services.AddScoped<AuditInterceptor>();
-builder.Services.AddDbContext<ShopDb>((sp, o) => o.UseSqlServer(cs).AddInterceptors(sp.GetRequiredService<AuditInterceptor>()));
+builder.Services.AddDbContext<KettleDb>((sp, o) => o.UseSqlServer(cs).AddInterceptors(sp.GetRequiredService<AuditInterceptor>()));
 ```
 
 This interceptor is never called explicitly anywhere. Every `IAuditable` entity gets its timestamps stamped automatically just by sitting in the change tracker when `SaveChanges` runs — that's the appeal: uniform behavior, with nothing for a developer to remember to call.
@@ -179,7 +187,7 @@ This interceptor is never called explicitly anywhere. Every `IAuditable` entity 
 A filter defined once in the model gets automatically appended to **every** query against that entity type, with no need to repeat it anywhere it's queried:
 
 ```csharp
-public sealed class ShopDb(DbContextOptions<ShopDb> o, ITenantContext tenant) : DbContext(o)
+public sealed class KettleDb(DbContextOptions<KettleDb> o, ITenantContext tenant) : DbContext(o)
 {
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -306,6 +314,10 @@ Cross-cutting hooks into EF operations: SaveChanges interceptors for auditing, s
 It isn't a relational database: it doesn't enforce constraints, transactions or SQL semantics, and it translates queries differently, so tests can pass while real queries fail. Use the real engine via Testcontainers (or at least SQLite) for data access tests.
 :::
 
+## Next episode {b}
+
+Shopping carts change constantly and are read by one key. A relational table is overkill. [Episode 6 · Not everything is a table →](ch:nosql-redis)
+
 ## Further reading
 
 - [Handling concurrency conflicts](https://learn.microsoft.com/en-us/ef/core/saving/concurrency)
@@ -326,9 +338,9 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 var connString = "DataSource=file:verifydb2?mode=memory&cache=shared";
 await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(connString);
 await conn.OpenAsync();
-var opts = new DbContextOptionsBuilder<ShopDb>().UseSqlite(conn).Options;
+var opts = new DbContextOptionsBuilder<KettleDb>().UseSqlite(conn).Options;
 
-await using (var seed = new ShopDb(opts))
+await using (var seed = new KettleDb(opts))
 {
     await seed.Database.EnsureCreatedAsync();
     seed.Products.Add(new Product { Id = 1, Name = "Widget", Price = 10, Version = 1, IsDeleted = false });
@@ -338,10 +350,10 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: optimistic concurrency — a stale version throws DbUpdateConcurrencyException.
 {
-    await using var ctx1 = new ShopDb(opts);
+    await using var ctx1 = new KettleDb(opts);
     var p1 = await ctx1.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1); // Version = 1
 
-    await using (var ctx2 = new ShopDb(opts))
+    await using (var ctx2 = new KettleDb(opts))
     {
         var p2 = await ctx2.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1);
         p2.Price = 20;
@@ -360,7 +372,7 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: ExecuteUpdate bypasses the change tracker — an already-tracked entity is not refreshed.
 {
-    await using var ctx = new ShopDb(opts);
+    await using var ctx = new KettleDb(opts);
     var tracked = await ctx.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1); // Price = 20 after the test above
 
     await ctx.Products.IgnoreQueryFilters().Where(p => p.Id == 1)
@@ -369,7 +381,7 @@ await using (var seed = new ShopDb(opts))
     if (tracked.Price == 999m) throw new Exception("FAIL: ExecuteUpdate updated the tracked instance");
     Console.WriteLine("OK: ExecuteUpdate leaves an already-tracked in-memory entity stale");
 
-    await using var fresh = new ShopDb(opts);
+    await using var fresh = new KettleDb(opts);
     var reread = await fresh.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1);
     if (reread.Price != 999m) throw new Exception("FAIL: the database wasn't actually updated");
     Console.WriteLine("OK: ExecuteUpdate did write the new value to the database");
@@ -377,7 +389,7 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: a global query filter (soft delete) excludes rows by default, and IgnoreQueryFilters() includes them.
 {
-    await using var ctx = new ShopDb(opts);
+    await using var ctx = new KettleDb(opts);
     var visible = await ctx.Products.ToListAsync();
     if (visible.Any(p => p.Id == 2)) throw new Exception("FAIL: soft-deleted row leaked through the default filter");
     Console.WriteLine("OK: a global query filter hides soft-deleted rows by default");
@@ -389,12 +401,12 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: a SaveChangesInterceptor runs for every SaveChanges, without being called explicitly anywhere.
 {
-    var auditOpts = new DbContextOptionsBuilder<AuditedShopDb>()
+    var auditOpts = new DbContextOptionsBuilder<AuditedKettleDb>()
         .UseSqlite(conn)
         .AddInterceptors(new StampingInterceptor())
         .Options;
 
-    await using var ctx = new AuditedShopDb(auditOpts);
+    await using var ctx = new AuditedKettleDb(auditOpts);
     var p = await ctx.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1);
     p.Name = "Stamped";
     await ctx.SaveChangesAsync();
@@ -419,7 +431,7 @@ class Product
     public string? UpdatedBy { get; set; }
 }
 
-class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options)
+class KettleDb(DbContextOptions<KettleDb> options) : DbContext(options)
 {
     public DbSet<Product> Products => Set<Product>();
     protected override void OnModelCreating(ModelBuilder b)
@@ -429,7 +441,7 @@ class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options)
     }
 }
 
-class AuditedShopDb(DbContextOptions<AuditedShopDb> options) : DbContext(options)
+class AuditedKettleDb(DbContextOptions<AuditedKettleDb> options) : DbContext(options)
 {
     public DbSet<Product> Products => Set<Product>();
     protected override void OnModelCreating(ModelBuilder b)

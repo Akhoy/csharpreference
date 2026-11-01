@@ -18,6 +18,14 @@ next: ado-dapper, efcore-fundamentals
 - **Deadlocks** happen when two transactions each wait on a lock the other holds; the database kills one and your code should retry it.
 - **Connection pooling** reuses expensive-to-open connections; most "pool exhausted" errors trace back to code not disposing connections/DbContexts promptly.
 
+## Previously at Kettle {b}
+
+Kettle's API keeps orders in a list in memory, so every deploy wipes them. It needs storage that survives restarts and stays consistent when two things happen at once.
+
+**The problem:** Kettle's orders need to survive crashes, and finding them must stay fast.
+
+**This episode:** tables and keys, normalisation, indexes, transactions and isolation levels.
+
 ## The relational model {b}
 
 A relational database stores data in **tables** (relations) of **rows** with typed **columns**. Tables are linked by **keys**:
@@ -268,8 +276,8 @@ Opening a physical database connection — a TCP handshake, TLS negotiation, aut
 - The operating discipline that avoids all of this: don't open connections early or hold them open across unrelated work. Open late, close early.
 
 ```text
-Server=tcp:shop.database.windows.net;Database=shop;Authentication=Active Directory Default;
-Encrypt=True;Max Pool Size=200;Connect Timeout=15;Application Name=shop-api
+Server=tcp:kettle.database.windows.net;Database=kettle;Authentication=Active Directory Default;
+Encrypt=True;Max Pool Size=200;Connect Timeout=15;Application Name=kettle-api
 ```
 
 ## SQL Server vs PostgreSQL in .NET shops {i}
@@ -320,6 +328,10 @@ Reusing open physical connections per connection string so Open is cheap. Exhaus
 :::qa What is parameter sniffing?
 SQL Server compiles and caches a plan using the first parameter values it sees. If those are unrepresentative, later executions reuse a suboptimal plan. Fixes include OPTION(RECOMPILE), OPTIMIZE FOR, better indexing, Query Store plan forcing, or PSP optimisation.
 :::
+
+## Next episode {b}
+
+One report needs hand-tuned SQL, and it must be safe from injection. [Episode 2 · Talking SQL directly →](ch:ado-dapper)
 
 ## Further reading
 

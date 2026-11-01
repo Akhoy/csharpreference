@@ -18,6 +18,14 @@ next: cqrs-mediator-result, ddd, microservices
 - Vertical Slice Architecture organizes by feature (one file per use case) instead of by technical layer; it combines well with a shared domain core.
 - A **modular monolith** (strongly separated modules, one deployable) gets most of microservices' boundary benefits without the network/distributed-transaction cost — a common default before reaching for real microservices.
 
+## Previously at Kettle {b}
+
+The classes are well designed, but the solution as a whole is a tangle: endpoints call SQL directly, and the SQL code formats emails.
+
+**The problem:** Kettle's project is a tangle: controllers call SQL, and SQL formats emails.
+
+**This episode:** layered, Clean Architecture, vertical slices and the modular monolith.
+
 ## What "architecture" means at this scale {b}
 
 Everything in [Design principles](ch:design-principles) applied to individual classes. This chapter asks the same question at the scale of an entire solution: how do you divide a codebase into parts, what is each part responsible for, and **which parts may depend on which**? Good architecture keeps **business rules** independent of **delivery mechanisms** (HTTP, UI, messages) and **infrastructure** (databases, queues, external APIs), so that:
@@ -78,32 +86,32 @@ How it works, concretely: the inner layers **define interfaces** for what they n
 
 ```text
 src/
-├── Shop.Domain/                    ← references: NOTHING (maybe a small shared kernel)
+├── Kettle.Domain/                  ← references: NOTHING (maybe a small shared kernel)
 │   ├── Orders/  Order.cs, OrderLine.cs, OrderStatus.cs, OrderPlaced.cs, IOrderRepository.cs
 │   ├── Customers/  Customer.cs, CustomerId.cs
 │   └── Common/  Entity.cs, ValueObject.cs, Money.cs, DomainException.cs
-├── Shop.Application/               ← references: Domain
+├── Kettle.Application/             ← references: Domain
 │   ├── Orders/PlaceOrder/  PlaceOrderCommand.cs, PlaceOrderHandler.cs, PlaceOrderValidator.cs
 │   ├── Orders/GetOrder/    GetOrderQuery.cs, GetOrderHandler.cs, OrderDto.cs
 │   ├── Abstractions/       IPaymentGateway.cs, IEmailSender.cs, IUnitOfWork.cs, IClock.cs
 │   └── DependencyInjection.cs   (AddApplication)
-├── Shop.Infrastructure/            ← references: Application, Domain
-│   ├── Persistence/  ShopDb.cs, Configurations/*.cs, Migrations/, OrderRepository.cs
+├── Kettle.Infrastructure/          ← references: Application, Domain
+│ ├── Persistence/  KettleDb.cs, Configurations/*.cs, Migrations/, OrderRepository.cs
 │   ├── Payments/     StripePaymentGateway.cs
 │   ├── Messaging/    OutboxPublisher.cs
 │   └── DependencyInjection.cs   (AddInfrastructure)
-└── Shop.Api/                       ← references: Application, Infrastructure (only for DI wiring)
+└── Kettle.Api/                     ← references: Application, Infrastructure (only for DI wiring)
     ├── Endpoints/OrderEndpoints.cs
     ├── Program.cs  ← composition root
     └── appsettings.json
 tests/
-├── Shop.Domain.Tests/              unit tests: pure, fast
-├── Shop.Application.Tests/         handler tests with fakes
-├── Shop.Api.IntegrationTests/      WebApplicationFactory + Testcontainers
-└── Shop.ArchitectureTests/         enforce the dependency rule
+├── Kettle.Domain.Tests/            unit tests: pure, fast
+├── Kettle.Application.Tests/       handler tests with fakes
+├── Kettle.Api.IntegrationTests/    WebApplicationFactory + Testcontainers
+└── Kettle.ArchitectureTests/       enforce the dependency rule
 ```
 
-Notice what the `src/Shop.Domain/` comment says — "references: NOTHING" — and what that absence actually buys the test projects below it: `Shop.Domain.Tests` can run in milliseconds with no database, no HTTP server, no mocking framework needed for infrastructure, because the domain project genuinely has nothing external to fake.
+Notice what the `src/Kettle.Domain/` comment says — "references: NOTHING" — and what that absence actually buys the test projects below it: `Kettle.Domain.Tests` can run in milliseconds with no database, no HTTP server, no mocking framework needed for infrastructure, because the domain project genuinely has nothing external to fake.
 
 ```csharp
 // Domain: pure C#, rules inside the model
@@ -131,7 +139,7 @@ public sealed class PlaceOrderHandler(IOrderRepository orders, IPaymentGateway p
 }
 
 // Infrastructure: implements the abstractions with real technology
-public sealed class OrderRepository(ShopDb db) : IOrderRepository
+public sealed class OrderRepository(KettleDb db) : IOrderRepository
 {
     public Task<Order?> GetAsync(OrderId id, CancellationToken ct) => db.Orders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == id, ct);
     public void Add(Order order) => db.Orders.Add(order);
@@ -174,8 +182,8 @@ A balanced answer, and a common modern choice: **specific aggregate repositories
 
 ```csharp
 public interface IUnitOfWork { Task<int> SaveChangesAsync(CancellationToken ct = default); }
-public sealed class ShopDb(DbContextOptions<ShopDb> o) : DbContext(o), IUnitOfWork { /* SaveChangesAsync already exists */ }
-builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShopDb>());
+public sealed class KettleDb(DbContextOptions<KettleDb> o) : DbContext(o), IUnitOfWork { /* SaveChangesAsync already exists */ }
+builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<KettleDb>());
 ```
 
 **Specification pattern:** encapsulates query criteria as objects (`new OrdersForCustomerSpec(customerId, includeLines: true)`), so repositories don't explode into dozens of `GetByXAndY` methods (e.g. the Ardalis.Specification library).
@@ -207,7 +215,7 @@ public static class CancelOrder
     }
 
     internal static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> Handle(
-        int id, CancelRequest body, ShopDb db, TimeProvider clock, CancellationToken ct)
+        int id, CancelRequest body, KettleDb db, TimeProvider clock, CancellationToken ct)
     {
         var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == id, ct);
         if (order is null) return TypedResults.NotFound();
@@ -237,7 +245,7 @@ These two approaches **combine well** rather than competing: a rich **domain** p
 A **single deployable** application divided into **modules** that are as independent as microservices *logically*: one per bounded context, each with its own domain, data (its own schema or DbContext) and a small public API.
 
 ```text
-Shop.Host (one ASP.NET Core app, one deployment)
+Kettle.Host (one ASP.NET Core app, one deployment)
 ├── Modules/Ordering/   Ordering.Api · Ordering.Application · Ordering.Domain · Ordering.Infrastructure (schema "ordering")
 ├── Modules/Catalog/    …                                                         (schema "catalog")
 ├── Modules/Billing/    …                                                         (schema "billing")
@@ -252,7 +260,7 @@ Rules: modules talk only via public contracts (interfaces or integration events)
 
 Boundaries that aren't enforced erode — a well-drawn diagram on a wiki page stops anyone from accidentally violating it for approximately one sprint. The tools below make the boundary something the build itself checks:
 
-1. **Project references:** the compiler rejects `using Shop.Infrastructure` in Domain if there's no reference. The strongest guarantee.
+1. **Project references:** the compiler rejects `using Kettle.Infrastructure` in Domain if there's no reference. The strongest guarantee.
 2. **`internal` by default**: only expose what other projects need.
 3. **Architecture tests** with NetArchTest or ArchUnitNET:
 
@@ -260,13 +268,13 @@ Boundaries that aren't enforced erode — a well-drawn diagram on a wiki page st
 [Fact]
 public void Domain_has_no_dependency_on_other_layers() =>
     Types.InAssembly(typeof(Order).Assembly).ShouldNot()
-        .HaveDependencyOnAny("Shop.Application", "Shop.Infrastructure", "Shop.Api", "Microsoft.EntityFrameworkCore")
+        .HaveDependencyOnAny("Kettle.Application", "Kettle.Infrastructure", "Kettle.Api", "Microsoft.EntityFrameworkCore")
         .GetResult().IsSuccessful.ShouldBeTrue();
 
 [Fact]
 public void Modules_do_not_reference_each_others_internals() =>
     Types.InAssembly(typeof(OrderingModule).Assembly).ShouldNot()
-        .HaveDependencyOn("Shop.Modules.Billing.Domain").GetResult().IsSuccessful.ShouldBeTrue();
+        .HaveDependencyOn("Kettle.Modules.Billing.Domain").GetResult().IsSuccessful.ShouldBeTrue();
 ```
 
 4. **Analyzers / code review checklists**, and documenting decisions as **ADRs** (Architecture Decision Records).
@@ -308,6 +316,10 @@ A single deployable app split into strongly separated modules aligned to bounded
 :::qa How do you enforce architectural boundaries in .NET?
 Project references (the compiler forbids undeclared dependencies), internal visibility by default, architecture tests (NetArchTest/ArchUnitNET) in CI, analyzers, and documented ADRs plus code review.
 :::
+
+## Next episode {b}
+
+Read screens need different shapes from write rules, and errors are thrown everywhere. [Episode 4 · Commands, queries, results →](ch:cqrs-mediator-result)
 
 ## Further reading
 

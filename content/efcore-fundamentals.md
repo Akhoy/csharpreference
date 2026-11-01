@@ -18,6 +18,14 @@ next: efcore-querying, efcore-advanced, ddd
 - Change tracking works by snapshotting each entity's values when loaded, then diffing against that snapshot — which is why read-only queries should use `AsNoTracking()` to skip the diffing entirely.
 - Migrations are a versioned diff of your model over time; in production, generate a SQL script/bundle rather than calling `MigrateAsync()` at startup across multiple replicas (they'd race).
 
+## Previously at Kettle {b}
+
+Kettle talks SQL. But writing an INSERT and an UPDATE by hand for every class is slow, repetitive and easy to get wrong.
+
+**The problem:** Hand-written SQL for every insert and update is slow to write and easy to get wrong.
+
+**This episode:** DbContext, change tracking, SaveChanges and migrations.
+
 ## What an ORM is actually for {b}
 
 Think back to [ADO.NET & Dapper](ch:ado-dapper#the-layer-every-other-data-access-tool-is-secretly-built-on): raw ADO.NET gives you a connection, a command, and a reader that hands back columns one at a time, by index or name. Every entity you want to work with needs its own hand-written SQL, its own mapping code from columns to properties, and its own tracking of what changed since you loaded it. An **Object-Relational Mapper** exists to take that repetitive, error-prone work off your hands. **Entity Framework Core** does four specific jobs:
@@ -38,7 +46,7 @@ Without one, every entity needs hand-written SQL for each operation plus manual 
 The **`DbContext`** is the object that holds everything an ORM needs to do its four jobs: a database connection, the **model** (metadata describing how classes map to tables), and the **change tracker**. Each **`DbSet<T>`** is your entry point to one table — something you can query and add new entities to.
 
 ```csharp
-public sealed class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options)
+public sealed class KettleDb(DbContextOptions<KettleDb> options) : DbContext(options)
 {
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
@@ -46,7 +54,7 @@ public sealed class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(ShopDb).Assembly);   // picks up IEntityTypeConfiguration<T> classes
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(KettleDb).Assembly);   // picks up IEntityTypeConfiguration<T> classes
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
@@ -56,8 +64,8 @@ public sealed class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options
     }
 }
 
-builder.Services.AddDbContext<ShopDb>(o => o
-    .UseSqlServer(builder.Configuration.GetConnectionString("Shop"), sql => sql.EnableRetryOnFailure())
+builder.Services.AddDbContext<KettleDb>(o => o
+    .UseSqlServer(builder.Configuration.GetConnectionString("Kettle"), sql => sql.EnableRetryOnFailure())
     .UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll));
 ```
 
@@ -270,7 +278,7 @@ When an entity is tracked, EF stores a **snapshot** of its original property val
 
 ```bash
 dotnet tool install --global dotnet-ef
-dotnet ef migrations add AddOrderStatus -p src/Shop.Infrastructure -s src/Shop.Api   # -p: project with DbContext, -s: startup project
+dotnet ef migrations add AddOrderStatus -p src/Kettle.Infrastructure -s src/Kettle.Api # -p: project with DbContext, -s: startup project
 dotnet ef database update                                                              # apply to the dev database
 dotnet ef migrations remove                                                            # undo the last unapplied migration
 dotnet ef migrations script --idempotent -o deploy.sql                                 # SQL script for production
@@ -363,6 +371,10 @@ Add collection navigations on both sides; EF Core 5+ creates the join table auto
 Runs DetectChanges, orders the pending INSERT/UPDATE/DELETE commands to respect FKs, batches them, executes them in a single transaction (unless one is already active), propagates generated keys, and resets entity states to Unchanged. It throws DbUpdateException or DbUpdateConcurrencyException on failure.
 :::
 
+## Next episode {b}
+
+The order list page sends 101 SQL queries. [Episode 4 · The N+1 trap →](ch:efcore-querying)
+
 ## Further reading
 
 - [EF Core overview](https://learn.microsoft.com/en-us/ef/core/)
@@ -379,8 +391,8 @@ Run with `dotnet run` in a project that references `Microsoft.EntityFrameworkCor
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
-var options = new DbContextOptionsBuilder<ShopDb>().UseSqlite("DataSource=:memory:").Options;
-using var db = new ShopDb(options);
+var options = new DbContextOptionsBuilder<KettleDb>().UseSqlite("DataSource=:memory:").Options;
+using var db = new KettleDb(options);
 await db.Database.OpenConnectionAsync(); // keep the in-memory SQLite connection alive for the whole run
 await db.Database.EnsureCreatedAsync();
 
@@ -424,7 +436,7 @@ class Customer { public int Id { get; set; } public string Email { get; set; } =
 class Order { public int Id { get; set; } public int CustomerId { get; set; } public List<OrderLine> Lines { get; } = []; }
 class OrderLine { public int Id { get; set; } public int OrderId { get; set; } public string Sku { get; set; } = ""; }
 
-class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options)
+class KettleDb(DbContextOptions<KettleDb> options) : DbContext(options)
 {
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();

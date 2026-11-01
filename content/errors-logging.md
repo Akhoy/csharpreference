@@ -19,6 +19,14 @@ next: auth, observability-aspire, cqrs-mediator-result
 - **Scopes** attach extra fields (like `OrderId`) to every log line written inside a block, even across an `await`. They're stored in an `AsyncLocal<T>`, a variable whose value travels with the logical flow of the work (copied into each continuation) rather than staying with one thread, so it's still there after an `await` resumes on a different thread.
 - Never log secrets, tokens, or full PII. Log IDs, not whole objects, and reach for `[LoggerMessage]` in hot paths where the logging call itself costs enough to matter.
 
+## Previously at Kettle {b}
+
+The endpoints work, until they don't. Last night a customer saw a stack trace, and the logs were a wall of unsearchable text.
+
+**The problem:** A customer sees a stack trace, and the logs are unsearchable text.
+
+**This episode:** one place for exceptions, ProblemDetails, and structured logging.
+
 ## Two very different audiences for the same failure {b}
 
 Something goes wrong in your app — a payment fails, a database call times out, a bug throws a `NullReferenceException`. That single event has to serve **two completely different audiences**, each with a different need:
@@ -74,7 +82,7 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problems, ILog
         {
             HttpContext = ctx,
             Exception = ex,
-            ProblemDetails = { Status = status, Title = title, Type = $"https://errors.shop.com/{status}" }
+            ProblemDetails = { Status = status, Title = title, Type = $"https://errors.kettle.com/{status}" }
         });
     }
 }
@@ -108,7 +116,7 @@ Mapping exceptions centrally like this is convenient, but it's worth being hones
 
 ```json
 {
-  "type": "https://errors.shop.com/409",
+  "type": "https://errors.kettle.com/409",
   "title": "Shipped orders can't be cancelled",
   "status": 409,
   "detail": "Order 1042 shipped on 2026-10-20.",
@@ -174,7 +182,7 @@ public sealed class PaymentService(ILogger<PaymentService> logger, IPaymentGatew
 }
 ```
 
-The **category** attached to every log line from this class is the full type name of `T` — `Shop.Payments.PaymentService` — and that's exactly what lets you dial logging verbosity up or down per namespace, as the next section shows.
+The **category** attached to every log line from this class is the full type name of `T` — `Kettle.Payments.PaymentService` — and that's exactly what lets you dial logging verbosity up or down per namespace, as the next section shows.
 
 ### Log levels: a severity ladder, not just labels
 
@@ -193,12 +201,12 @@ The **category** attached to every log line from this class is the full type nam
     "Default": "Information",
     "Microsoft.AspNetCore": "Warning",                       // framework noise down
     "Microsoft.EntityFrameworkCore.Database.Command": "Warning",  // set to Information to see SQL
-    "Shop.Payments": "Debug"                                 // more detail for one area
+    "Kettle.Payments": "Debug"                               // more detail for one area
   }
 }
 ```
 
-This is the exact same layered configuration mechanism from [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest), applied to log-level settings specifically — which is why you can crank `Shop.Payments` up to `Debug` in one environment via an environment variable, without touching the base `appsettings.json` at all.
+This is the exact same layered configuration mechanism from [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest), applied to log-level settings specifically — which is why you can crank `Kettle.Payments` up to `Debug` in one environment via an environment variable, without touching the base `appsettings.json` at all.
 
 ## Structured logging: keeping the data, not just the sentence {b}
 
@@ -273,7 +281,7 @@ The generated method checks `IsEnabled` as the very first thing, before touching
 builder.Host.UseSerilog((ctx, services, cfg) => cfg
     .ReadFrom.Configuration(ctx.Configuration)
     .Enrich.FromLogContext()
-    .Enrich.WithProperty("Service", "shop-api")
+    .Enrich.WithProperty("Service", "kettle-api")
     .WriteTo.Console(new RenderedCompactJsonFormatter())        // JSON to stdout: containers ship it
     .WriteTo.Seq("http://seq:5341"));
 
@@ -348,6 +356,10 @@ Information for normal business milestones, Warning for unexpected but handled s
 Use W3C trace context propagation (traceparent header, automatic with HttpClient and OpenTelemetry) so every service logs with the same TraceId, include the trace ID in ProblemDetails responses, and send logs to a central store that can filter by TraceId and link to the distributed trace.
 :::
 
+## Next episode {b}
+
+Anyone can call DELETE /orders/42. [Episode 8 · Who are you, and may you? →](ch:auth)
+
 ## Further reading
 
 - [Handle errors in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/error-handling)
@@ -382,7 +394,7 @@ using Microsoft.Extensions.Logging;
 
 var provider = new CapturingLoggerProvider();
 using var factory = LoggerFactory.Create(b => b.AddProvider(provider).SetMinimumLevel(LogLevel.Information));
-var logger = factory.CreateLogger("Shop.Payments");
+var logger = factory.CreateLogger("Kettle.Payments");
 
 // Claim: a message template keeps placeholders as named, queryable properties; string interpolation does not.
 {

@@ -19,6 +19,14 @@ next: azure-data-messaging, caching-ratelimit-cors, design-principles
 - **Redis** is an in-memory data-structure server, not just a cache: strings, hashes, lists, sets, sorted sets and streams give you ready-made algorithms (ranking, rate limiting, locks), not just key-value storage.
 - Default to relational for business data; reach for a NoSQL store for a specific, deliberate reason (scale, flexible schema, a specialised access pattern) — not just to dodge schema migrations.
 
+## Previously at Kettle {b}
+
+Kettle's relational data is solid. Shopping carts, though, change constantly, are read by one key, and don't need joins at all.
+
+**The problem:** Shopping carts change constantly and are read by one key. A relational table is overkill.
+
+**This episode:** document stores and partition keys, Redis, and the CAP trade-off.
+
 ## The NoSQL families: optimised for an access pattern, not a feature list {b}
 
 "NoSQL" is really a negative definition — "not (only) relational tables" — which hides how different the actual families are from each other. Each one made a deliberate trade to get extremely good at one access pattern, usually at the cost of the general-purpose flexibility a relational table gives you for free:
@@ -105,7 +113,7 @@ Cosmos DB charges in **Request Units (RU/s)**, provisioned or serverless/autosca
 builder.Services.AddSingleton(_ => new CosmosClient(endpoint, new DefaultAzureCredential(),
     new CosmosClientOptions { SerializerOptions = new() { PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase } }));
 
-var container = cosmos.GetContainer("shop", "orders");
+var container = cosmos.GetContainer("kettle", "orders");
 await container.CreateItemAsync(order, new PartitionKey(order.CustomerId), cancellationToken: ct);
 
 var read = await container.ReadItemAsync<OrderDoc>("ord-1042", new PartitionKey("cust-7"), cancellationToken: ct);   // point read: cheapest
@@ -233,6 +241,10 @@ SET key token NX PX ttl to acquire (only if absent, with expiry), and release on
 :::qa Why shouldn't you use Redis Pub/Sub for important events?
 It's fire-and-forget: messages aren't persisted, and subscribers that are offline or slow miss them. Use Redis Streams with consumer groups or a real message broker (Service Bus, RabbitMQ, Kafka) for reliable delivery.
 :::
+
+## Next episode {b}
+
+By the end of Part IV, Kettle's data is durable, correct under concurrency and fast to query, with a cache in front of the hot reads. But the code that does all this has grown into a few enormous classes. Part V is about shaping it. [Part V · Kettle Grows a Codebase →](ch:architecture-story)
 
 ## Further reading
 

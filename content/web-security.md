@@ -19,6 +19,14 @@ next: oauth-oidc-identity, system-design
 - **XSS** steals/runs script in someone else's browser; **CSRF** abuses cookies being sent automatically — they need different, sometimes opposite, defences (HttpOnly cookies help XSS, SameSite/antiforgery tokens help CSRF).
 - Treat every external input — request bodies, file uploads, outbound URLs you fetch on a user's behalf (SSRF) — as hostile until validated, and keep dependencies patched; most real breaches exploit a known, unfixed issue, not a novel attack.
 
+## Previously at Kettle {b}
+
+Kettle is fast and reliable. Then a security researcher emails: changing the number in /orders/41 shows a stranger's order.
+
+**The problem:** Change the number in /orders/41 and you can read a stranger's order.
+
+**This episode:** the OWASP risks, access control, injection, XSS and CSRF, and safe file uploads.
+
 ## Security principles {b}
 
 | Principle | Meaning | Example |
@@ -63,10 +71,10 @@ The **#1 risk** in practice. An **IDOR** (Insecure Direct Object Reference, call
 
 ```csharp
 // ✘ Any authenticated user can read ANY order by changing the id
-app.MapGet("/orders/{id:int}", async (int id, ShopDb db) => await db.Orders.FindAsync(id)).RequireAuthorization();
+app.MapGet("/orders/{id:int}", async (int id, KettleDb db) => await db.Orders.FindAsync(id)).RequireAuthorization();
 
 // ✔ Scope the query to the caller (and return 404, not 403, so you don't reveal what exists)
-app.MapGet("/orders/{id:int}", async (int id, ClaimsPrincipal user, ShopDb db, CancellationToken ct) =>
+app.MapGet("/orders/{id:int}", async (int id, ClaimsPrincipal user, KettleDb db, CancellationToken ct) =>
 {
     var customerId = user.GetCustomerId();
     var order = await db.Orders.AsNoTracking()
@@ -146,7 +154,7 @@ Rules: **don't invent crypto**; use vetted libraries and current algorithms; man
 ```csharp
 public sealed class InviteTokens(IDataProtectionProvider provider)
 {
-    private readonly ITimeLimitedDataProtector _p = provider.CreateProtector("Shop.Invites.v1").ToTimeLimitedDataProtector();
+    private readonly ITimeLimitedDataProtector _p = provider.CreateProtector("Kettle.Invites.v1").ToTimeLimitedDataProtector();
     public string Create(Guid inviteId) => _p.Protect(inviteId.ToString(), TimeSpan.FromDays(7));
     public Guid? Read(string token) { try { return Guid.Parse(_p.Unprotect(token)); } catch (CryptographicException) { return null; } }
 }
@@ -184,7 +192,7 @@ Defences: allow-list domains and schemes; resolve DNS and **block private, link-
 
 ```csharp
 // ✘ Binding the entity: a client can send {"isAdmin": true, "balance": 1000000}
-app.MapPut("/users/{id}", async (int id, User input, ShopDb db) => { db.Update(input); await db.SaveChangesAsync(); });
+app.MapPut("/users/{id}", async (int id, User input, KettleDb db) => { db.Update(input); await db.SaveChangesAsync(); });
 
 // ✔ Request DTO with only the allowed fields, mapped explicitly; response DTO with only the safe fields
 public sealed record UpdateProfileRequest(string DisplayName, string? Bio);
@@ -266,6 +274,10 @@ Strict-Transport-Security (UseHsts), X-Content-Type-Options: nosniff, X-Frame-Op
 :::qa How do you keep dependencies secure?
 NuGet vulnerability auditing in restore and CI, automated update PRs (Dependabot/Renovate), Central Package Management with lock files and package source mapping, regular .NET runtime/SDK patching, minimal container base images that are scanned and rebuilt often, and avoiding dangerous serializers like BinaryFormatter or TypeNameHandling.All.
 :::
+
+## Next episode {b}
+
+Kettle shouldn't store passwords at all. Let an identity provider do it. [Episode 2 · Signing in without passwords →](ch:oauth-oidc-identity)
 
 ## Further reading
 

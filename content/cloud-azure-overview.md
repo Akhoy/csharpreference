@@ -20,6 +20,14 @@ next: docker, azure-compute, azure-data-messaging
 - Azure resources nest: tenant → management groups → subscriptions → resource groups → resources, with RBAC and Policy applying at any level.
 - The **Well-Architected Framework**'s five pillars (Reliability, Security, Cost, Operations, Performance) are the lens interviewers use for system-design questions.
 
+## Previously at Kettle {b}
+
+All of Kettle's services run on one server in a cupboard. The holiday rush is coming, and a disk failure would take the business down.
+
+**The problem:** Kettle's single server in a cupboard can't handle the holiday rush.
+
+**This episode:** service models, regions and zones, scaling out, twelve-factor apps and the Azure map.
+
 ## What "the cloud" means {b}
 
 Renting computing resources (servers, storage, databases, networking, managed services) **on demand, over the internet, paying for what you use**, instead of buying and running your own hardware.
@@ -123,7 +131,7 @@ In-memory sessions or caches assumed to be shared, files written to the local di
 Microsoft Entra tenant (identity boundary: users, groups, app registrations)
 └── Management groups (policy & RBAC inheritance for many subscriptions)
     └── Subscriptions (billing + quota + access boundary; often one per environment or team)
-        └── Resource groups (lifecycle container: deploy/delete together, e.g. "rg-shop-prod-weu")
+        └── Resource groups (lifecycle container: deploy/delete together, e.g. "rg-kettle-prod-weu")
             └── Resources (App Service, SQL database, Key Vault, Storage account…)
 ```
 
@@ -131,7 +139,7 @@ Microsoft Entra tenant (identity boundary: users, groups, app registrations)
 - **RBAC** role assignments at any scope (management group → resource) grant **who can do what** (Owner, Contributor, Reader, plus data-plane roles like *Storage Blob Data Reader*).
 - **Azure Policy** enforces rules ("only these regions", "storage must not allow public access", "tags required").
 - **Tags** (`env=prod`, `owner=team-orders`, `costCenter=123`) enable cost reporting and governance.
-- **Naming conventions** (Cloud Adoption Framework): `app-shop-api-prod-weu-001`, `kv-shop-prod-weu`.
+- **Naming conventions** (Cloud Adoption Framework): `app-kettle-api-prod-weu-001`, `kv-kettle-prod-weu`.
 
 ## The Azure map for .NET backend developers {b}
 
@@ -225,6 +233,10 @@ Network interfaces that give an Azure PaaS service a private IP address inside y
 Recovery Time Objective: the maximum acceptable downtime after a disaster. Recovery Point Objective: the maximum acceptable data loss measured in time. Both drive backup, replication and failover design.
 :::
 
+## Next episode {b}
+
+"It works on my machine." Production has a different runtime and libraries. [Episode 2 · Ship the whole box →](ch:docker)
+
 ## Further reading
 
 - [Azure fundamentals (Microsoft Learn path, AZ-900)](https://learn.microsoft.com/en-us/training/paths/azure-fundamentals-describe-cloud-concepts/)
@@ -241,8 +253,8 @@ Most of this chapter is about Azure services, pricing and network topology, whic
 
 ```csharp
 // Claim (twelve-factor, factor 3): "store config in the environment" — .NET's config system reads env vars directly.
-Environment.SetEnvironmentVariable("SHOP_API_KEY", "demo-key-123"); // stands in for a real deployment setting this
-var apiKeyFromEnv = Environment.GetEnvironmentVariable("SHOP_API_KEY");
+Environment.SetEnvironmentVariable("KETTLE_API_KEY", "demo-key-123"); // stands in for a real deployment setting this
+var apiKeyFromEnv = Environment.GetEnvironmentVariable("KETTLE_API_KEY");
 if (apiKeyFromEnv != "demo-key-123")
     throw new Exception("FAIL: expected config to come from the environment, not a hardcoded value");
 Console.WriteLine($"OK: config read from the environment ({apiKeyFromEnv}), exactly how IConfiguration's environment provider works");

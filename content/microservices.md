@@ -19,6 +19,14 @@ next: messaging-events, resilience, observability-aspire
 - Prefer asynchronous events between services; a chain of synchronous calls multiplies latency and failure probability — four 99.9%-available services chained together are only ~99.6% available as a whole.
 - The most common real failure mode is the **distributed monolith**: all the costs of microservices, none of the independent-deployment benefit that was supposed to justify them.
 
+## Previously at Kettle {b}
+
+Kettle's contexts are clear. Three teams still deploy one application, and they block each other's releases every week.
+
+**The problem:** Three teams keep blocking each other's releases.
+
+**This episode:** when microservices help, what they cost, and how to split safely.
+
 ## Three ways to structure a system, and the real spectrum between them {b}
 
 | | Monolith | Modular monolith | Microservices |
@@ -141,7 +149,7 @@ app.MapReverseProxy();
 
 Services shouldn't hard-code each other's addresses, for exactly the stale-DNS reason [Calling other services](ch:http-client#the-two-classic-bugs-and-why-theyre-opposite-mistakes) raised for outbound HTTP clients, now at the scale of an entire topology that reshapes itself as instances come and go:
 
-- **Platform DNS**: Kubernetes Services (`http://ordering.shop.svc.cluster.local`), Container Apps internal ingress names.
+- **Platform DNS**: Kubernetes Services (`http://ordering.kettle.svc.cluster.local`), Container Apps internal ingress names.
 - **.NET service discovery** (`Microsoft.Extensions.ServiceDiscovery`, used by Aspire): `https+http://ordering` is resolved from configuration or DNS.
 - **Central configuration**: Azure App Configuration, Key Vault, Kubernetes ConfigMaps/Secrets.
 
@@ -221,6 +229,10 @@ Incrementally migrating a legacy system by routing traffic through a facade or p
 :::qa What is a distributed monolith?
 A system split into services that are still tightly coupled: a shared database, lockstep deployments, synchronous call chains, shared domain libraries. It has the costs of distribution and the rigidity of a monolith.
 :::
+
+## Next episode {b}
+
+By the end of Part V, Kettle's code has boundaries that match its business, and the team knows when splitting into services would help and when it would hurt. But every change still feels risky. Part VI fixes that. [Part VI · Kettle Stops Breaking →](ch:testing-story)
 
 ## Further reading
 

@@ -17,6 +17,14 @@ next: ddd, messaging-events
 - A **mediator** (e.g. MediatR) just forwards a command/query to its one handler, but the real value is the **pipeline** wrapped around every handler: logging, validation, transactions, done once instead of in every handler.
 - The **Result pattern** turns "this can fail" into part of a method's return type, instead of an exception the caller might forget to catch — use it for *expected* failures (not found, declined), keep exceptions for bugs and infrastructure failures.
 
+## Previously at Kettle {b}
+
+Kettle's code has a structure. Now the read screens need data shaped differently from the write rules, and "out of stock" is being thrown as an exception.
+
+**The problem:** Read screens need different shapes from write rules, and errors are thrown everywhere.
+
+**This episode:** CQRS, the mediator pattern, pipeline behaviours and the Result pattern.
+
 ## From a rule about methods to a rule about architecture {b}
 
 **CQS** (Command-Query Separation, Bertrand Meyer) is a rule for **methods**: a method should either be a **command** (changes state, returns nothing) or a **query** (returns data, has no side effects), never both. Asking a question shouldn't change the answer — a useful discipline on its own, mentioned briefly back in [Design principles](ch:design-principles#other-principles-worth-naming).
@@ -78,7 +86,7 @@ public sealed class PlaceOrderHandler(IOrderRepository orders, IPricing pricing,
 public sealed record GetOrderHistoryQuery(CustomerId CustomerId, int Page, int PageSize);
 public sealed record OrderHistoryItem(Guid Id, DateTimeOffset PlacedAt, string Status, decimal Total, int Items);
 
-public sealed class GetOrderHistoryHandler(ShopDb db)
+public sealed class GetOrderHistoryHandler(KettleDb db)
 {
     public async Task<PagedResult<OrderHistoryItem>> Handle(GetOrderHistoryQuery q, CancellationToken ct)
     {
@@ -276,6 +284,10 @@ Returning an explicit success-or-failure object (with a typed error) from operat
 :::qa How would you implement validation in a CQRS/MediatR setup?
 FluentValidation validators per command, executed by a ValidationBehavior pipeline behaviour before the handler, which short-circuits with a validation-failure Result (or throws a ValidationException mapped to 400 ProblemDetails). Keep business-rule checks that need aggregates inside the domain.
 :::
+
+## Next episode {b}
+
+"Product" means one thing to the catalogue team and another to the warehouse. [Episode 5 · Speak the business language →](ch:ddd)
 
 ## Further reading
 

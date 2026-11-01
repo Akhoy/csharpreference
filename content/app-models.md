@@ -19,6 +19,14 @@ next: relational-fundamentals, messaging-events
 - **Blazor**: UI written in C#, with a choice of where it runs — static HTML, on the server (via SignalR), in the browser (WebAssembly), or both.
 - GraphQL, OData, raw WebSockets and Server-Sent Events cover narrower niches on top of the same host.
 
+## Previously at Kettle {b}
+
+Kettle's JSON API is in good shape. Now the business wants an admin site, live order tracking and fast calls between internal services.
+
+**The problem:** Kettle needs an admin site, live order tracking and fast internal calls.
+
+**This episode:** MVC and Razor Pages, Blazor, SignalR, gRPC and worker services, all on one host.
+
 ## One framework, many endpoint types {b}
 
 Everything in the last several chapters — the host, DI, the middleware pipeline, routing — was described as the foundation *under* your API endpoints. It's worth being explicit about something that follows directly from that: minimal APIs and controllers are not the only thing that foundation supports. The exact same `WebApplication` can simultaneously serve JSON APIs, a high-performance internal RPC protocol, a live push channel to browsers, and fully server-rendered HTML pages — because all of them are just different **endpoint types** sitting on the same shared plumbing.
@@ -48,7 +56,7 @@ You can genuinely mix these in one app: a REST API for the mobile client, a gRPC
 ```proto
 // Protos/inventory.proto
 syntax = "proto3";
-option csharp_namespace = "Shop.Inventory.Grpc";
+option csharp_namespace = "Kettle.Inventory.Grpc";
 
 service Inventory {
   rpc GetStock (StockRequest) returns (StockReply);                       // unary
@@ -145,7 +153,7 @@ Step away from APIs and real-time push entirely: sometimes the actual deliverabl
 
 ```csharp
 // Razor Page: Pages/Products/Edit.cshtml.cs
-public sealed class EditModel(ShopDb db) : PageModel
+public sealed class EditModel(KettleDb db) : PageModel
 {
     [BindProperty] public ProductForm Input { get; set; } = new();
 
@@ -234,6 +242,10 @@ Both render HTML with Razor on the server and share tag helpers, model binding a
 :::qa What are Blazor's render modes?
 Static server-side rendering (no interactivity), Interactive Server (logic on the server, UI updates over SignalR), Interactive WebAssembly (the .NET runtime in the browser) and Interactive Auto (server first, then WebAssembly). Chosen per component or per app since .NET 8.
 :::
+
+## Next episode {b}
+
+By the end of Part III, Kettle is a real web API: it starts and stops cleanly, wires its services together, knows who's calling, survives slow partners and serves several kinds of client. It still keeps its orders in memory, though. That's Part IV. [Part IV · Kettle Remembers →](ch:data-story)
 
 ## Further reading
 

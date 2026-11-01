@@ -18,6 +18,14 @@ next: efcore-fundamentals, cqrs-mediator-result
 - For bulk inserts, row-by-row `INSERT`s are too slow — use `SqlBulkCopy`/`COPY`, table-valued parameters, or set-based updates instead.
 - A common pattern: EF Core for writes (business rules, change tracking, migrations), Dapper or raw SQL for fast, flat reads.
 
+## Previously at Kettle {b}
+
+Kettle has a database. Now its C# has to talk to it, and one report needs hand-tuned SQL.
+
+**The problem:** One report needs hand-tuned SQL, and it must be safe from injection.
+
+**This episode:** ADO.NET underneath everything, Dapper, parameters and connection pooling.
+
 ## The layer every other data-access tool is secretly built on {b}
 
 Whichever way you query a .NET database — EF Core's LINQ, Dapper's SQL strings, or a hand-rolled reader loop — every single one of them eventually bottoms out in the same four objects. **ADO.NET** (`System.Data`) is that provider-agnostic, low-level database API, and each database ships a **provider** implementing it:
@@ -200,7 +208,7 @@ Map custom types (strongly typed IDs, JSON columns, `DateOnly` on older provider
 
 ```csharp
 // Modern: DbDataSource (Npgsql) — a singleton factory for pooled connections
-builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Shop")!);
+builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Kettle")!);
 public sealed class ProductQueries(NpgsqlDataSource db)
 {
     public async Task<IEnumerable<ProductDto>> ListAsync() { await using var c = await db.OpenConnectionAsync(); return await c.QueryAsync<ProductDto>("…"); }
@@ -210,7 +218,7 @@ public sealed class ProductQueries(NpgsqlDataSource db)
 public interface IDbConnectionFactory { SqlConnection Create(); }
 public sealed class SqlConnectionFactory(IConfiguration cfg) : IDbConnectionFactory
 {
-    private readonly string _cs = cfg.GetConnectionString("Shop")!;
+    private readonly string _cs = cfg.GetConnectionString("Kettle")!;
     public SqlConnection Create() => new(_cs);
 }
 builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
@@ -254,6 +262,10 @@ Use SqlBulkCopy (or Npgsql binary COPY) to stream rows into a staging or target 
 :::qa When would you choose Dapper over EF Core?
 For read-heavy, performance-critical or complex SQL (reports, CTEs, window functions, hints), when the team prefers explicit SQL, or for CQRS read models. EF Core for rich domain writes, change tracking, relationships and migrations. Using both is common.
 :::
+
+## Next episode {b}
+
+Hand-written SQL for every insert and update is slow to write and easy to get wrong. [Episode 3 · Objects in, rows out →](ch:efcore-fundamentals)
 
 ## Further reading
 

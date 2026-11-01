@@ -19,6 +19,14 @@ next: dependency-injection, configuration-options, middleware
 - Shutdown is graceful: Kestrel stops accepting new requests, finishes in-flight ones, then hosted services get a chance to stop — all within a time budget.
 - `HttpContext` carries everything about one request, including `RequestServices` (that request's DI scope). It's not thread-safe and dies with the request.
 
+## Previously at Kettle {b}
+
+Kettle's C# from Part II runs as a console program the team starts by hand. The website and the mobile app need it answering HTTP requests all day, and every deploy currently drops whatever was in flight.
+
+**The problem:** Kettle needs to answer HTTP requests, start cleanly and stop without dropping orders.
+
+**This episode:** the host, Kestrel and the two phases of Program.cs, and how a graceful shutdown drains requests.
+
 ## A surprising fact to start from {b}
 
 Here's something worth sitting with before anything else in this chapter: **ASP.NET Core isn't a server you deploy your code into.** There's no separate "IIS" or "Apache" process hosting your app from the outside, the way classic ASP.NET or PHP worked. **ASP.NET Core is a set of libraries** — the `Microsoft.AspNetCore.App` shared framework — that your code references, and your app is, underneath it all, an ordinary console program. One that happens to contain its own complete web server, listening on a socket, running inside the exact same process as your business logic.
@@ -88,7 +96,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddAuthentication().AddJwtBearer();
 builder.Services.AddAuthorization();
-builder.Services.AddDbContext<ShopDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Shop")));
+builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Kettle")));
 builder.Services.AddOrdering();                 // your own extension method per feature/layer
 
 var app = builder.Build();                      // ← the DI container is BUILT here and locked
@@ -311,6 +319,10 @@ The per-request object holding Request, Response, User, RequestServices (the sco
 :::qa Why shouldn't you call BuildServiceProvider() inside Program.cs?
 It builds a separate container from the one the app will use, so singletons get created twice and their state diverges, and disposal isn't handled. Use the options pattern, factory overloads (`sp => ...`), or resolve after `builder.Build()` from `app.Services`.
 :::
+
+## Next episode {b}
+
+Every class news up its own dependencies. Swapping the payment provider means editing ten files. [Episode 2 · Let the container build it →](ch:dependency-injection)
 
 ## Further reading
 

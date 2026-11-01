@@ -19,6 +19,14 @@ next: threading-concurrency, performance-engineering
 - A "memory leak" in .NET isn't freed-twice or dangling pointers — it's something still *reachable* (a static cache, an unsubscribed event, a captive DI dependency) that your app will never actually use again.
 - Allocation rate drives GC frequency, which drives latency — so most performance tuning in .NET comes down to allocating less, not making the GC itself faster.
 
+## Previously at Kettle {b}
+
+Kettle runs itself in the cloud. But its memory climbs all day, and every evening a container is killed for running out of it.
+
+**The problem:** Kettle's memory climbs all day and never comes back down.
+
+**This episode:** the stack and the heap, generations, the large object heap, finalizers and finding leaks.
+
 ## The problem every language has to solve {b}
 
 Every running program creates objects as it works, and every one of them eventually needs to disappear — otherwise memory just fills up until the machine falls over. Someone, or something, has to decide when an object is safe to free.
@@ -200,14 +208,14 @@ dotnet tool install -g dotnet-gcdump
 dotnet tool install -g dotnet-dump
 
 # 1. Watch live: GC heap size per generation, % time in GC, allocation rate, Gen0/1/2 counts, LOH size, working set
-dotnet-counters monitor -n Shop.Api --counters System.Runtime
+dotnet-counters monitor -n Kettle.Api --counters System.Runtime
 
 # 2. Snapshot the managed heap (lightweight: types, counts, sizes, roots), twice, minutes apart, then compare
-dotnet-gcdump collect -n Shop.Api -o before.gcdump
-dotnet-gcdump collect -n Shop.Api -o after.gcdump     # open both in Visual Studio / PerfView and diff: which types grew?
+dotnet-gcdump collect -n Kettle.Api -o before.gcdump
+dotnet-gcdump collect -n Kettle.Api -o after.gcdump   # open both in Visual Studio / PerfView and diff: which types grew?
 
 # 3. Full process dump for deep analysis (who roots this object?)
-dotnet-dump collect -n Shop.Api
+dotnet-dump collect -n Kettle.Api
 dotnet-dump analyze core_20261027.dmp
 > dumpheap -stat                 # objects by type and total size
 > dumpheap -mt <MethodTable>     # instances of a type
@@ -282,6 +290,10 @@ Finalizable objects are tracked from allocation. When unreachable, they must sur
 :::qa Why shouldn't you call GC.Collect?
 The GC's heuristics tune collection timing to allocation patterns. Forcing collections wastes CPU, causes pauses, and promotes still-live objects to older generations, making later collections more expensive. It's rarely justified outside tests and benchmarks.
 :::
+
+## Next episode {b}
+
+1,000 orders were placed. The counter says 994. [Episode 2 · Two threads, one counter →](ch:threading-concurrency)
 
 ## Further reading
 

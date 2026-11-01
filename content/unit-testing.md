@@ -18,6 +18,14 @@ next: integration-testing
 - Inject sources of non-determinism (`TimeProvider`, not `DateTime.Now`) so tests are repeatable.
 - Coverage percentage is a diagnostic, not a goal — a test can run every line and still assert nothing meaningful.
 
+## Previously at Kettle {b}
+
+Kettle now deploys several times a week. Last month a discount change quietly broke free shipping, and nobody noticed for a week.
+
+**The problem:** A discount change quietly broke free shipping. Nobody noticed for a week.
+
+**This episode:** fast tests on behaviour, fakes at the edges, and test design.
+
 ## What a unit test is, and the question that divides testers {b}
 
 A **unit test** verifies **one unit of behaviour** in isolation, quickly and deterministically. That sounds simple until you ask the obvious follow-up: what, exactly, is "one unit"? There are two genuinely different schools of thought here, and they lead to noticeably different-looking tests:
@@ -38,8 +46,8 @@ Modern guidance (e.g. Vladimir Khorikov's *Unit Testing Principles, Practices, a
 **xUnit** is the most common test framework in modern .NET (the ASP.NET Core and .NET runtime teams use it). **xUnit v3** is the current major version.
 
 ```bash
-dotnet new xunit -n Shop.Domain.Tests
-dotnet add Shop.Domain.Tests reference src/Shop.Domain
+dotnet new xunit -n Kettle.Domain.Tests
+dotnet add Kettle.Domain.Tests reference src/Kettle.Domain
 dotnet test                                   # discovers and runs all tests
 dotnet test --filter "FullyQualifiedName~Orders&Category=Unit"
 ```
@@ -304,6 +312,10 @@ No. Coverage shows which lines executed, not whether behaviour was verified, and
 :::qa What is TDD?
 Test-Driven Development: write a failing test for a small piece of behaviour (red), write the minimum code to pass (green), then refactor safely, in short cycles. It yields tests by construction and testable, usage-driven designs.
 :::
+
+## Next episode {b}
+
+Every unit test passes, but the deployed API returns 401 for everyone. [Episode 2 · Prove the parts fit →](ch:integration-testing)
 
 ## Further reading
 

@@ -19,6 +19,14 @@ next: performance-engineering, cloud-azure-overview, kubernetes
 - Keep metric tags **low-cardinality** (status code, route) — a tag like `userId` or `orderId` creates a new time series per value and can blow up cost; put high-cardinality IDs on traces and logs instead.
 - **.NET Aspire** is a development/deployment toolkit (an AppHost to run your whole system locally with one command, shared service defaults, a local dashboard) — it is not something you ship as a production runtime.
 
+## Previously at Kettle {b}
+
+Kettle's services survive each other's failures. Then a customer reports that checkout is slow, and nobody can tell which of the five services is at fault.
+
+**The problem:** "Checkout is slow." Which of the five services is it?
+
+**This episode:** logs, metrics and traces, OpenTelemetry, SLOs and .NET Aspire.
+
 ## Monitoring vs observability: knowing the answer vs being able to find it {b}
 
 - **Monitoring** answers questions you **knew to ask in advance**: is CPU above 80%? Is the error rate above 1%? It drives dashboards and alerts.
@@ -60,20 +68,20 @@ Your code + libraries ──(ILogger · Meter · ActivitySource)──▶ OpenTe
 ```csharp
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r
-        .AddService(serviceName: "shop-api", serviceVersion: "1.4.2")
+        .AddService(serviceName: "kettle-api", serviceVersion: "1.4.2")
         .AddAttributes([new("deployment.environment", builder.Environment.EnvironmentName)]))
     .WithTracing(t => t
         .AddAspNetCoreInstrumentation(o => o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health"))
         .AddHttpClientInstrumentation()
         .AddEntityFrameworkCoreInstrumentation()        // or AddSqlClientInstrumentation
-        .AddSource("Shop.*")                            // your own ActivitySources
+        .AddSource("Kettle.*")                          // your own ActivitySources
         .AddSource("MassTransit")
         .AddOtlpExporter())
     .WithMetrics(m => m
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddRuntimeInstrumentation()                    // GC, thread pool, exceptions, JIT
-        .AddMeter("Shop.*")
+        .AddMeter("Kettle.*")
         .AddOtlpExporter())
     .WithLogging(l => l.AddOtlpExporter());             // ILogger → OTLP, with TraceId/SpanId attached
 
@@ -89,13 +97,13 @@ A **trace** is identified by a **TraceId** shared by every **span** in it. Each 
 
 ```text
 TraceId 4bf92f35…                                                    0ms ───────────────────────────── 1820ms
-└─ POST /api/orders                       shop-api        [██████████████████████████████████████████████████]
-   ├─ SELECT Customers…                   shop-api/sql     [██]
-   ├─ POST http://pricing/quote           shop-api→pricing   [████████]
+└─ POST /api/orders                     kettle-api        [██████████████████████████████████████████████████]
+   ├─ SELECT Customers…                 kettle-api/sql     [██]
+   ├─ POST http://pricing/quote         kettle-api→pricing   [████████]
    │  └─ GET /quote                       pricing-svc         [███████]
    │     └─ redis GET price:KB-01         pricing-svc          [█]
-   ├─ INSERT Orders; INSERT Outbox        shop-api/sql                 [██████████████████████████████████]  ← the slow part
-   └─ publish OrderPlaced                 shop-api/servicebus                                             [█]
+   ├─ INSERT Orders; INSERT Outbox        kettle-api/sql               [██████████████████████████████████]  ← the slow part
+   └─ publish OrderPlaced                 kettle-api/servicebus                                           [█]
       └─ consume OrderPlaced              billing-svc (async, linked)                                        [████]
 ```
 
@@ -121,12 +129,12 @@ Recording every span of every request is expensive at scale. **Head sampling** d
 ```csharp
 public sealed class CheckoutTelemetry
 {
-    public static readonly ActivitySource Source = new("Shop.Checkout", "1.0");
-    private static readonly Meter Meter = new("Shop.Checkout", "1.0");
+    public static readonly ActivitySource Source = new("Kettle.Checkout", "1.0");
+    private static readonly Meter Meter = new("Kettle.Checkout", "1.0");
 
-    public static readonly Counter<long> OrdersPlaced = Meter.CreateCounter<long>("shop.orders.placed", unit: "{order}", description: "Orders successfully placed");
-    public static readonly Histogram<double> OrderValue = Meter.CreateHistogram<double>("shop.order.value", unit: "EUR");
-    public static readonly UpDownCounter<int> ActiveCheckouts = Meter.CreateUpDownCounter<int>("shop.checkouts.active");
+    public static readonly Counter<long> OrdersPlaced = Meter.CreateCounter<long>("kettle.orders.placed", unit: "{order}", description: "Orders successfully placed");
+    public static readonly Histogram<double> OrderValue = Meter.CreateHistogram<double>("kettle.order.value", unit: "EUR");
+    public static readonly UpDownCounter<int> ActiveCheckouts = Meter.CreateUpDownCounter<int>("kettle.checkouts.active");
 }
 
 public async Task<Result<OrderId>> CheckoutAsync(Cart cart, CancellationToken ct)
@@ -216,28 +224,28 @@ Features: the **application map** (auto-discovered dependency topology), **trans
 A C# project that **describes your whole system** and runs it locally with one command — a single source of truth for "what does this system consist of," instead of a docker-compose file, a README, and tribal knowledge about which environment variables to set:
 
 ```csharp
-// Shop.AppHost/Program.cs
+// Kettle.AppHost/Program.cs
 var builder = DistributedApplication.CreateBuilder(args);
 
-var sql = builder.AddSqlServer("sql").WithDataVolume().AddDatabase("shopdb");
+var sql = builder.AddSqlServer("sql").WithDataVolume().AddDatabase("kettledb");
 var redis = builder.AddRedis("cache").WithRedisInsight();
 var bus = builder.AddRabbitMQ("bus").WithManagementPlugin();       // or AddAzureServiceBus(...).RunAsEmulator()
 
-var catalog = builder.AddProject<Projects.Shop_Catalog>("catalog")
+var catalog = builder.AddProject<Projects.Kettle_Catalog>("catalog")
     .WithReference(sql).WithReference(redis).WaitFor(sql);
 
-var api = builder.AddProject<Projects.Shop_Api>("api")
+var api = builder.AddProject<Projects.Kettle_Api>("api")
     .WithReference(sql).WithReference(redis).WithReference(bus).WithReference(catalog)   // injects connection strings + service discovery
     .WithExternalHttpEndpoints()
     .WaitFor(sql);
 
-builder.AddProject<Projects.Shop_Worker>("worker").WithReference(bus).WithReference(sql);
-builder.AddNpmApp("web", "../shop-web").WithReference(api).WithHttpEndpoint(env: "PORT");
+builder.AddProject<Projects.Kettle_Worker>("worker").WithReference(bus).WithReference(sql);
+builder.AddNpmApp("web", "../kettle-web").WithReference(api).WithHttpEndpoint(env: "PORT");
 
 builder.Build().Run();
 ```
 
-`dotnet run --project Shop.AppHost` starts the containers (SQL, Redis, RabbitMQ), all the projects and the front end, **wires connection strings and service URLs** as configuration/environment variables, and opens the **dashboard**.
+`dotnet run --project Kettle.AppHost` starts the containers (SQL, Redis, RabbitMQ), all the projects and the front end, **wires connection strings and service URLs** as configuration/environment variables, and opens the **dashboard**.
 
 ### 2. Service defaults
 
@@ -245,7 +253,7 @@ A shared `ServiceDefaults` project that every service calls with `builder.AddSer
 
 ### 3. Integrations (formerly "components")
 
-NuGet packages that register a client **with health checks, telemetry, retries and configuration** already set up: `builder.AddSqlServerDbContext<ShopDb>("shopdb")`, `builder.AddRedisDistributedCache("cache")`, `builder.AddAzureServiceBusClient("bus")`, `builder.AddNpgsqlDataSource("db")`, and many more.
+NuGet packages that register a client **with health checks, telemetry, retries and configuration** already set up: `builder.AddSqlServerDbContext<KettleDb>("kettledb")`, `builder.AddRedisDistributedCache("cache")`, `builder.AddAzureServiceBusClient("bus")`, `builder.AddNpgsqlDataSource("db")`, and many more.
 
 ### The dashboard
 
@@ -303,6 +311,10 @@ A toolkit for building distributed .NET apps: an AppHost project to orchestrate 
 An SLI is a measured indicator of service level (e.g. % of requests under 300 ms). An SLO is the target for it (99.9% over 30 days). The error budget is the allowed shortfall (0.1%), used to balance releasing features against reliability work and to drive alerting on burn rate.
 :::
 
+## Next episode {b}
+
+By the end of Part VII, Kettle's services talk through a broker, survive each other's failures, and can be traced end to end. But they all still run on one server in a cupboard. Part VIII moves them to the cloud. [Part VIII · Kettle Moves to the Cloud →](ch:cloud-story)
+
 ## Further reading
 
 - [.NET observability with OpenTelemetry](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/observability-with-otel)
@@ -336,7 +348,7 @@ void Check(string name, bool ok)
 
 // 1. "null if nobody is listening: cheap" -- with no ActivityListener
 // registered, StartActivity returns null instead of doing real work.
-var source = new ActivitySource("Shop.Checkout.Test", "1.0");
+var source = new ActivitySource("Kettle.Checkout.Test", "1.0");
 using var noListenerActivity = source.StartActivity("checkout");
 Check("StartActivity returns null when no ActivityListener is subscribed (cheap no-op)",
     noListenerActivity is null);
@@ -345,7 +357,7 @@ Check("StartActivity returns null when no ActivityListener is subscribed (cheap 
 // a TraceId -- this is what the OpenTelemetry SDK does under the hood.
 ActivitySource.AddActivityListener(new ActivityListener
 {
-    ShouldListenTo = s => s.Name == "Shop.Checkout.Test",
+    ShouldListenTo = s => s.Name == "Kettle.Checkout.Test",
     Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded
 });
 using var parent = source.StartActivity("checkout");
@@ -366,13 +378,13 @@ using (var child = source.StartActivity("sql-query"))
 // 4. Counter<T>: a monotonic counter that a MeterListener can observe --
 // verifies CreateCounter + Add actually produces a measurement, the
 // mechanism OrdersPlaced.Add(1, ...) relies on in the chapter's example.
-var meter = new Meter("Shop.Checkout.Test", "1.0");
-var counter = meter.CreateCounter<long>("shop.orders.placed");
+var meter = new Meter("Kettle.Checkout.Test", "1.0");
+var counter = meter.CreateCounter<long>("kettle.orders.placed");
 var recordedValues = new List<long>();
 using var meterListener = new MeterListener();
 meterListener.InstrumentPublished = (instrument, listener) =>
 {
-    if (instrument.Meter.Name == "Shop.Checkout.Test") listener.EnableMeasurementEvents(instrument);
+    if (instrument.Meter.Name == "Kettle.Checkout.Test") listener.EnableMeasurementEvents(instrument);
 };
 meterListener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) => recordedValues.Add(measurement));
 meterListener.Start();

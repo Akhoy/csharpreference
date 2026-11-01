@@ -18,6 +18,14 @@ next: cicd-iac, oauth-oidc-identity, web-security
 - **Azure RBAC** (who can touch which Azure resource/data) and **Entra roles/app permissions** (who can administer Entra ID itself, or call an API) are two different permission systems — don't confuse them.
 - **Workload identity federation** extends "no stored secret" to places that aren't an Azure resource at all: GitHub Actions, Kubernetes pods — an external token gets exchanged for an Entra token.
 
+## Previously at Kettle {b}
+
+Kettle runs on managed services. Then a security scan finds the production database password committed to Git.
+
+**The problem:** The database password was committed to Git.
+
+**This episode:** managed identities, RBAC, Key Vault and workload identity federation.
+
 ## The problem: secrets everywhere {b}
 
 Traditional apps authenticate to their dependencies with **secrets**: SQL passwords in connection strings, storage account keys, API keys, client secrets. Secrets get **committed to Git**, pasted in chat, **logged**, copied to laptops, and are rarely **rotated**. A leaked secret is a breach — and recall from [Configuration](ch:configuration-options#secrets-the-layer-systems-hardest-case) that "no secret at all" was already flagged as the best entry in that chapter's table. This chapter is entirely about how Azure actually delivers on that promise.
@@ -48,7 +56,7 @@ Two kinds of permissions are often confused, and keeping them distinct is worth 
 | | **Azure RBAC** | **Entra roles / app permissions** |
 |---|---|---|
 | Controls access to | **Azure resources** (Storage, SQL, Key Vault, subscriptions) | **Entra ID itself** and Microsoft Graph / your APIs |
-| Example | "app-shop-api can read blobs in stshopprod" | "user is Global Administrator", "app can call Graph User.Read.All", "client may call api://shop orders.write" |
+| Example | "app-kettle-api can read blobs in stkettleprod" | "user is Global Administrator", "app can call Graph User.Read.All", "client may call api://kettle orders.write" |
 
 ## Managed identities: the mechanism that makes "no secret" actually work {b}
 
@@ -62,9 +70,9 @@ A **managed identity** is an identity in Entra ID that Azure creates and manages
 
 ```bash
 # Enable a system-assigned identity and grant it data-plane access (least privilege, scoped narrowly)
-az webapp identity assign -g rg-shop -n app-shop-api-prod
+az webapp identity assign -g rg-kettle -n app-kettle-api-prod
 az role assignment create --assignee <principalId> --role "Storage Blob Data Contributor" \
-  --scope /subscriptions/<sub>/resourceGroups/rg-shop/providers/Microsoft.Storage/storageAccounts/stshopprod/blobServices/default/containers/invoices
+  --scope /subscriptions/<sub>/resourceGroups/rg-kettle/providers/Microsoft.Storage/storageAccounts/stkettleprod/blobServices/default/containers/invoices
 az role assignment create --assignee <principalId> --role "Azure Service Bus Data Sender" --scope <service-bus-namespace-id>
 az role assignment create --assignee <principalId> --role "Key Vault Secrets User" --scope <key-vault-id>
 ```
@@ -89,9 +97,9 @@ Notice what this chain actually buys you: the **same code** authenticates as **y
 
 ```csharp
 var credential = new DefaultAzureCredential();
-var blobs = new BlobServiceClient(new Uri("https://stshopprod.blob.core.windows.net"), credential);
-var bus = new ServiceBusClient("sb-shop-prod.servicebus.windows.net", credential);
-var secrets = new SecretClient(new Uri("https://kv-shop-prod.vault.azure.net/"), credential);
+var blobs = new BlobServiceClient(new Uri("https://stkettleprod.blob.core.windows.net"), credential);
+var bus = new ServiceBusClient("sb-kettle-prod.servicebus.windows.net", credential);
+var secrets = new SecretClient(new Uri("https://kv-kettle-prod.vault.azure.net/"), credential);
 ```
 
 :::gotcha DefaultAzureCredential in production
@@ -136,13 +144,13 @@ var secret = await secretClient.GetSecretAsync("StripeApiKey", cancellationToken
 
 // 3. Protect the ASP.NET Core Data Protection key ring (shared across instances)
 builder.Services.AddDataProtection()
-    .PersistKeysToAzureBlobStorage(new Uri("https://stshopprod.blob.core.windows.net/dataprotection/keys.xml"), new DefaultAzureCredential())
-    .ProtectKeysWithAzureKeyVault(new Uri("https://kv-shop-prod.vault.azure.net/keys/dataprotection"), new DefaultAzureCredential());
+    .PersistKeysToAzureBlobStorage(new Uri("https://stkettleprod.blob.core.windows.net/dataprotection/keys.xml"), new DefaultAzureCredential())
+    .ProtectKeysWithAzureKeyVault(new Uri("https://kv-kettle-prod.vault.azure.net/keys/dataprotection"), new DefaultAzureCredential());
 ```
 
 ```text
 # 4. Platform references: no code at all. App Service / Functions / Container Apps resolve the secret at startup.
-Payments__ApiKey = @Microsoft.KeyVault(SecretUri=https://kv-shop-prod.vault.azure.net/secrets/StripeApiKey/)
+Payments__ApiKey = @Microsoft.KeyVault(SecretUri=https://kv-kettle-prod.vault.azure.net/secrets/StripeApiKey/)
 ```
 
 Notice option 3 solves a problem raised all the way back in [Auth](ch:auth#cookie-authentication): Data Protection keys have to be shared across instances or cookies break on scale-out, and Key Vault plus Blob Storage is exactly how that shared key ring gets protected and distributed in production.
@@ -156,7 +164,7 @@ Key Vault has **throttling limits** (thousands of operations per 10 seconds per 
 Outside Azure-hosted resources (GitHub Actions, Kubernetes pods, other clouds), managed identities don't exist directly — there's no Azure resource for Azure to attach an identity to. **Workload identity federation** closes that gap by letting an external identity provider's token be **exchanged** for an Entra token, again with **no stored secret**:
 
 ```text
-GitHub Actions job ──(OIDC token: repo:org/shop:environment:prod)──▶ Entra ID (federated credential trusts that subject)
+GitHub Actions job ──(OIDC token: repo:org/kettle:environment:prod)──▶ Entra ID (federated credential trusts that subject)
                                                                    ──▶ access token for the app's service principal/managed identity
                                                                    ──▶ az / azd / Bicep deploy
 ```
@@ -177,10 +185,10 @@ steps:
 ## Protecting your own APIs with Entra ID {a}
 
 ```text
-1. App registration "Shop API": Application ID URI api://shop-api; expose scopes (orders.read, orders.write); define app roles (Orders.Admin).
-2. App registration "Shop SPA" (public client) → API permission: api://shop-api/orders.read (delegated, user context).
-3. Service "Billing worker" (managed identity) → app role assignment Orders.Reader on Shop API (application permission, no user).
-4. Shop API validates tokens: issuer = tenant, audience = api://shop-api, then authorizes on scp (delegated) or roles (application).
+1. App registration "Kettle API": Application ID URI api://kettle-api; expose scopes (orders.read, orders.write); define app roles (Orders.Admin).
+2. App registration "Kettle SPA" (public client) → API permission: api://kettle-api/orders.read (delegated, user context).
+3. Service "Billing worker" (managed identity) → app role assignment Orders.Reader on Kettle API (application permission, no user).
+4. Kettle API validates tokens: issuer = tenant, audience = api://kettle-api, then authorizes on scp (delegated) or roles (application).
 ```
 
 Step 4 here is exactly the five-step JWT validation walked through in [Auth](ch:auth#jwt-bearer-authentication-traced-claim-by-claim) — Entra ID is simply the issuer whose discovery document and signing keys get fetched.
@@ -225,6 +233,10 @@ Workload identity federation (OIDC): configure a federated credential on an Entr
 :::qa Azure RBAC vs Entra roles?
 Azure RBAC controls access to Azure resources and their data (subscriptions, storage, Key Vault), using role assignments at a scope. Entra roles control administration of the Entra directory itself, and API permissions/app roles control access to Microsoft Graph and your own APIs.
 :::
+
+## Next episode {b}
+
+Releases are a monthly, manual, all-hands evening. [Episode 6 · Push to production →](ch:cicd-iac)
 
 ## Further reading
 
@@ -280,8 +292,8 @@ Check(Throws(() => { for (int i = 0; i < 2; i++) uncachedClient.GetSecret("Strip
 
 // --- RBAC: a role assigned at a broader scope is visible at a nested scope, not the other way round ---
 var tree = new ScopeTree();
-tree.AssignRole(scope: "/sub/rg-shop", role: "Storage Blob Data Reader");
-Check(tree.HasRole(scope: "/sub/rg-shop/storageAccounts/stshopprod", role: "Storage Blob Data Reader"),
+tree.AssignRole(scope: "/sub/rg-kettle", role: "Storage Blob Data Reader");
+Check(tree.HasRole(scope: "/sub/rg-kettle/storageAccounts/stkettleprod", role: "Storage Blob Data Reader"),
     "RBAC: a role assigned at the resource group scope is inherited by resources nested inside it");
 Check(!tree.HasRole(scope: "/sub", role: "Storage Blob Data Reader"),
     "RBAC: a role assigned at a narrower scope does NOT apply to the broader scope above it");

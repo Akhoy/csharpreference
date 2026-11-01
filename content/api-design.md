@@ -19,6 +19,14 @@ next: app-models, resilience, microservices
 - POST isn't idempotent by default; fix that for payments/writes with an **idempotency key**. Fix "last write wins" conflicts with **ETags** (optimistic concurrency).
 - Version only when a change would break an existing client's assumptions; additive, optional changes usually don't need a new version.
 
+## Previously at Kettle {b}
+
+Kettle's API works for the web team. The mobile team isn't happy: retries create duplicate orders, there's no paging, and every endpoint names things differently.
+
+**The problem:** A mobile client retries POST /orders after a timeout. The customer is charged twice.
+
+**This episode:** HTTP semantics, idempotency keys, pagination, versioning and ETags.
+
 ## REST in one page {b}
 
 **REST** (Representational State Transfer) is an architectural style for HTTP APIs, built around a small set of ideas:
@@ -117,7 +125,7 @@ There are two genuinely different strategies for paging through a collection, an
 Trace through why offset pagination degrades: `OFFSET 40` doesn't mean "jump straight to row 41" — the database still has to walk through and discard the first 40 rows before it can start returning anything, so page 1,000 of a million-row table does real, scanning work for every single request, no matter how good the index is. Keyset pagination sidesteps this entirely by asking a different question — "give me rows after this specific key" — which the index answers directly, in roughly constant time regardless of how deep you are.
 
 ```csharp
-app.MapGet("/products", async ([AsParameters] ProductQuery q, ShopDb db, CancellationToken ct) =>
+app.MapGet("/products", async ([AsParameters] ProductQuery q, KettleDb db, CancellationToken ct) =>
 {
     var query = db.Products.AsNoTracking();
     if (q.CategoryId is { } cat) query = query.Where(p => p.CategoryId == cat);           // filtering
@@ -209,7 +217,7 @@ The question to ask before anything else here: does this change break an existin
 | **URL segment** | `/v2/orders` | Visible, easy to route, cache-friendly, most common | URL changes per version |
 | Query string | `/orders?api-version=2.0` | Simple; Azure APIs use it | Easy to forget; caching nuances |
 | Header | `Api-Version: 2` | Clean URLs | Less discoverable; harder to test in a browser |
-| Media type | `Accept: application/vnd.shop.v2+json` | Most "RESTful" | Complex for clients |
+| Media type | `Accept: application/vnd.kettle.v2+json` | Most "RESTful" | Complex for clients |
 
 ```csharp
 builder.Services.AddApiVersioning(o =>
@@ -236,7 +244,7 @@ Whichever breaking change eventually forces a new version, have a **deprecation 
 ```csharp
 builder.Services.AddOpenApi(o =>                       // Microsoft.AspNetCore.OpenApi (.NET 9+), built in
 {
-    o.AddDocumentTransformer((doc, ctx, ct) => { doc.Info.Title = "Shop API"; return Task.CompletedTask; });
+    o.AddDocumentTransformer((doc, ctx, ct) => { doc.Info.Title = "Kettle API"; return Task.CompletedTask; });
 });
 
 app.MapOpenApi();                                       // /openapi/v1.json
@@ -288,6 +296,10 @@ The server returns an ETag (version) with a resource. Clients send If-Match with
 :::qa How would you design an endpoint that generates a large report?
 Return 202 Accepted with a Location header pointing to an operation-status resource, process in the background (queue plus worker), let the client poll the status (with Retry-After) or receive a webhook/SignalR notification, and finally link to the result resource.
 :::
+
+## Next episode {b}
+
+Kettle needs an admin site, live order tracking and fast internal calls. [Episode 13 · Many front doors, one host →](ch:app-models)
 
 ## Further reading
 

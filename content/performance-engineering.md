@@ -19,6 +19,14 @@ next: web-security, system-design
 - `dotnet-counters`/`dotnet-trace`/`dotnet-dump` are the day-to-day diagnostic toolbox; load testing (k6, NBomber) checks the whole system under concurrency, not just one method.
 - Fix things in order of impact: indexes/N+1 first, then async/concurrency, then payload size, then micro-level allocations — in that order, because each later category's wins are usually dwarfed by the earlier ones.
 
+## Previously at Kettle {b}
+
+Kettle's counters are correct. A developer rewrote a parser with spans to speed up the order page, and the page is exactly as slow as before.
+
+**The problem:** Someone rewrote a loop with Span. The page is still slow.
+
+**This episode:** measuring before optimising, percentiles, profilers and load tests.
+
 ## The method: measure, don't guess {i}
 
 Every other technique in this chapter — profilers, benchmarks, the optimisation catalogue — only pays off once you've committed to one discipline: find out where time is *actually* going before changing anything. The alternative, guessing based on intuition about what "feels slow," reliably sends people optimising the wrong 95% of the code while the real bottleneck sits untouched.
@@ -127,10 +135,10 @@ Rules: **always Release**, never with a debugger attached; return results (or us
 | **SQL tools** | Execution plans, Query Store, `SET STATISTICS IO`, Azure SQL Insights | Database time |
 
 ```bash
-dotnet-counters monitor -n Shop.Api --counters System.Runtime,Microsoft.AspNetCore.Hosting,System.Net.Http
-dotnet-trace collect -n Shop.Api --profile cpu-sampling --duration 00:00:30 -o cpu.nettrace
+dotnet-counters monitor -n Kettle.Api --counters System.Runtime,Microsoft.AspNetCore.Hosting,System.Net.Http
+dotnet-trace collect -n Kettle.Api --profile cpu-sampling --duration 00:00:30 -o cpu.nettrace
 dotnet-trace convert cpu.nettrace --format Speedscope                     # open at speedscope.app
-dotnet-dump collect -n Shop.Api && dotnet-dump analyze <file>             # > clrstack -all   (look for threads blocked in Wait/GetResult)
+dotnet-dump collect -n Kettle.Api && dotnet-dump analyze <file>           # > clrstack -all   (look for threads blocked in Wait/GetResult)
 ```
 
 ### Reading the symptoms
@@ -161,7 +169,7 @@ export const options = {
   thresholds: { http_req_duration: ['p(95)<150', 'p(99)<400'], http_req_failed: ['rate<0.01'] },
 };
 export default function () {
-  const res = http.get('https://staging.shop.com/api/products?page=1');
+  const res = http.get('https://staging.kettle.com/api/products?page=1');
   check(res, { 'status 200': r => r.status === 200 });
   sleep(1);
 }
@@ -271,6 +279,10 @@ Fix indexes and N+1 queries, project to DTOs with AsNoTracking, paginate, cache 
 :::qa How do you improve cold-start time for a .NET service?
 Native AOT (or ReadyToRun), the slim builder, trimming, source generators instead of reflection, EF compiled models, deferring heavy initialisation out of startup, pre-warming instances (Premium/Flex always-ready, readiness probes, slot warm-up), and smaller container images.
 :::
+
+## Next episode {b}
+
+By the end of Part IX, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part X. [Part X · Kettle Gets Attacked →](ch:security-story)
 
 ## Further reading
 

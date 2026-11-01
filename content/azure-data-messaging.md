@@ -18,6 +18,14 @@ next: azure-identity-secrets, cicd-iac
 - Pick **Service Bus** for reliable business commands/events, **Event Grid** for lightweight "something happened" push notifications, and **Event Hubs** for a high-volume event firehose — they solve different problems, not competing versions of the same one.
 - Treat every Azure SDK client (`BlobServiceClient`, `ServiceBusClient`, …) like `HttpClient`: create it once, register it as a singleton, and let it manage its own connections and retries.
 
+## Previously at Kettle {b}
+
+Kettle's code runs in Azure. Its database, files, cache and broker are still self-hosted, and someone has to patch them.
+
+**The problem:** Kettle needs a database, file storage, a cache and a message broker, without running any of them.
+
+**This episode:** Azure SQL, Cosmos DB, Blob Storage, Redis, and Service Bus vs Event Grid vs Event Hubs.
+
 ## The map {b}
 
 Every concept in this chapter is something earlier chapters already explained from first principles — relational databases, NoSQL, Redis, message brokers. What follows is specifically the **managed, Azure-hosted** version of each one, and what's different about operating it there.
@@ -69,14 +77,14 @@ Every concept in this chapter is something earlier chapters already explained fr
 - **TDE** (encryption at rest, on by default), TLS in transit, **Always Encrypted** (client-side column encryption), **dynamic data masking**, **row-level security**, **auditing**, **Microsoft Defender for SQL** (threat detection, vulnerability assessment), and the **ledger** feature (tamper evidence).
 
 ```text
-Server=tcp:sql-shop-prod.database.windows.net,1433;Database=shop;Authentication=Active Directory Default;Encrypt=True;
+Server=tcp:sql-kettle-prod.database.windows.net,1433;Database=kettle;Authentication=Active Directory Default;Encrypt=True;
 ```
 
 ```sql
 -- in the database: grant the app's managed identity least privilege
-CREATE USER [app-shop-api-prod] FROM EXTERNAL PROVIDER;
-ALTER ROLE db_datareader ADD MEMBER [app-shop-api-prod];
-ALTER ROLE db_datawriter ADD MEMBER [app-shop-api-prod];
+CREATE USER [app-kettle-api-prod] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [app-kettle-api-prod];
+ALTER ROLE db_datawriter ADD MEMBER [app-kettle-api-prod];
 ```
 
 **Transient faults** (failovers, reconfigurations, throttling) are a normal part of the PaaS service: always enable retries (`EnableRetryOnFailure` in EF Core; see [Resilience](ch:resilience)) — exactly the transient-vs-permanent fault distinction that chapter's whole opening section is built around. Defaults that differ from on-premises: **RCSI is on**, **Query Store** is on, and automatic tuning can create and drop indexes.
@@ -123,7 +131,7 @@ Objects ("blobs") in **containers**: images, documents, exports, backups, logs, 
 ```csharp
 builder.Services.AddAzureClients(c =>
 {
-    c.AddBlobServiceClient(new Uri("https://stshopprod.blob.core.windows.net"));
+    c.AddBlobServiceClient(new Uri("https://stkettleprod.blob.core.windows.net"));
     c.UseCredential(new DefaultAzureCredential());       // managed identity in Azure; developer login locally
 });
 
@@ -202,9 +210,9 @@ The modern **Azure SDK** (`Azure.*` packages: `Azure.Storage.Blobs`, `Azure.Mess
 ```csharp
 builder.Services.AddAzureClients(c =>
 {
-    c.AddServiceBusClientWithNamespace("sb-shop-prod.servicebus.windows.net");
-    c.AddSecretClient(new Uri("https://kv-shop-prod.vault.azure.net/"));
-    c.AddBlobServiceClient(new Uri("https://stshopprod.blob.core.windows.net"));
+    c.AddServiceBusClientWithNamespace("sb-kettle-prod.servicebus.windows.net");
+    c.AddSecretClient(new Uri("https://kv-kettle-prod.vault.azure.net/"));
+    c.AddBlobServiceClient(new Uri("https://stkettleprod.blob.core.windows.net"));
     c.UseCredential(new DefaultAzureCredential());
     c.ConfigureDefaults(o => o.Retry.MaxRetries = 5);
 });
@@ -233,6 +241,10 @@ Built-in HA replicas within the region (optionally zone-redundant), automated ba
 :::qa Why should Azure SDK clients be singletons?
 They're thread-safe and manage connections, authentication tokens and retry state. Creating them per request wastes resources and can exhaust connections, similar to the HttpClient anti-pattern.
 :::
+
+## Next episode {b}
+
+The database password was committed to Git. [Episode 5 · No secrets at all →](ch:azure-identity-secrets)
 
 ## Further reading
 

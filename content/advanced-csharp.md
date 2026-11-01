@@ -1458,7 +1458,7 @@ Notice how they lean on each other. Act 3's `ref` fixes Episode 1's copied struc
 
 ## Next: the web {b}
 
-Kettle's C# is solid. But so far it's been a program on its own. Customers reach it over **HTTP**, through a web server, with dependency injection wiring the services together, middleware checking every request, and configuration that's different in each environment. That's **ASP.NET Core**, and almost every page of it uses what you've just learned. Delegates for middleware, interfaces for DI, generics for `ILogger<T>`, attributes for `[Authorize]`, source generators for JSON, and async everywhere. [Part III · ASP.NET Core →](ch:aspnet-hosting)
+Kettle's C# is solid. But so far it's been a program on its own. Customers reach it over **HTTP**, through a web server, with dependency injection wiring the services together, middleware checking every request, and configuration that's different in each environment. That's **ASP.NET Core**, and almost every page of it uses what you've just learned. Delegates for middleware, interfaces for DI, generics for `ILogger<T>`, attributes for `[Authorize]`, source generators for JSON, and async everywhere. [Part III · Kettle Goes Online →](ch:aspnet-story)
 
 ## Further reading
 

@@ -19,6 +19,14 @@ next: building-apis, auth
 - When two routes could both match, the more specific one wins; a genuine tie throws `AmbiguousMatchException` at runtime.
 - Build links from a route's **name** (`LinkGenerator`), not a hand-built string, so they survive the template changing later.
 
+## Previously at Kettle {b}
+
+The pipeline handles the cross-cutting work once. Now the API has forty endpoints, and some of their URLs overlap.
+
+**The problem:** GET /orders/42 has to find exactly one handler.
+
+**This episode:** endpoint routing, route templates and constraints, and how auth reads endpoint metadata.
+
 ## The question routing exists to answer {b}
 
 A request arrives as nothing more than an HTTP method and a URL path — `GET /api/orders/42`. Somewhere, that has to turn into an actual decision: *which piece of your code runs, and what are its inputs?* That translation is routing's entire job: map the incoming request to an **endpoint** — a runnable unit of code (a `RequestDelegate`, underneath) bundled together with **metadata** describing it.
@@ -226,6 +234,10 @@ By route precedence: literals over parameters, constrained over unconstrained, c
 :::qa How do you generate URLs to other endpoints?
 Name the endpoint (WithName or Name = …) and use LinkGenerator.GetUriByName/GetPathByName, or helpers like CreatedAtRoute and CreatedAtAction. Avoid hard-coded string URLs.
 :::
+
+## Next episode {b}
+
+POST /orders must accept JSON, reject bad input and say what it created. [Episode 6 · An endpoint, end to end →](ch:building-apis)
 
 ## Further reading
 

@@ -18,6 +18,14 @@ next: how-code-runs, projects-sdk-nuget
 - Deployment mode is a trade-off: framework-dependent (small, needs a runtime installed) vs self-contained vs Native AOT (fastest startup, some reflection limits).
 - The BCL already ships most things you'd reach for a NuGet package for: JSON, HTTP, collections, crypto, regex, metrics.
 
+## Previously at Kettle {b}
+
+Two developers want to build Kettle, an online tea shop. They need one platform for a web API, a background worker and a command-line tool, running on their laptops and on Linux servers.
+
+**The problem:** Kettle needs a web API, a background worker and a command-line tool.
+
+**This episode:** what .NET is, the runtime vs the SDK, .NET vs .NET Framework, and the release cycle.
+
 ## .NET is a platform, not a language {b}
 
 .NET is a **software platform**: everything needed to build and run applications. C# is the most popular language for it, but F# and Visual Basic compile to the same format and run on the same platform.
@@ -197,6 +205,10 @@ Framework-dependent publishes only your app and relies on an installed shared ru
 :::qa Name some things in the BCL you'd use instead of a third-party package.
 System.Text.Json for JSON, HttpClient + IHttpClientFactory for HTTP, Channel&lt;T&gt; for producer/consumer queues, PriorityQueue, TimeProvider for testable time, System.Diagnostics.Metrics and Activity for telemetry, built-in rate limiting, and the source-generated Regex.
 :::
+
+## Next episode {b}
+
+The CPU cannot read C#. Something has to translate it. [Episode 2 · From C# to machine code →](ch:how-code-runs)
 
 ## Further reading
 

@@ -19,6 +19,14 @@ next: resilience, observability-aspire, azure-data-messaging
 - Most brokers don't guarantee global order; design for disorder (sequence numbers, partition/session keys) instead of assuming it.
 - A **saga** runs a multi-step business process as a chain of local transactions with compensating "undo" steps, either coordinated by services reacting to each other's events (**choreography**) or by a central state machine (**orchestration**).
 
+## Previously at Kettle {b}
+
+Checkout calls email, stock and analytics one after another. When the email service is down, nobody can buy anything.
+
+**The problem:** Checkout calls email, stock and analytics in turn. If one is down, checkout fails.
+
+**This episode:** brokers, commands vs events, at-least-once delivery, the outbox and sagas.
+
 ## What putting a broker in the middle actually buys you {b}
 
 With synchronous HTTP between services, the caller **waits**, and if the callee is down or slow, that failure propagates straight back to the caller — exactly the "chatty synchronous chains" problem [Microservices](ch:microservices#why-microservices-and-what-they-genuinely-cost) warned about. **Messaging** fixes this by putting a **broker** in between: the sender hands a message to the broker and moves on; receivers process it when they can, entirely decoupled from whether the sender is even still running.
@@ -128,7 +136,7 @@ public sealed class OutboxRelay(IServiceScopeFactory scopes, IMessagePublisher p
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             await using var scope = scopes.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<ShopDb>();
+            var db = scope.ServiceProvider.GetRequiredService<KettleDb>();
             var batch = await db.OutboxMessages
                 .FromSql($"SELECT TOP (50) * FROM OutboxMessages WITH (UPDLOCK, READPAST, ROWLOCK) WHERE ProcessedAt IS NULL ORDER BY OccurredAt")
                 .ToListAsync(stoppingToken);                                       // READPAST lets several relays run without clashing
@@ -162,7 +170,7 @@ Make processing the same message twice harmless — not by preventing duplicates
 | **Broker duplicate detection** | Service Bus duplicate detection by `MessageId` within a time window (helps with producer retries, not consumer crashes) |
 
 ```csharp
-public sealed class ChargeOnOrderPlaced(ShopDb db, IPaymentGateway payments) : IConsumer<OrderPlaced>
+public sealed class ChargeOnOrderPlaced(KettleDb db, IPaymentGateway payments) : IConsumer<OrderPlaced>
 {
     public async Task Consume(ConsumeContext<OrderPlaced> ctx)
     {
@@ -195,7 +203,7 @@ cfg.ReceiveEndpoint("billing-order-placed", e =>
     e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200))
                             .Ignore<ValidationException>());
     e.UseDelayedRedelivery(r => r.Intervals(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30)));
-    e.UseEntityFrameworkOutbox<ShopDb>(context);          // inbox/outbox for this endpoint
+    e.UseEntityFrameworkOutbox<KettleDb>(context);        // inbox/outbox for this endpoint
     e.ConfigureConsumer<ChargeOnOrderPlaced>(context);
 });
 ```
@@ -281,7 +289,7 @@ Using the raw broker SDKs (`Azure.Messaging.ServiceBus`, `RabbitMQ.Client`, `Con
 
 ```csharp
 // Raw Service Bus SDK (minimal)
-await using var client = new ServiceBusClient("shop.servicebus.windows.net", new DefaultAzureCredential());
+await using var client = new ServiceBusClient("kettle.servicebus.windows.net", new DefaultAzureCredential());
 await using var sender = client.CreateSender("orders");
 await sender.SendMessageAsync(new ServiceBusMessage(BinaryData.FromObjectAsJson(new OrderPlaced(id, total)))
 {
@@ -366,6 +374,10 @@ Most brokers don't guarantee global order, especially with competing consumers. 
 :::qa Service Bus vs Kafka/Event Hubs?
 Service Bus is a message broker for business messaging: messages are removed when completed, and it offers sessions, dead-lettering, transactions, scheduling and duplicate detection. Kafka/Event Hubs are distributed logs for high-throughput event streaming: messages are retained and replayable, consumers track offsets, and ordering is per partition.
 :::
+
+## Next episode {b}
+
+The payment provider blips for 2 seconds, and Kettle shows errors for 10 minutes. [Episode 2 · Expect failure →](ch:resilience)
 
 ## Further reading
 

@@ -440,7 +440,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 
   To choose: per-request state, or a dependency on anything scoped → scoped; stateless or genuinely thread-safe, and expensive to build → singleton; otherwise transient. When unsure, scoped is the safe default, because it can never outlive a request.
 - **A scope is a child container** with its own cache of scoped instances, disposed as one unit. ASP.NET Core creates exactly one per request, early in the pipeline, and exposes it as `HttpContext.RequestServices`. **Outside a request there is no scope** unless you create one. A `BackgroundService` (always a singleton) that needs a `DbContext` must inject `IServiceScopeFactory` and `await using var scope = factory.CreateAsyncScope()` **per unit of work**.
-- **The captive dependency is the most common DI bug.** Rule: a service must never depend on one with a **shorter** lifetime. A singleton is constructed once, so whatever scoped service it received then is held forever. Say `PriceCache` (a singleton) takes `ShopDb` (scoped): it keeps the **first request's** `DbContext`. That gives three symptoms from one cause: concurrent requests share a non-thread-safe context ("a second operation was started on this context"), the change tracker grows forever and serves stale data, and after the first request disposes it, everything throws `ObjectDisposedException`. `ValidateScopes` (on in Development, and worth enabling everywhere) turns this into a startup error. `ValidateOnBuild` checks that every registration can be constructed. The fix: make the consumer scoped, or inject `IServiceScopeFactory`/`IDbContextFactory<T>` and create per operation.
+- **The captive dependency is the most common DI bug.** Rule: a service must never depend on one with a **shorter** lifetime. A singleton is constructed once, so whatever scoped service it received then is held forever. Say `PriceCache` (a singleton) takes `KettleDb` (scoped): it keeps the **first request's** `DbContext`. That gives three symptoms from one cause: concurrent requests share a non-thread-safe context ("a second operation was started on this context"), the change tracker grows forever and serves stale data, and after the first request disposes it, everything throws `ObjectDisposedException`. `ValidateScopes` (on in Development, and worth enabling everywhere) turns this into a startup error. `ValidateOnBuild` checks that every registration can be constructed. The fix: make the consumer scoped, or inject `IServiceScopeFactory`/`IDbContextFactory<T>` and create per operation.
 - **Registration API**:
   - interface → implementation, or a concrete type registered as itself;
   - an existing instance, which the container will **not** dispose;
@@ -547,7 +547,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **The exception handler must be the outermost middleware.** Unhandled exceptions propagate outward through the middleware chain, so only the first-registered component can catch everything after it. `AddProblemDetails()`, then `AddExceptionHandler<T>()` for each handler, then `app.UseExceptionHandler()` first in the pipeline, plus `UseStatusCodePages()` so empty 4xx/5xx responses (like a routing 404) get bodies. Development shows the Developer Exception Page with the stack trace; production logs the exception and returns a generic 500.
 - **`IExceptionHandler`** (.NET 8) maps exception types to responses. Handlers are tried **in registration order**, and each returns `false` to say "not mine", so register specific handlers (domain → 409, not-found → 404) before a catch-all. Throwing for **expected** outcomes is expensive (stack capture) and hides control flow, so many teams return a Result from the application layer, map it to HTTP in the endpoint, and reserve exception handlers for the truly unexpected.
 - **ProblemDetails (RFC 9457, which replaced 7807)** is one JSON shape for every API error, served as `application/problem+json`: `type` (a URI identifying the *kind* of problem), `title`, `status`, `detail` (this occurrence), `instance`, plus extensions such as `traceId`, `errors` or `code`. Every client can then handle every endpoint's errors the same way. Customise all of them centrally with `CustomizeProblemDetails`, and always add a **`traceId`**: it's the bridge that lets a customer's "I got an error" jump you straight to that request's logs and distributed trace.
-- **`ILogger<T>` is one API with pluggable providers.** The category is `T`'s full name, which lets you set log levels per namespace through configuration (`"Microsoft.AspNetCore": "Warning"`, `"Shop.Payments": "Debug"`, overridable per environment by environment variable). The levels:
+- **`ILogger<T>` is one API with pluggable providers.** The category is `T`'s full name, which lets you set log levels per namespace through configuration (`"Microsoft.AspNetCore": "Warning"`, `"Kettle.Payments": "Debug"`, overridable per environment by environment variable). The levels:
   - `Trace` and `Debug`: diagnostics, off in production;
   - `Information`: normal business milestones;
   - `Warning`: unexpected but handled (retries, declines);
@@ -626,7 +626,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
   - **concurrency**: caps requests in flight, to protect expensive endpoints.
 
   Policies are partitioned per user, IP or API key and return 429 with `Retry-After`. **Counters are per instance**, so "100/minute" on 5 instances is effectively 500/minute. Enforce strict global limits at the gateway (API Management, Front Door) or with a Redis-backed limiter. Behind a proxy, configure forwarded headers, or "per IP" means one bucket for the proxy.
-- **CORS protects browsers, not your API.** The same-origin policy stops JavaScript on `https://shop.com` from reading responses from `https://api.shop.com` (a different origin: scheme, host and port together) unless the API sends `Access-Control-Allow-*` headers. curl and server-to-server calls ignore CORS entirely, so authentication is your API's real protection. **Simple requests** go straight out and only the response is checked. **Preflighted** requests (PUT/DELETE, JSON bodies, an `Authorization` header) first send an `OPTIONS` asking permission. Mistakes:
+- **CORS protects browsers, not your API.** The same-origin policy stops JavaScript on `https://kettle.com` from reading responses from `https://api.kettle.com` (a different origin: scheme, host and port together) unless the API sends `Access-Control-Allow-*` headers. curl and server-to-server calls ignore CORS entirely, so authentication is your API's real protection. **Simple requests** go straight out and only the response is checked. **Preflighted** requests (PUT/DELETE, JSON bodies, an `Authorization` header) first send an `OPTIONS` asking permission. Mistakes:
   - `AllowAnyOrigin` with `AllowCredentials` is rejected by browsers, and reflecting any `Origin` with credentials lets any site act as the user;
   - `UseCors` after authentication 401s the credential-less preflight, which surfaces as a "CORS error";
   - a plain 500 without CORS headers *also* looks like a CORS error, so read the server logs first.
@@ -647,7 +647,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
   - In-memory work is lost when the process dies.
 
   `ServicesStartConcurrently` (.NET 8) starts hosted services in parallel, and `IHostedLifecycleService` adds Starting/Started/Stopping/Stopped hooks.
-- **Worker Services** are the Generic Host with hosted services and **no web server**, with the same configuration, logging, DI and graceful shutdown. They run as containers, Windows Services or systemd units. The common split is **Shop.Api** (HTTP plus writing to an outbox) and **Shop.Worker** (queue consumers, outbox publisher, schedules), sharing the inner projects but scaling independently, so slow jobs never steal request threads.
+- **Worker Services** are the Generic Host with hosted services and **no web server**, with the same configuration, logging, DI and graceful shutdown. They run as containers, Windows Services or systemd units. The common split is **Kettle.Api** (HTTP plus writing to an outbox) and **Kettle.Worker** (queue consumers, outbox publisher, schedules), sharing the inner projects but scaling independently, so slow jobs never steal request threads.
 - **`Channel<T>` hands work off within one process**: an async producer/consumer queue. Prefer **bounded** channels with `FullMode = Wait`, which gives **backpressure**: when the queue is full, producers wait instead of memory growing without limit. Everything in a channel is **lost** on deploy, crash or scale-in, so use it only for work you can lose or redo (thumbnails, cache warm-ups). For emails, payments or anything important, **persist first** (database, outbox, broker), then process.
 - **Durable job systems**: **Hangfire** (fire-and-forget, delayed, recurring cron jobs and continuations, SQL or Redis storage, a built-in dashboard, automatic retries, workers on any instance) and **Quartz.NET** (jobs plus triggers and calendars, clustered through database locks). Because retries are automatic, jobs **will** run more than once, so they must be **idempotent**: no duplicate invoices.
 - **Choosing where work runs**: losable work goes to a channel and hosted service. Durable work within one service goes to Hangfire, Quartz or an outbox table with a worker. Work other services must react to goes to a message broker. Spiky or scale-to-zero work goes to Azure Functions or Container Apps jobs. Simple periodic work on a single instance goes to a `BackgroundService` with `PeriodicTimer`, plus a lock if it's replicated.
@@ -1236,8 +1236,8 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   Linked by **TraceId**, they chain: a metric spike says *that* something is wrong → exemplar traces say *where* → that trace's logs say *why*. Profiles and exceptions are increasingly treated as further signals.
 - **.NET's APIs are already OpenTelemetry-shaped.** Logs use `ILogger`. Metrics use `System.Diagnostics.Metrics` (`Meter`, `Counter<T>`, `Histogram<T>`, `UpDownCounter<T>`, `ObservableGauge<T>`). Traces use `ActivitySource`/`Activity`, where **an `Activity` is an OTel span**. ASP.NET Core, HttpClient, SqlClient, EF Core, Azure SDKs, gRPC and MassTransit already emit through these, and the runtime publishes GC, thread pool and exception metrics. The **OpenTelemetry .NET SDK** just *listens* to these APIs and exports via **OTLP** (optionally through a Collector for batching, filtering, tail sampling and routing) to Azure Monitor, Grafana (Tempo/Loki/Prometheus), Jaeger, Datadog, Honeycomb or the Aspire dashboard. Emitting code never knows the backend.
 - **Setup.** Call `AddOpenTelemetry()` with these pieces:
-  - `.ConfigureResource(r => r.AddService("shop-api", serviceVersion: ...))`;
-  - `.WithTracing(...)` with ASP.NET Core (filter out `/health`), HttpClient and EF Core instrumentation, plus `.AddSource("Shop.Checkout")` for your own spans;
+  - `.ConfigureResource(r => r.AddService("kettle-api", serviceVersion: ...))`;
+  - `.WithTracing(...)` with ASP.NET Core (filter out `/health`), HttpClient and EF Core instrumentation, plus `.AddSource("Kettle.Checkout")` for your own spans;
   - `.WithMetrics(...)` with the ASP.NET Core, HttpClient and runtime instrumentation, plus `.AddMeter(...)`;
   - `.UseOtlpExporter()`.
 
@@ -1266,9 +1266,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   **Alert on symptoms users feel** (SLO burn rate, error rate, latency), not on causes (one CPU spike). Every page must be actionable and link to a dashboard and a runbook.
 - **Azure Monitor / Application Insights.** Data lands in a **Log Analytics** workspace, queried with **KQL**: `requests | where timestamp > ago(1h) | summarize percentile(duration, 95) by name`, or `union requests, dependencies, traces, exceptions | where operation_Id == "<traceid>"` to see everything for one trace. Features include the application map, end-to-end transaction view, live metrics, availability tests, profiler and snapshot debugger. In new code use the **Azure Monitor OpenTelemetry Distro** (`UseAzureMonitor()`); the classic SDK is in maintenance.
 - **.NET Aspire** is development and deployment tooling, **not a production runtime**.
-  - **AppHost**: a C# project that *describes the system* (`AddSqlServer("sql").AddDatabase("shopdb")`, `AddRedis`, `AddRabbitMQ`, `AddProject<Projects.Shop_Catalog>().WithReference(db).WaitFor(db)`). `dotnet run` starts the containers and projects, **injects connection strings and service URLs** as configuration, and opens the dashboard. It replaces docker-compose, README steps and tribal knowledge about environment variables.
+  - **AppHost**: a C# project that *describes the system* (`AddSqlServer("sql").AddDatabase("kettledb")`, `AddRedis`, `AddRabbitMQ`, `AddProject<Projects.Kettle_Catalog>().WithReference(db).WaitFor(db)`). `dotnet run` starts the containers and projects, **injects connection strings and service URLs** as configuration, and opens the dashboard. It replaces docker-compose, README steps and tribal knowledge about environment variables.
   - **ServiceDefaults**: one shared `builder.AddServiceDefaults()` that configures OpenTelemetry, health checks (`/health`, `/alive`), service discovery and HttpClient resilience the same way in every service, so they don't drift.
-  - **Integrations**: packages like `AddSqlServerDbContext<ShopDb>("shopdb")` and `AddAzureServiceBusClient("bus")` that register a client with health checks, telemetry and retries pre-wired.
+  - **Integrations**: packages like `AddSqlServerDbContext<KettleDb>("kettledb")` and `AddAzureServiceBusClient("bus")` that register a client with health checks, telemetry and retries pre-wired.
   - **Dashboard**: logs, structured logs, traces and metrics over OTLP, so you have distributed tracing on your laptop from day one. It's also usable standalone.
   - **Deployment**: `azd up` provisions Azure Container Apps plus backing services, and tooling generates Kubernetes manifests, Compose and Bicep.
 - **Incident workflow**, which walks the three signals in order:
@@ -1319,7 +1319,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - sticky-session assumptions.
 
   Design for N from day one.
-- **Azure resource hierarchy**: **Entra tenant** (identity boundary) → **management groups** (policy and RBAC inherited across many subscriptions) → **subscriptions** (billing, quota and access boundary, often one per environment) → **resource groups** (things deployed and deleted together, like `rg-shop-prod-weu`) → resources. **ARM** is the control plane every tool goes through: portal, `az`, SDKs, Bicep, Terraform.
+- **Azure resource hierarchy**: **Entra tenant** (identity boundary) → **management groups** (policy and RBAC inherited across many subscriptions) → **subscriptions** (billing, quota and access boundary, often one per environment) → **resource groups** (things deployed and deleted together, like `rg-kettle-prod-weu`) → resources. **ARM** is the control plane every tool goes through: portal, `az`, SDKs, Bicep, Terraform.
   - **RBAC** at any scope says *who can do what*. There are control-plane roles (Owner, Contributor, Reader) and separate **data-plane** roles such as *Storage Blob Data Reader*.
   - **Azure Policy** enforces rules ("no public storage", "only these regions").
   - **Tags** (`env`, `owner`, `costCenter`) drive cost reporting.
@@ -1374,11 +1374,11 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   2. **Layer-cache ordering**: copy `Directory.Build.props`, `Directory.Packages.props`, `global.json` and the `.csproj` files, **run `dotnet restore`, and only then copy the source**. Docker reruns a layer, and everything after it, only when that layer's inputs change. So a `.cs` edit reuses the slow restore layer, because the slow, rarely changing work comes first.
   3. **`.dockerignore`** excludes `bin/`, `obj/`, `.git`, `.vs`, `node_modules` and local settings files. Builds get faster and you don't leak files.
   4. **Non-root** (`USER app`) on a **chiseled** base.
-  5. **Exec-form `ENTRYPOINT ["dotnet", "Shop.Api.dll"]`**, not the shell form. Exec form makes `dotnet` **PID 1**, and `docker stop` and Kubernetes send `SIGTERM` to PID 1. With the shell form, `/bin/sh` is PID 1, it doesn't forward the signal, and your app never starts its graceful shutdown; it gets SIGKILLed after the grace period instead.
+  5. **Exec-form `ENTRYPOINT ["dotnet", "Kettle.Api.dll"]`**, not the shell form. Exec form makes `dotnet` **PID 1**, and `docker stop` and Kubernetes send `SIGTERM` to PID 1. With the shell form, `/bin/sh` is PID 1, it doesn't forward the signal, and your app never starts its graceful shutdown; it gets SIGKILLed after the grace period instead.
   6. **Pin versions** and **rebuild regularly** to pick up base-image security patches.
-- **No Dockerfile needed for standard apps**: `dotnet publish -t:PublishContainer -p ContainerFamily=noble-chiseled -p ContainerRegistry=shopacr.azurecr.io` builds an OCI image with **no Docker daemon** and can push it straight to a registry, configured with `<ContainerRepository>` and `<ContainerPort>` in the csproj. Use a Dockerfile when you need extra OS packages or complex builds.
+- **No Dockerfile needed for standard apps**: `dotnet publish -t:PublishContainer -p ContainerFamily=noble-chiseled -p ContainerRegistry=kettleacr.azurecr.io` builds an OCI image with **no Docker daemon** and can push it straight to a registry, configured with `<ContainerRepository>` and `<ContainerPort>` in the csproj. Use a Dockerfile when you need extra OS packages or complex builds.
 - **Configuration and state in containers.**
-  - Config comes from **environment variables set at runtime** (`ConnectionStrings__Shop`), so **one image is promoted through every environment**.
+  - Config comes from **environment variables set at runtime** (`ConnectionStrings__Kettle`), so **one image is promoted through every environment**.
   - **Never `COPY` secrets or pass them as build args**: they persist in image layers and anyone who pulls the image can read them. Use the platform secret store or, better, **managed identity**, so there's no secret at all.
   - The **filesystem is ephemeral** and vanishes when the container is replaced. Use Blob Storage or a database, and volumes only where truly needed.
   - **Persist Data Protection keys** (Blob + Key Vault) for multi-instance apps.
@@ -1398,7 +1398,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 - **It's one spectrum: control versus operations work.** VMs (any software, you patch everything) → **AKS** (full Kubernetes; high ops) → **Container Apps** (serverless containers on managed K8s + KEDA + Envoy; low-medium) → **App Service** (classic managed web hosting; low) → **Functions** (event-driven code; lowest). Choose by how much operational burden you want, not by which sounds most powerful.
 - **App Service.** It hosts web apps, APIs and WebJobs from code or a container, on Windows or Linux. An **App Service plan** is the shared compute (VM size × instance count) that one or more apps run on, and its tier sets the features. Free and Shared are dev only; **Basic** has no slots or autoscale; **Standard and Premium v3** add autoscale, **slots**, VNet integration and (Premium) zone redundancy; **Isolated v2** (an App Service Environment) is single-tenant and network-isolated.
-- **Deployment slots.** A slot is a **live app with its own hostname** (`shop-api-staging.azurewebsites.net`) on the same plan. Deploy to `staging`, **warm it up** and smoke-test, then **swap**: production traffic moves to already-warm instances, so there are no cold-start errors. Rollback is swapping back. Mark settings **slot-specific ("sticky")**, like a staging connection string, so they stay with the slot and don't travel in the swap.
+- **Deployment slots.** A slot is a **live app with its own hostname** (`kettle-api-staging.azurewebsites.net`) on the same plan. Deploy to `staging`, **warm it up** and smoke-test, then **swap**: production traffic moves to already-warm instances, so there are no cold-start errors. Rollback is swapping back. Mark settings **slot-specific ("sticky")**, like a staging connection string, so they stay with the slot and don't travel in the swap.
 - **App Service configuration and features.**
   - **App settings become environment variables** (`Payments__ApiKey`). **Key Vault references** (`@Microsoft.KeyVault(SecretUri=...)`) resolve secrets at runtime, so they never appear in the settings.
   - **Managed identity** gives passwordless access to SQL, Storage and Key Vault.
@@ -1466,7 +1466,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Active geo-replication** gives readable secondaries in other regions.
   - **Failover groups** add automatic geo-failover behind a **stable listener endpoint**, so connection strings don't change after failover.
   - **Read scale-out** sends `ApplicationIntent=ReadOnly` connections to a replica.
-- **Azure SQL security.** Use **passwordless Entra auth**: `Authentication=Active Directory Default` in the connection string, then `CREATE USER [app-shop-api-prod] FROM EXTERNAL PROVIDER` and grant `db_datareader`/`db_datawriter`, or narrower roles. Disable public access in favour of a private endpoint. Encryption and auditing:
+- **Azure SQL security.** Use **passwordless Entra auth**: `Authentication=Active Directory Default` in the connection string, then `CREATE USER [app-kettle-api-prod] FROM EXTERNAL PROVIDER` and grant `db_datareader`/`db_datawriter`, or narrower roles. Disable public access in favour of a private endpoint. Encryption and auditing:
   - **TDE** encrypts at rest and is on by default;
   - **Always Encrypted** encrypts columns client-side, so even DBAs can't read them;
   - **dynamic data masking** and **row-level security**;
@@ -1528,7 +1528,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Scopes** (`orders.read`, delegated user permissions) vs **app roles** (`Orders.Admin`, which can be assigned to users or to apps).
   - **Conditional Access/MFA**: sign-in policies.
   - **Entra External ID**: customer identity (CIAM), succeeding Azure AD B2C.
-- **Two permission systems people confuse.** **Azure RBAC** controls access to **Azure resources** ("app-shop-api can read blobs in stshopprod"). **Entra roles and app permissions** control **Entra itself, Microsoft Graph and your own APIs** ("Global Administrator", "can call Graph `User.Read.All`", "client may call `api://shop` `orders.write`").
+- **Two permission systems people confuse.** **Azure RBAC** controls access to **Azure resources** ("app-kettle-api can read blobs in stkettleprod"). **Entra roles and app permissions** control **Entra itself, Microsoft Graph and your own APIs** ("Global Administrator", "can call Graph `User.Read.All`", "client may call `api://kettle` `orders.write`").
 - **Managed identities.** Your code asks a **local platform endpoint** for a token, and Azure holds and rotates the underlying credential. There is **no secret anywhere** for an attacker to find. That's not just harder to steal; nothing exists to steal.
   - **System-assigned**: tied to one resource and deleted with it.
   - **User-assigned**: a standalone resource shared by many apps. Use it to pre-provision access before the app exists, for blue/green, and for AKS workload identity.
@@ -1548,9 +1548,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   4. **Platform references** (`@Microsoft.KeyVault(SecretUri=...)` in App Service, Functions or Container Apps settings), with no code at all.
 
   **Key Vault is throttled** (thousands of operations per 10 s per vault), so **load at startup and cache**; never call `GetSecretAsync` per request.
-- **Workload identity federation** gives "no secret" to things that aren't Azure resources. An external IdP's token is **exchanged** for an Entra token. Example: a GitHub Actions job gets an OIDC token whose subject is `repo:org/shop:environment:prod`, and Entra has a **federated credential trusting exactly that subject**, so `azure/login` with only a client ID, tenant ID and `id-token: write` gets an access token, and **no client secret is stored in GitHub**. **AKS Workload Identity** works the same way: a Kubernetes service account is federated with a user-assigned identity, and pods get tokens via `WorkloadIdentityCredential`. It also covers Azure DevOps service connections, other clouds and Arc.
+- **Workload identity federation** gives "no secret" to things that aren't Azure resources. An external IdP's token is **exchanged** for an Entra token. Example: a GitHub Actions job gets an OIDC token whose subject is `repo:org/kettle:environment:prod`, and Entra has a **federated credential trusting exactly that subject**, so `azure/login` with only a client ID, tenant ID and `id-token: write` gets an access token, and **no client secret is stored in GitHub**. **AKS Workload Identity** works the same way: a Kubernetes service account is federated with a user-assigned identity, and pods get tokens via `WorkloadIdentityCredential`. It also covers Azure DevOps service connections, other clouds and Arc.
 - **Protecting your own API with Entra.**
-  1. Register the API (`api://shop-api`), **expose scopes** (`orders.read`) and **define app roles** (`Orders.Reader`).
+  1. Register the API (`api://kettle-api`), **expose scopes** (`orders.read`) and **define app roles** (`Orders.Reader`).
   2. The SPA gets a **delegated** permission to `orders.read`, which acts on behalf of the user and arrives in the `scp` claim.
   3. The billing worker's managed identity is assigned the **application** role, with no user involved, which arrives in the `roles` claim.
   4. The API validates issuer and audience with `AddMicrosoftIdentityWebApi`, and a policy accepts **either** `scp` contains `orders.read` **or** the role `Orders.Reader`.
@@ -1606,7 +1606,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 [Full chapter →](ch:kubernetes)
 
-- **Desired state plus reconciliation.** You declare "3 replicas of shop-api:1.4.2, 0.5 CPU each, reachable at orders.shop.com", and **controllers** loop forever (observe → compare with desired → act) to make it true. That loop handles:
+- **Desired state plus reconciliation.** You declare "3 replicas of kettle-api:1.4.2, 0.5 CPU each, reachable at orders.kettle.com", and **controllers** loop forever (observe → compare with desired → act) to make it true. That loop handles:
   - **scheduling** onto nodes with capacity;
   - **self-healing**: restart crashed containers, replace pods on dead nodes, kill pods failing liveness;
   - **scaling**;
@@ -1627,7 +1627,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Pod**: the smallest unit. Containers in it share localhost and volumes; it has its own IP and is **ephemeral**.
   - **ReplicaSet**: keeps N pods running.
   - **Deployment**: pods + replicas + **rolling update** strategy, with one ReplicaSet per version (that's how `rollout undo` works). This is how you run a stateless API or worker.
-  - **Service**: a stable virtual IP and DNS name (`shop-api.shop.svc.cluster.local`) that load-balances across pods **selected by labels**. Types: ClusterIP, NodePort, LoadBalancer.
+  - **Service**: a stable virtual IP and DNS name (`kettle-api.kettle.svc.cluster.local`) that load-balances across pods **selected by labels**. Types: ClusterIP, NodePort, LoadBalancer.
   - **Ingress / Gateway API**: external HTTP routing (hosts, paths, TLS) via a controller.
   - **ConfigMap**: env vars or a mounted `appsettings.Production.json`.
   - **Secret**: **base64-encoded, not encrypted** by default.
@@ -1945,7 +1945,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - check new passwords against breached-password lists (HIBP k-anonymity), and prefer length over complexity rules (NIST 800-63B);
   - short access tokens, rotating refresh tokens, revocation on password change (the security stamp), and `HttpOnly; Secure; SameSite` cookies.
 - **Pick the right crypto primitive. Never invent crypto.**
-  - Data the app reads back (tokens, cookies) → the **Data Protection API** (authenticated encryption with a rotating key ring). `CreateProtector("Shop.Invites.v1").ToTimeLimitedDataProtector()` gives expiring invite tokens, and the purpose string isolates them from other protectors.
+  - Data the app reads back (tokens, cookies) → the **Data Protection API** (authenticated encryption with a rotating key ring). `CreateProtector("Kettle.Invites.v1").ToTimeLimitedDataProtector()` gives expiring invite tokens, and the purpose string isolates them from other protectors.
   - At rest → TDE, Storage SSE, Always Encrypted, or `AesGcm` with Key Vault keys. Never ECB mode or hard-coded keys.
   - Integrity → HMAC-SHA256 or RSA-PSS/ECDSA, not a bare hash.
   - Random secrets → `RandomNumberGenerator.GetBytes(32)`, **never `System.Random` or `Guid.NewGuid()`**, which aren't designed to be unpredictable.
@@ -1993,7 +1993,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   The **authorization code** is a one-time intermediate in the code flow, valid for a few minutes.
 - **Authorization code flow with PKCE**, the flow for anything with a user (mandatory in OAuth 2.1).
-  1. The client makes a random **`code_verifier`** and sends only its **hash** (`code_challenge`, S256) in the browser redirect to `/authorize`, along with `state`, `nonce` and scopes (`openid profile api://shop/orders.read offline_access`).
+  1. The client makes a random **`code_verifier`** and sends only its **hash** (`code_challenge`, S256) in the browser redirect to `/authorize`, along with `state`, `nonce` and scopes (`openid profile api://kettle/orders.read offline_access`).
   2. The user signs in (MFA) and consents.
   3. The IdP redirects back with `?code=...&state=...`.
   4. The client posts the code **plus the raw verifier** on a **back channel** to `/token`.

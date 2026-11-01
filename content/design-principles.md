@@ -18,6 +18,14 @@ next: design-patterns, app-architectures
 - DRY is about duplicated *knowledge*, not duplicated-looking text — don't merge two things that just happen to look alike today.
 - These are heuristics, not laws: an interface with one implementation that never changes is often over-engineering, not good design.
 
+## Previously at Kettle {b}
+
+Kettle's `OrderService` is 900 lines long. Adding Apple Pay means editing a class that also sends emails and renders invoices.
+
+**The problem:** Adding Apple Pay means editing a 900-line class that also sends emails.
+
+**This episode:** SOLID as a means to low coupling and high cohesion, and when to bend it.
+
 ## The problem every principle in this chapter is trying to solve {b}
 
 Code is read and changed far more often than it's written fresh. Every principle in this chapter — SOLID and the others that follow it — exists for exactly one practical reason: to **reduce the cost of change**. When a requirement changes, the ideal is that as few places as possible need to change, and that changing them doesn't break something unrelated you weren't even thinking about. SOLID (named by Robert C. Martin, "Uncle Bob") packages five such principles specifically for classes and modules:
@@ -43,8 +51,8 @@ public class OrderService
         o.Total = o.Lines.Sum(l => l.Price * l.Qty) * (o.Customer.IsVip ? 0.9m : 1m);  // pricing
         using var conn = new SqlConnection("…");                                       // persistence
         conn.Execute("INSERT INTO Orders …", o);
-        var smtp = new SmtpClient("smtp.shop.com");                                     // notification
-        smtp.Send("shop@shop.com", o.Customer.Email, "Thanks!", $"Your total is {o.Total}");
+        var smtp = new SmtpClient("smtp.kettle.com");                                   // notification
+        smtp.Send("kettle@kettle.com", o.Customer.Email, "Thanks!", $"Your total is {o.Total}");
     }
 }
 
@@ -268,6 +276,10 @@ A method should only talk to its immediate collaborators (itself, its parameters
 :::qa When would you not create an interface for a class?
 When there's a single stable implementation that isn't an I/O or volatile boundary and doesn't need to be faked in tests (simple domain services, value objects, mappers). Interfaces pay off at seams: persistence, external services, time, randomness, and real variation points.
 :::
+
+## Next episode {b}
+
+The same design problems keep coming back in slightly different shapes. [Episode 2 · Named solutions →](ch:design-patterns)
 
 ## Further reading
 

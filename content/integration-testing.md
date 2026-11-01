@@ -19,6 +19,14 @@ next: cicd-iac, docker
 - A fake authentication handler lets you control *who* the caller claims to be while your real authorization policies still run unmodified — so you can actually test that the wrong role gets a 403.
 - Modern tooling (containers, in-memory hosting) shifted many teams' confidence from the classic unit-test-heavy pyramid toward integration tests for APIs.
 
+## Previously at Kettle {b}
+
+Kettle's unit tests all pass. The release that went out yesterday returned 401 for every customer anyway.
+
+**The problem:** Every unit test passes, but the deployed API returns 401 for everyone.
+
+**This episode:** WebApplicationFactory, Testcontainers, contract tests and tests in CI.
+
 ## What unit tests structurally cannot catch {b}
 
 Think back to what a unit test, by its own definition from [Unit testing](ch:unit-testing#what-a-unit-test-is-and-the-question-that-divides-testers), deliberately isolates away: real infrastructure, real wiring, the real pipeline. That's exactly what makes a whole category of bug invisible to it — bugs that live **between** components, not inside any one of them:
@@ -80,7 +88,7 @@ The reason this test is worth more than it looks: everything runs **for real** �
 ## Customising the app under test {i}
 
 ```csharp
-public sealed class ShopApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public sealed class KettleApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly MsSqlContainer _sql = new MsSqlBuilder().WithImage("mcr.microsoft.com/mssql/server:2022-latest").Build();
     public FakeEmailSender Emails { get; } = new();
@@ -89,7 +97,7 @@ public sealed class ShopApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        builder.UseSetting("ConnectionStrings:Shop", _sql.GetConnectionString());   // override configuration
+        builder.UseSetting("ConnectionStrings:Kettle", _sql.GetConnectionString());   // override configuration
         builder.ConfigureTestServices(services =>                                    // runs AFTER Program.cs registrations
         {
             services.RemoveAll<IEmailSender>();
@@ -105,7 +113,7 @@ public sealed class ShopApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     {
         await _sql.StartAsync();
         using var scope = Services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<ShopDb>().Database.MigrateAsync();   // real schema from real migrations
+        await scope.ServiceProvider.GetRequiredService<KettleDb>().Database.MigrateAsync();   // real schema from real migrations
     }
 
     public new async ValueTask DisposeAsync() { await _sql.DisposeAsync(); await base.DisposeAsync(); }
@@ -161,10 +169,10 @@ Starting a container takes seconds, which is long enough that doing it per-test 
 
 ```csharp
 [CollectionDefinition(nameof(ApiCollection))]
-public sealed class ApiCollection : ICollectionFixture<ShopApiFactory>;   // one factory + container for all API tests
+public sealed class ApiCollection : ICollectionFixture<KettleApiFactory>; // one factory + container for all API tests
 
 [Collection(nameof(ApiCollection))]
-public sealed class PlaceOrderTests(ShopApiFactory app) : IAsyncLifetime
+public sealed class PlaceOrderTests(KettleApiFactory app) : IAsyncLifetime
 {
     private Respawner _respawner = null!;
 
@@ -286,6 +294,10 @@ Tests verifying that a provider service honours the API or message contract its 
 :::qa Test pyramid vs testing trophy?
 The pyramid recommends mostly unit tests, fewer integration tests and very few E2E tests. The trophy shifts the weight to integration tests, because modern tooling makes them fast and they give more confidence per test, with unit tests reserved for complex logic and only a few E2E tests.
 :::
+
+## Next episode {b}
+
+By the end of Part VI, Kettle's releases are boring, which is how releases should be. With that safety net in place, Kettle can start splitting into separate services. Part VII deals with what goes wrong once they have to talk to each other. [Part VII · Kettle Becomes Several Services →](ch:distributed-story)
 
 ## Further reading
 

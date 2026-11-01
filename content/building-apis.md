@@ -19,6 +19,14 @@ next: errors-logging, api-design, app-architectures
 - **Filters** run inside endpoint execution and see the bound, typed arguments — middleware never does, because it runs before model binding happens.
 - Never bind a request body directly to an EF Core entity ("over-posting") and never return one either — always go through a DTO you control.
 
+## Previously at Kettle {b}
+
+Requests reach the right handler. The handlers themselves are a mess: they parse JSON by hand, validate nothing and return 200 for everything.
+
+**The problem:** POST /orders must accept JSON, reject bad input and say what it created.
+
+**This episode:** minimal APIs and controllers, binding, validation, typed results and OpenAPI.
+
 ## Two syntaxes, the same machinery underneath {b}
 
 Everything in the previous two chapters — the pipeline, the routing match — ends at exactly the same place: your code, deciding what to actually do with a request. ASP.NET Core gives you two different *syntaxes* for writing that code, and it's worth being clear up front that they are genuinely just syntax: both run on the same routing, the same DI container, the same authentication and the same middleware pipeline.
@@ -26,7 +34,7 @@ Everything in the previous two chapters — the pipeline, the routing match — 
 **Minimal APIs** (since .NET 6) map routes directly to functions:
 
 ```csharp
-app.MapGet("/products/{id:int}", async (int id, ShopDb db, CancellationToken ct) =>
+app.MapGet("/products/{id:int}", async (int id, KettleDb db, CancellationToken ct) =>
     await db.Products.FindAsync([id], ct) is { } p ? Results.Ok(p) : Results.NotFound());
 ```
 
@@ -35,7 +43,7 @@ app.MapGet("/products/{id:int}", async (int id, ShopDb db, CancellationToken ct)
 ```csharp
 [ApiController]
 [Route("products")]
-public class ProductsController(ShopDb db) : ControllerBase
+public class ProductsController(KettleDb db) : ControllerBase
 {
     [HttpGet("{id:int}")]
     public async Task<ActionResult<Product>> Get(int id, CancellationToken ct) =>
@@ -276,7 +284,7 @@ Request ─▶ [Authorization filters] ─▶ [Resource filters (before)] ─▶
 | Result | `IResultFilter` | Modify or wrap results, add headers |
 
 ```csharp
-public sealed class TransactionFilter(ShopDb db) : IAsyncActionFilter
+public sealed class TransactionFilter(KettleDb db) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)
     {
@@ -393,6 +401,10 @@ It decouples the API contract from the database schema, prevents over-posting an
 :::qa How do you customise JSON serialization?
 ConfigureHttpJsonOptions (minimal APIs) or AddJsonOptions (controllers) to set naming policies, converters (JsonStringEnumConverter), ignore conditions and so on; attributes like [JsonPropertyName], [JsonIgnore] and [JsonPolymorphic]; custom JsonConverter&lt;T&gt;; and source-generated JsonSerializerContext for speed and AOT.
 :::
+
+## Next episode {b}
+
+A customer sees a stack trace, and the logs are unsearchable text. [Episode 7 · When it breaks at 2 a.m. →](ch:errors-logging)
 
 ## Further reading
 

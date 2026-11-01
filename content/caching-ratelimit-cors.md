@@ -18,6 +18,14 @@ next: nosql-redis, background-work, web-security
 - Rate limiting (fixed window, sliding window, token bucket) caps requests per client; like `IMemoryCache`, the built-in limiter's counters are **per instance**, so a "100/minute" limit becomes "100 × instance count" across a fleet unless you use a shared store.
 - CORS protects **browsers**, not your API — non-browser clients (curl, server-to-server calls) ignore it completely. Your API's real protection is authentication/authorization.
 
+## Previously at Kettle {b}
+
+Calls to partners are reliable. Now success is the problem: the catalogue is read thousands of times a minute, bots hammer the search, and the new web front end on another domain is blocked by the browser.
+
+**The problem:** The tea catalogue is read 10,000 times a minute and changes once a day.
+
+**This episode:** caching layers and stampedes, rate limiting, and what CORS really does.
+
 ## Why cache at all {b}
 
 Most backend reads are **repetitive**, in a specific, exploitable way: the same product page, the same exchange rates, the same permission lookup, asked for thousands of times while the underlying data barely changes. Every one of those identical requests still costs a full database round trip or an external API call unless something intervenes. A cache is that intervention — a copy of the answer, kept close by, so the thousandth identical request doesn't repeat the work the first one already did.
@@ -56,7 +64,7 @@ Browser cache ─▶ CDN / reverse proxy ─▶ Output cache (whole response) �
 ```csharp
 builder.Services.AddMemoryCache(o => o.SizeLimit = 10_000);    // optional size budget (each entry must then set Size)
 
-public sealed class CountryService(IMemoryCache cache, ShopDb db)
+public sealed class CountryService(IMemoryCache cache, KettleDb db)
 {
     public async Task<IReadOnlyList<Country>> GetAllAsync(CancellationToken ct) =>
         (await cache.GetOrCreateAsync("countries", async entry =>
@@ -85,7 +93,7 @@ Here's the limitation that catches people as soon as an app scales past one inst
 builder.Services.AddStackExchangeRedisCache(o =>
 {
     o.Configuration = builder.Configuration.GetConnectionString("Redis");
-    o.InstanceName = "shop:";                         // key prefix
+    o.InstanceName = "kettle:";                       // key prefix
 });
 
 public sealed class CartStore(IDistributedCache cache)
@@ -115,7 +123,7 @@ builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntr
     LocalCacheExpiration = TimeSpan.FromMinutes(1)  // L1 lifetime (shorter limits cross-instance staleness)
 });
 
-public sealed class ProductQueries(HybridCache cache, ShopDb db)
+public sealed class ProductQueries(HybridCache cache, KettleDb db)
 {
     public ValueTask<ProductDto?> GetAsync(int id, CancellationToken ct) =>
         cache.GetOrCreateAsync(
@@ -244,7 +252,7 @@ This is the same scaling trap `IMemoryCache` fell into earlier in this chapter, 
 
 ## CORS: a rule browsers enforce on your behalf, for your users' protection {b}
 
-Browsers enforce the **same-origin policy**: JavaScript running on `https://shop.com` cannot read a response from `https://api.shop.com` — a different origin, since origin means scheme + host + port together — **unless the API explicitly says it's allowed to**, through a set of CORS response headers.
+Browsers enforce the **same-origin policy**: JavaScript running on `https://kettle.com` cannot read a response from `https://api.kettle.com` — a different origin, since origin means scheme + host + port together — **unless the API explicitly says it's allowed to**, through a set of CORS response headers.
 
 Here's the detail that trips people up the first time they debug a "CORS error": **CORS protects users' browsers, not your API.** curl, Postman, and any server-to-server call ignore CORS completely — there's no browser involved to enforce it. Your API's actual protection against unauthorized access is authentication and authorization, covered in [Auth](ch:auth); CORS is purely about which *websites* a *browser* will let read your responses on a user's behalf.
 
@@ -255,12 +263,12 @@ Here's the detail that trips people up the first time they debug a "CORS error":
 
 ```http
 OPTIONS /api/orders HTTP/1.1
-Origin: https://shop.com
+Origin: https://kettle.com
 Access-Control-Request-Method: POST
 Access-Control-Request-Headers: authorization, content-type
 
 HTTP/1.1 204 No Content
-Access-Control-Allow-Origin: https://shop.com
+Access-Control-Allow-Origin: https://kettle.com
 Access-Control-Allow-Methods: GET, POST, PUT, DELETE
 Access-Control-Allow-Headers: authorization, content-type
 Access-Control-Max-Age: 600
@@ -270,7 +278,7 @@ Access-Control-Max-Age: 600
 builder.Services.AddCors(o =>
 {
     o.AddPolicy("web", p => p
-        .WithOrigins("https://shop.com", "https://admin.shop.com")     // explicit list from config
+        .WithOrigins("https://kettle.com", "https://admin.kettle.com")     // explicit list from config
         .WithMethods("GET", "POST", "PUT", "DELETE")
         .WithHeaders("authorization", "content-type")
         .AllowCredentials()                                          // only if you need cookies cross-origin
@@ -340,6 +348,10 @@ An automatic OPTIONS request the browser sends before "non-simple" cross-origin 
 :::qa What's the difference between output caching and response caching?
 Response caching follows HTTP Cache-Control semantics and is mainly for client/proxy caching. Output caching is server-controlled: policies per endpoint, vary-by rules, tag-based eviction, storage in memory or Redis, independent of client headers, and safe defaults (anonymous GETs only).
 :::
+
+## Next episode {b}
+
+Sending the confirmation email makes checkout 3 seconds slower. [Episode 11 · Work after the response →](ch:background-work)
 
 ## Further reading
 

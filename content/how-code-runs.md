@@ -18,6 +18,14 @@ next: projects-sdk-nuget, csharp-story, memory-gc
 - **ReadyToRun** and **Native AOT** skip some or all of this at startup, trading flexibility (reflection, dynamic code) for faster cold starts.
 - "The first request is slow" has one root cause: everything on that code path is being JIT-compiled, DI/EF Core models built, and connection pools filled for the very first time.
 
+## Previously at Kettle {b}
+
+Kettle will be written in C# on .NET. But a CPU can't read C#, and the team wants to know what really happens between pressing Run and the first order being saved.
+
+**The problem:** The CPU cannot read C#. Something has to translate it.
+
+**This episode:** compilation to IL, assemblies and metadata, the JIT and its tiers, and Native AOT.
+
 ## Let's follow one line of code, start to finish {b}
 
 Here's the smallest program you can write:
@@ -112,9 +120,9 @@ Before moving on: there's a classic source of confusion worth clearing up here, 
 
 | Concept | What it is | Example |
 |---|---|---|
-| **Project** (`.csproj`) | Build instructions: what to compile, what to reference | `Shop.Api.csproj` |
-| **Assembly** | The compiled *output* of one project — one file | `Shop.Api.dll` |
-| **Namespace** | A naming scope *inside* your code, with no file-system meaning | `Shop.Api.Orders` |
+| **Project** (`.csproj`) | Build instructions: what to compile, what to reference | `Kettle.Api.csproj` |
+| **Assembly** | The compiled *output* of one project — one file | `Kettle.Api.dll` |
+| **Namespace** | A naming scope *inside* your code, with no file-system meaning | `Kettle.Api.Orders` |
 
 These three sound like they should line up one-to-one, and they just don't. One assembly can quite happily contain many namespaces. One namespace — `System.Collections.Generic` is a good example — can be spread across several different assemblies. A namespace is purely about keeping names from colliding in your *code*; it has nothing whatsoever to say about how that code gets packaged or shipped.
 
@@ -266,7 +274,7 @@ One last practical layer: a running .NET app isn't really just "the assembly" on
 - **Roll-forward** decides what happens when the *exact* version your app was built for isn't installed on the machine. By default, an app built for `8.0.x` happily runs on whatever the latest installed `8.0` *patch* release is — it rolls forward automatically to pick up fixes, no questions asked. Rolling forward across a *major* version — say, from 8 to 9 — is a different story: it's off by default, and has to be explicitly opted into with `<RollForward>Major</RollForward>`, precisely because major versions are allowed to carry breaking changes that a patch release never would.
 
 ```json
-// Shop.Api.runtimeconfig.json (generated)
+// Kettle.Api.runtimeconfig.json (generated)
 {
   "runtimeOptions": {
     "tfm": "net10.0",
@@ -303,6 +311,10 @@ The JIT knows no subclass can ever override its virtual methods, so it can devir
 :::qa What is the difference between an assembly and a namespace?
 An assembly is a compiled deployment unit — one physical .dll file. A namespace is a purely logical naming scope inside your code, with no connection to files or packaging. They're independent: one assembly can contain many namespaces, and a single namespace can span several different assemblies.
 :::
+
+## Next episode {b}
+
+Kettle needs other people's libraries, and a repeatable build. [Episode 3 · Projects and packages →](ch:projects-sdk-nuget)
 
 ## Further reading
 

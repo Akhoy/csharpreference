@@ -19,6 +19,14 @@ next: microservices, messaging-events
 - A **rich** model (behaviour and data together, like `order.Cancel(...)`) stops rules being bypassed; an **anemic** model (plain data + a separate service with the rules) doesn't.
 - Skip the tactical patterns for simple CRUD — they're worth their cost only in a domain that's genuinely complex and core to the business.
 
+## Previously at Kettle {b}
+
+Kettle's catalogue team and warehouse team keep breaking each other's code, because "Product" means something different to each.
+
+**The problem:** "Product" means one thing to the catalogue team and another to the warehouse.
+
+**This episode:** bounded contexts, aggregates, value objects and domain events.
+
 ## The problem DDD exists to solve {i}
 
 **Domain-Driven Design** (Eric Evans, 2003) starts from a specific, honest observation about hard software: in genuinely complex business domains — insurance, logistics, banking, healthcare, e-commerce at scale — the hardest problem usually isn't a technical one at all. It's **understanding and correctly encoding the business itself**. When the rules governing that business get scattered across controllers, services and raw SQL, they inevitably get duplicated, start quietly contradicting each other, and eventually become something nobody can change with confidence anymore.
@@ -328,6 +336,10 @@ A translation layer (adapters and mappers) between your bounded context and an e
 :::qa When would you not use DDD?
 For simple CRUD or supporting subdomains with little business logic, small short-lived apps, or when domain experts aren't available. Strategic ideas (bounded contexts, shared language) are still useful, but tactical patterns would add ceremony without benefit.
 :::
+
+## Next episode {b}
+
+Three teams keep blocking each other's releases. [Episode 6 · One app or many? →](ch:microservices)
 
 ## Further reading
 

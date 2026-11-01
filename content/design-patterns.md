@@ -18,6 +18,14 @@ next: app-architectures, cqrs-mediator-result
 - The most common ones in everyday ASP.NET Core code: Chain of Responsibility (middleware), Factory (`IHttpClientFactory`), Decorator (`DelegatingHandler`), Strategy (keyed DI services), Builder (`WebApplicationBuilder`).
 - Bigger, architecture-scale patterns (Repository, CQRS, Outbox) live in their own chapters, not here.
 
+## Previously at Kettle {b}
+
+Kettle's classes are smaller and focused. The same design problems keep coming back, though: swappable pricing rules, caching around a slow service, objects with a lifecycle.
+
+**The problem:** The same design problems keep coming back in slightly different shapes.
+
+**This episode:** the patterns that matter in .NET, and when not to use each.
+
 ## What patterns are, and why recognising them is worth the effort {b}
 
 A **design pattern** is a reusable, named solution to a recurring design problem. The value of learning the name isn't abstract — it's that once you recognise "this is Decorator" or "this is Chain of Responsibility," you can predict how a piece of unfamiliar framework code behaves without reading its implementation line by line. The 1994 "Gang of Four" (GoF) book *Design Patterns* catalogued 23 of them in three groups:
@@ -162,7 +170,7 @@ public sealed class StripePaymentAdapter(PaymentIntentService stripe) : IPayment
 ```csharp
 public interface IProductRepository { Task<Product?> GetAsync(int id, CancellationToken ct); }
 
-public sealed class SqlProductRepository(ShopDb db) : IProductRepository
+public sealed class SqlProductRepository(KettleDb db) : IProductRepository
 {
     public Task<Product?> GetAsync(int id, CancellationToken ct) => db.Products.FindAsync([id], ct).AsTask();
 }
@@ -437,6 +445,10 @@ A command is a request to do something, addressed to one handler, named in the i
 :::qa When is the Builder pattern useful?
 When constructing an object requires many optional parts or steps, when you want a readable fluent API and validation at Build(), or when the result should be immutable. Examples: WebApplicationBuilder, StringBuilder, test data builders.
 :::
+
+## Next episode {b}
+
+Kettle's project is a tangle: controllers call SQL, and SQL formats emails. [Episode 3 · Organising the codebase →](ch:app-architectures)
 
 ## Further reading
 

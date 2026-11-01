@@ -17,6 +17,14 @@ prereqs: big-picture
 - Use the **self-assessment checklist** to know what "Beginner/Intermediate/Advanced" actually means for each topic.
 - Answer interview questions with a structure: **definition → why it exists → how it works → trade-offs → your own experience.**
 
+## Previously at Kettle {b}
+
+You've seen every part of Kettle's story once. The last step is making it stick.
+
+**The problem:** You've seen every topic once. Now make it stick.
+
+**This episode:** how to study, an eight-week plan, a practice project and a self-assessment.
+
 ## How to study (so it sticks) {b}
 
 Reading isn't learning, and it's worth being honest with yourself about why: recognising an explanation when you reread it feels like understanding, but it tests recognition, not recall — the exact skill an interview actually demands. These techniques are backed by learning research and work especially well for interview preparation:
@@ -187,6 +195,10 @@ Drill the question bank daily in mixed mode, answering out loud before revealing
 :::qa How do you answer a question you don't fully know?
 Be honest about the gap, connect it to what you do know, and reason from first principles out loud, e.g. "I haven't used X directly, but it's a partitioned log like Kafka, so I'd expect ordering per partition and consumers tracking offsets." Interviewers value structured reasoning and honesty over bluffing.
 :::
+
+## Next episode {b}
+
+That's the end of Kettle's story. Everything an interviewer can ask about lives somewhere on this road.
 
 ## Further reading
 

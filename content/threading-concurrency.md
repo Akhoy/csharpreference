@@ -19,6 +19,14 @@ next: performance-engineering, background-work
 - The BCL ships thread-safe collections (`ConcurrentDictionary`, `Channel<T>`, immutable snapshots) specifically so you don't have to hand-roll locking for common patterns like caches and producer/consumer queues.
 - The one rule that matters most in ASP.NET Core: **every singleton must be thread-safe**, because it's the one instance every concurrent request shares.
 
+## Previously at Kettle {b}
+
+Kettle's memory is under control. Then the dashboard reports 994 orders for a day that had 1,000.
+
+**The problem:** 1,000 orders were placed. The counter says 994.
+
+**This episode:** race conditions, Interlocked, locks, deadlocks, concurrent collections and Channels.
+
 ## Three words people mix up constantly {b}
 
 Before anything else, let's pin down three words that sound almost interchangeable and genuinely aren't — because half the confusion in this topic comes from people using them loosely.
@@ -329,6 +337,10 @@ Parallel.ForEachAsync for processing a (possibly large) collection with a bounde
 :::qa What are Channels used for?
 In-process asynchronous producer/consumer queues (System.Threading.Channels), with bounded capacity for backpressure, completion signalling, and async reading via ReadAllAsync. They're used for background work queues and pipelines between hosted services and request handlers.
 :::
+
+## Next episode {b}
+
+Someone rewrote a loop with Span. The page is still slow. [Episode 3 · Measure, don't guess →](ch:performance-engineering)
 
 ## Further reading
 

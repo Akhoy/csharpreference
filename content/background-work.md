@@ -18,6 +18,14 @@ next: messaging-events, azure-compute
 - For work that must survive a crash, retry automatically, or run once across several replicas, use a durable store: a job library (Hangfire, Quartz.NET) or a message broker.
 - A **Worker Service** is the same host with background services but no web server — good for deploying queue consumers and schedulers separately from the API.
 
+## Previously at Kettle {b}
+
+The API is fast and protected. Then marketing adds confirmation emails, and checkout gets three seconds slower.
+
+**The problem:** Sending the confirmation email makes checkout 3 seconds slower.
+
+**This episode:** hosted services, queues with Channels, and scheduled jobs that run once across replicas.
+
 ## Work that shouldn't make a request wait {b}
 
 A request should return quickly — that's a constraint, not a preference, because something's actually waiting on the other end of it. But not every piece of work an app needs to do fits inside that window, and some of it isn't triggered by a request at all:
@@ -103,9 +111,9 @@ builder.Services.Configure<HostOptions>(o =>
 Everything above assumed a web app that *also* runs background work alongside its HTTP server. A **Worker Service** flips that: it's the same Generic Host, with background services, but **no web server at all** — the natural shape for queue consumers, schedulers, and integration processes you want to deploy and scale completely separately from the API:
 
 ```csharp
-// dotnet new worker -n Shop.Worker
+// dotnet new worker -n Kettle.Worker
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddDbContext<ShopDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Shop")));
+builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Kettle")));
 builder.Services.AddHostedService<OrderEventsConsumer>();
 builder.Services.AddHostedService<OutboxPublisher>();
 builder.Build().Run();
@@ -114,7 +122,7 @@ builder.Build().Run();
 It gets exactly the same configuration, logging, DI and graceful shutdown as a web app — none of that plumbing is actually specific to having a web server — and runs as a container, a Windows Service (`UseWindowsService()`), or a systemd unit (`UseSystemd()`).
 
 :::fits API + worker
-A common deployable split: **Shop.Api** (handles HTTP, writes to the DB and an **outbox** — a table that stores events to publish, written in the same database transaction as the business change so the two can't disagree; see [Messaging & events](ch:messaging-events)) and **Shop.Worker** (consumes queues, publishes the outbox, runs schedules). Both reference the same Application/Domain/Infrastructure projects. They scale independently, and a slow job never steals threads from HTTP requests.
+A common deployable split: **Kettle.Api** (handles HTTP, writes to the DB and an **outbox** — a table that stores events to publish, written in the same database transaction as the business change so the two can't disagree; see [Messaging & events](ch:messaging-events)) and **Kettle.Worker** (consumes queues, publishes the outbox, runs schedules). Both reference the same Application/Domain/Infrastructure projects. They scale independently, and a slow job never steals threads from HTTP requests.
 :::
 
 ## In-memory queues with Channel<T>: handing work off within one process {i}
@@ -251,6 +259,10 @@ Use a distributed lock or lease (SQL app lock, Redis, Blob lease), a job schedul
 :::qa Why is fire-and-forget (Task.Run without await) in a controller a bad idea?
 The work isn't tracked by the host (lost on shutdown), exceptions go unobserved, and it often uses request-scoped services (DbContext, HttpContext) that are disposed when the request ends. Use a queue plus a hosted service or a durable job system.
 :::
+
+## Next episode {b}
+
+A mobile client retries POST /orders after a timeout. The customer is charged twice. [Episode 12 · An API people can trust →](ch:api-design)
 
 ## Further reading
 

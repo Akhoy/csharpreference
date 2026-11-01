@@ -18,6 +18,14 @@ next: study-plan-resources
 - Practice the three worked designs here (URL shortener, checkout, notifications) — each reuses patterns from earlier chapters: outbox, idempotency, sagas, bulkheads.
 - Always name the **trade-off**, not just the choice: "I'd use X because Y; the cost is Z."
 
+## Previously at Kettle {b}
+
+You've built Kettle, end to end. Now an interviewer asks you to design a checkout for ten million users, in 45 minutes.
+
+**The problem:** "Design a checkout for 10 million users." 45 minutes. Go.
+
+**This episode:** a repeatable framework, estimates, building blocks and worked designs.
+
 ## What interviewers are looking for {i}
 
 A system design interview isn't about the "right" answer. It tests whether you can:
@@ -255,6 +263,10 @@ Clarify per-user/IP/API-key limits and the algorithm (token bucket for bursts, s
 :::qa How do you scale a read-heavy API?
 Make the service stateless and scale out; add caching layers (CDN/output cache for public responses, HybridCache/Redis for data); use read replicas or CQRS read models; optimise queries and indexes; paginate and project; and move expensive work to async background processing.
 :::
+
+## Next episode {b}
+
+You've seen every topic once. Now make it stick. [Episode 2 · What's next →](ch:study-plan-resources)
 
 ## Further reading
 

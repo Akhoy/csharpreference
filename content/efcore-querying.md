@@ -19,6 +19,14 @@ next: efcore-advanced, caching-ratelimit-cors
 - Including multiple collections in one query can multiply rows instead of adding them (cartesian explosion); `AsSplitQuery()` trades that for extra round trips.
 - EF Core refuses to silently run C# it can't translate to SQL — write translatable expressions, or filter in memory explicitly, after a server-side filter has already cut the data down.
 
+## Previously at Kettle {b}
+
+EF Core does the busywork. Then the order list page goes slow, and the SQL log shows it sending 101 queries.
+
+**The problem:** The order list page sends 101 SQL queries.
+
+**This episode:** how LINQ becomes SQL, the N+1 problem, projections, AsNoTracking and split queries.
+
 ## From LINQ to SQL, and the one moment it actually runs {b}
 
 ```csharp
@@ -48,7 +56,7 @@ Here's the detail worth holding onto for the rest of this chapter: nothing above
 
 ```csharp
 // 1. Log SQL (development)
-builder.Services.AddDbContext<ShopDb>(o => o.UseSqlServer(cs)
+builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(cs)
     .LogTo(Console.WriteLine, LogLevel.Information)
     .EnableSensitiveDataLogging()          // shows parameter values: DEV ONLY
     .EnableDetailedErrors());
@@ -232,8 +240,8 @@ Use the async operators (`ToListAsync`, `SaveChangesAsync`…) in web apps and p
 | **Caching** | For hot, rarely changing reads ([Caching](ch:caching-ratelimit-cors)) |
 
 ```csharp
-private static readonly Func<ShopDb, int, CancellationToken, Task<ProductDto?>> GetProductById =
-    EF.CompileAsyncQuery((ShopDb db, int id, CancellationToken ct) =>
+private static readonly Func<KettleDb, int, CancellationToken, Task<ProductDto?>> GetProductById =
+    EF.CompileAsyncQuery((KettleDb db, int id, CancellationToken ct) =>
         db.Products.Where(p => p.Id == id).Select(p => new ProductDto(p.Id, p.Name, p.Price)).FirstOrDefault());
 
 var p = await GetProductById(db, 42, ct);
@@ -286,6 +294,10 @@ Use FromSql / SqlQuery / ExecuteSql with interpolated strings: they take Formatt
 Project into a DTO with only the needed columns, use no-tracking, make sure a supporting index exists (check the plan), consider a compiled query and DbContext pooling, cache the result if staleness is acceptable, and use keyset pagination for large lists.
 :::
 
+## Next episode {b}
+
+Two staff members edit the same order. The second save silently wins. [Episode 5 · Two people, one order →](ch:efcore-advanced)
+
 ## Further reading
 
 - [Efficient querying](https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying)
@@ -305,9 +317,9 @@ using Microsoft.EntityFrameworkCore;
 var connString = "DataSource=file:verifydb?mode=memory&cache=shared";
 await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(connString);
 await conn.OpenAsync();
-var opts = new DbContextOptionsBuilder<ShopDb>().UseSqlite(conn).Options;
+var opts = new DbContextOptionsBuilder<KettleDb>().UseSqlite(conn).Options;
 
-await using (var seed = new ShopDb(opts))
+await using (var seed = new KettleDb(opts))
 {
     await seed.Database.EnsureCreatedAsync();
     var c = new Customer { Name = "Ada" };
@@ -320,7 +332,7 @@ await using (var seed = new ShopDb(opts))
 }
 
 // Claim: AsNoTracking() returned entities are not tracked (ChangeTracker has zero entries).
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var orders = await db.Orders.AsNoTracking().ToListAsync();
     if (db.ChangeTracker.Entries().Any()) throw new Exception("FAIL: AsNoTracking still tracked entities");
@@ -328,7 +340,7 @@ await using (var db = new ShopDb(opts))
 }
 
 // Claim: projecting with Select avoids tracking too, even without AsNoTracking.
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var dtos = await db.Orders.Select(o => new { o.Id, o.Total }).ToListAsync();
     if (db.ChangeTracker.Entries().Any()) throw new Exception("FAIL: projection was tracked");
@@ -338,7 +350,7 @@ await using (var db = new ShopDb(opts))
 // Claim: a query is not executed until a terminating operator runs (deferred execution).
 // Proof: build the query, THEN add a new row, THEN run it — if building ran the query early,
 // the new row would be missing from the result.
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var query = db.Orders.Where(o => o.Total > 0); // just builds the query, no SQL yet
 
@@ -354,7 +366,7 @@ await using (var db = new ShopDb(opts))
 }
 
 // Claim: N+1's fix — batching with Contains issues one query and returns all matching rows.
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var ids = await db.Orders.Select(o => o.Id).ToListAsync();
     var totalsBatched = await db.Orders.Where(o => ids.Contains(o.Id))
@@ -368,9 +380,9 @@ Console.WriteLine("All checks passed.");
 // --- Minimal model, matching the chapter's examples ---
 class Customer { public int Id { get; set; } public string Name { get; set; } = ""; public List<Order> Orders { get; set; } = new(); }
 class Order { public int Id { get; set; } public int CustomerId { get; set; } public Customer Customer { get; set; } = null!; public decimal Total { get; set; } }
-class ShopDb : DbContext
+class KettleDb : DbContext
 {
-    public ShopDb(DbContextOptions<ShopDb> options) : base(options) { }
+    public KettleDb(DbContextOptions<KettleDb> options) : base(options) { }
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
 }

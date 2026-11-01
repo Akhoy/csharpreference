@@ -19,6 +19,14 @@ next: observability-aspire, messaging-events
 - `Microsoft.Extensions.Http.Resilience`'s `.AddStandardResilienceHandler()` gives you timeout + retry + circuit breaker for HttpClient calls with one line.
 - **Liveness** checks "is the process alive?"; **readiness** checks "can it serve traffic right now?" — don't confuse the two, or a dependency blip restarts your whole fleet.
 
+## Previously at Kettle {b}
+
+Kettle's services talk through a broker. Its calls to the payment provider are still direct, and a two-second blip there turns into ten minutes of errors.
+
+**The problem:** The payment provider blips for 2 seconds, and Kettle shows errors for 10 minutes.
+
+**This episode:** retries with backoff and jitter, circuit breakers, timeouts and health checks.
+
 ## Everything fails {b}
 
 In the cloud, failure is **normal**: instances restart during deployments, networks blip, load balancers move connections, databases fail over, dependencies throttle you (429), and noisy neighbours cause latency spikes. A resilient system **expects** these and keeps working, perhaps degraded, instead of turning a 2-second blip into an outage.
@@ -239,6 +247,10 @@ Isolating resources (connection pools, thread or concurrency limits, separate in
 :::qa Liveness vs readiness health checks?
 Liveness tells the orchestrator whether the process is healthy or must be restarted, and should not depend on external services. Readiness tells the load balancer whether the instance can currently serve traffic (dependencies reachable, warmed up); failing readiness removes it from rotation without restarting it.
 :::
+
+## Next episode {b}
+
+"Checkout is slow." Which of the five services is it? [Episode 3 · See inside →](ch:observability-aspire)
 
 ## Further reading
 
