@@ -7,7 +7,7 @@ where: C# language › Types › Value vs reference
 fits: This is the foundation of layer 1. Every later chapter assumes you know whether assignment copies or shares. It also reaches down into layer 2, because the choice decides how much work the garbage collector ([Memory & GC](ch:memory-gc)) has to do.
 levels: b,i,a
 prereqs: csharp-story
-next: oop, generics, memory-gc
+next: everyday-types, oop, generics, memory-gc
 ---
 
 ## The 30-second version

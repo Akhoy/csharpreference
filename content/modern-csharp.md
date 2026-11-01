@@ -646,6 +646,102 @@ A **static lambda** follows the same rule as a static method: no `this`, and no 
 | 13 | 9 | `params` collections, `Lock`, partial properties |
 | 14 | 10 | **extension members**, **`field`** keyword, `a?.B = x` |
 
+## C# 13 in depth (.NET 9, November 2024) {a}
+
+:::plain
+C# 13 is mostly about performance and library authors: fewer hidden allocations, a better lock, and more room for source generators. Here's each feature with the problem it solves.
+:::
+
+**`params` collections.** Until C# 12, `params` meant an array: every call to `Log("a", "b")` allocated a `string[]`. Now `params` can be any collection type, including `ReadOnlySpan<T>`, and with a span the compiler puts the arguments on the stack:
+
+```csharp norun
+static void Log(params ReadOnlySpan<string> parts) { foreach (var p in parts) Console.Write(p); }
+Log("order ", "42", " shipped");   // no array allocated
+```
+
+If a method has both an array and a span overload, the span one wins. That's how `string.Join`, `Path.Combine` and `Task.WhenAll` stopped allocating in .NET 9 without anyone changing their calling code.
+
+**The `Lock` type.** `lock (obj)` used to lock on any object, through the `Monitor` class. .NET 9 adds `System.Threading.Lock`, a type that exists only to be locked. When the compiler sees `lock` on a `Lock`, it uses the faster dedicated API (`EnterScope`) instead of `Monitor`:
+
+```csharp norun
+private readonly Lock _gate = new();
+public void Add(Order o) { lock (_gate) { _orders.Add(o); } }
+```
+
+It's faster, and it says plainly what the field is for. One trap: converting a `Lock` to `object` (for example, passing it to an old helper that calls `lock (object)`) silently falls back to `Monitor` locking, and the compiler warns you.
+
+**Ref structs grow up.** Covered in [Advanced C#](ch:advanced-csharp#why-span-has-strict-rules-ref-structs): ref structs can implement interfaces, generics can accept them with `where T : allows ref struct`, and async methods and iterators may use `ref` locals and ref struct locals that don't cross an `await` or `yield`.
+
+**Partial properties and indexers.** A property can now be declared in one part of a `partial` class and implemented in another. That lets source generators implement your property declarations, the way they already implemented partial methods ([generators in depth](ch:advanced-csharp#generators-in-depth)).
+
+**`[OverloadResolutionPriority]`.** Lets a library mark a new, better overload as preferred, even where the compiler would otherwise call it ambiguous or pick the old one. It exists so the base library could add span overloads without breaking existing code.
+
+**Smaller additions:** the `\e` escape sequence for the ESC character, `^1` (index from the end) inside object initialisers, and better inference of a method group's delegate type.
+
+## C# 14 in depth (.NET 10, November 2025) {a}
+
+:::plain
+C# 14 fills gaps that people had worked around for years: extension properties, a way to customise an auto-property without writing the field, and `?.` on the left of an assignment.
+:::
+
+**Extension members.** Extension methods have existed since C# 3, but there were no extension *properties*, and no extension *static* members. The new `extension` block declares the receiver once and then holds any number of members:
+
+```csharp norun
+public static class OrderExtensions
+{
+    extension(Order order)                       // members for an Order instance
+    {
+        public bool IsBig => order.Total > 1_000m;
+        public decimal TotalWithVat(decimal rate) => order.Total * (1 + rate);
+    }
+
+    extension(Order)                             // static members, called as Order.Empty
+    {
+        public static Order Empty => new(0, []);
+    }
+}
+
+if (order.IsBig) { … }
+var none = Order.Empty;
+```
+
+Existing `this`-parameter extension methods keep working, and the two styles mix freely.
+
+**The `field` keyword.** An auto-property (`{ get; set; }`) has a hidden backing field. Before, adding even one line of logic, such as trimming a name, meant giving up the auto-property and declaring the field yourself. Now `field` refers to that hidden field:
+
+```csharp norun
+public string Name
+{
+    get;
+    set => field = value?.Trim() ?? throw new ArgumentNullException(nameof(value));
+}
+```
+
+If your class already has a member called `field`, write `@field` or `this.field` to refer to it.
+
+**Null-conditional assignment.** `?.` used to work only for reading. Now it works on the left side of `=` and compound assignments, and the assignment happens only if the target isn't null:
+
+```csharp norun
+customer?.LastOrder = order;      // does nothing when customer is null
+basket?.Total += price;
+```
+
+The right-hand side isn't evaluated at all when the target is null, so `customer?.LastOrder = CreateOrder()` doesn't create the order.
+
+**First-class span conversions.** Arrays convert implicitly to `Span<T>` and `ReadOnlySpan<T>` in more places, including as the receiver of an extension method and during generic type inference. So span-based extension methods "just work" on arrays.
+
+**`nameof` with unbound generics.** `nameof(List<>)` now compiles and gives `"List"`. Before, you had to write a type argument you didn't care about.
+
+**Modifiers on simple lambda parameters.** `(text, out result) => int.TryParse(text, out result)` no longer needs the parameter types spelled out just because one parameter has `out`, `ref` or `scoped`.
+
+**Partial constructors and events**, completing the set that C# 13's partial properties started, so generators can implement them too.
+
+**User-defined compound assignment.** A type can now define `+=` itself, instead of the compiler always rewriting `a += b` as `a = a + b`. For large mutable types, such as a matrix or a big-number buffer, this updates in place instead of creating a new value.
+
+:::qa What would you highlight from C# 13 and 14 for a backend codebase?
+`params ReadOnlySpan<T>` and the `Lock` type, for fewer allocations and clearer, faster locking. Extension members, for extension properties in domain helpers. The `field` keyword, which removes boilerplate backing fields when a property needs validation. Null-conditional assignment. And, for library and generator authors, partial properties and constructors and `allows ref struct`.
+:::
+
 ## Next episode {b}
 
 Kettle's code is now safer and shorter, and Kettle is a real business: a warehouse, a nightly supplier feed, a finance team. The finale is one long night. At 01:00 the supplier's 2-million-row price file arrives, and `line.Split(',')` creates **ten million throwaway strings** that bury the garbage collector. By the next afternoon, six more problems hit limits that normal C# can't get past. Millions of struct copies. A printer that only speaks C. An audit rule people keep forgetting. A slow serverless cold start. And a report builder that must stay safe from SQL injection. [Episode 10 · Advanced C# →](ch:advanced-csharp)
