@@ -19,7 +19,19 @@ next: system-design, azure-identity-secrets
 - Scopes/roles say what the *client or app* is allowed to do in general; they don't prove this specific user may see this specific record — you still need resource-based authorization on top.
 - For SPAs, the safest pattern is a **Backend-for-Frontend (BFF)**: a server-side component holds the real tokens and gives the browser only an HttpOnly cookie, so XSS can't steal a bearer token directly.
 
+## Previously at Kettle {b}
+
+Kettle's holes are closed. It still stores passwords itself, though, and the mobile app and a partner both need to sign in.
+
+**The problem:** Kettle shouldn't store passwords at all. Let an identity provider do it.
+
+**This episode:** OAuth 2.0, OpenID Connect, PKCE, token validation and the BFF pattern.
+
 ## The problem OAuth solves {i}
+
+:::plain
+OAuth lets an app act for a user with a limited, revocable token, without ever seeing the user's password. OpenID Connect adds a standard way to learn who signed in.
+:::
 
 Before OAuth, if a printing app wanted your photos from a photo site, you gave it your **photo-site password**. The app then had full access to everything, forever, and the only way to revoke it was to change your password — a crude, all-or-nothing arrangement with no way to grant anything less than complete access.
 
@@ -33,6 +45,10 @@ An OAuth **access token** says "the bearer may call this API with these scopes".
 
 ## Roles {i}
 
+:::plain
+Four parties take part: the user, the app asking for access, the identity provider that issues tokens, and the API that accepts them.
+:::
+
 | Role | Who | Example |
 |---|---|---|
 | **Resource owner** | The user who owns the data | Ana |
@@ -44,6 +60,10 @@ An OAuth **access token** says "the bearer may call this API with these scopes".
 
 ## Tokens {i}
 
+:::plain
+An access token is for calling APIs, an ID token tells the app who signed in, and a refresh token gets new access tokens without asking the user again.
+:::
+
 | Token | For | Format | Lifetime | Notes |
 |---|---|---|---|---|
 | **Access token** | The **API** (resource server) | Often a **JWT**; can be opaque | Short: 5–60 min | Contains `aud` (which API), `scp`/`roles`, `sub`, `exp`. Sent as `Authorization: Bearer …` |
@@ -53,6 +73,10 @@ An OAuth **access token** says "the bearer may call this API with these scopes".
 
 ## Authorization code flow with PKCE, step by step {i}
 
+:::plain
+The app sends the user to the identity provider, gets back a one-time code, and swaps it, together with a secret only it knows, for tokens.
+:::
+
 The **recommended flow for any app with a user**: web apps, SPAs (via a BFF ideally), mobile and desktop. **PKCE** (Proof Key for Code Exchange, RFC 7636) is now required for all clients in OAuth 2.1 and current best practice.
 
 ```text
@@ -61,7 +85,7 @@ The **recommended flow for any app with a user**: web apps, SPAs (via a BFF idea
      │ ─────────────────────────▶│ 2. create code_verifier (random),      │                               │
      │                           │    code_challenge = BASE64URL(SHA256(verifier)), state, nonce          │
      │ ◀── 3. redirect to /authorize?response_type=code&client_id=…&redirect_uri=…&scope=openid profile   │
-     │        api://shop/orders.read offline_access&code_challenge=…&code_challenge_method=S256&state=…   │
+     │      api://kettle/orders.read offline_access&code_challenge=…&code_challenge_method=S256&state=…   │
      │ ─────────────────────────────────────────────────────────────────▶│ 4. user logs in (MFA), consents │
      │ ◀──────────────────────────── 5. redirect to redirect_uri?code=AUTH_CODE&state=… ──────────────────│
      │ ─────────────────────────▶│ 6. verify state; POST /token                                          │
@@ -97,18 +121,22 @@ builder.Services.AddAuthentication(o =>
         o.ResponseType = "code";                                         // authorization code flow
         o.UsePkce = true;                                                // default true
         o.SaveTokens = true;                                             // keep access/refresh tokens in the auth session
-        o.Scope.Add("api://shop-api/orders.read");
+        o.Scope.Add("api://kettle-api/orders.read");
         o.Scope.Add("offline_access");                                   // ask for a refresh token
         o.MapInboundClaims = false;
         o.TokenValidationParameters.NameClaimType = "name";
     });
 // For Entra ID specifically: builder.Services.AddMicrosoftIdentityWebAppAuthentication(builder.Configuration)
-//   .EnableTokenAcquisitionToCallDownstreamApi(["api://shop-api/orders.read"]).AddInMemoryTokenCaches();
+// .EnableTokenAcquisitionToCallDownstreamApi(["api://kettle-api/orders.read"]).AddInMemoryTokenCaches();
 ```
 
 Notice this registers **both** a cookie scheme and an OIDC scheme, with the cookie as the default: once the OIDC flow completes, the app doesn't repeat the full redirect dance on every request — it issues its own cookie and relies on that, re-engaging OIDC only when the session needs to be re-established.
 
 ## Client credentials flow {i}
+
+:::plain
+When a service calls another service on its own behalf, with no user involved, it gets a token using its own identity.
+:::
 
 **Service-to-service**, no user involved: a background worker, a daemon, or one microservice calling another **as itself**.
 
@@ -129,6 +157,10 @@ var token = await credential.GetTokenAsync(new TokenRequestContext(["api://inven
 ```
 
 ## Refresh tokens {i}
+
+:::plain
+Access tokens expire quickly to limit damage if stolen. A refresh token quietly gets new ones, and is replaced each time it's used.
+:::
 
 Access tokens are short-lived because they can't be revoked once issued (a JWT is valid until `exp`) — exactly the tradeoff [Auth](ch:auth#jwt-bearer-authentication-traced-claim-by-claim) named when it explained why access-token lifetimes stay short. Refresh tokens give a good user experience without long-lived access tokens:
 
@@ -180,7 +212,7 @@ OIDC standardises:
 |---|---|---|---|
 | **Scope** (delegated permission) | What the **client** may do **on the user's behalf**; the user consented | `scp` (Entra) / `scope` | `orders.read`, `orders.write` |
 | **App role** | A role assigned to a user/group **or an application** | `roles` | `Orders.Admin` (user), `Inventory.Read` (app) |
-| **Audience** | Which API the token is for | `aud` | `api://shop-api` |
+| **Audience** | Which API the token is for | `aud` | `api://kettle-api` |
 
 The **effective permission** for delegated access is the **intersection** of what the app was granted (scopes) and what the user is allowed to do (roles or your own data rules). An API must check **both** the token's scopes or roles **and** resource-level authorization ("is this the user's order?"). Scopes alone don't prevent IDOR — a token scoped to `orders.read` proves the client is allowed to read *some* orders, not that this particular user is allowed to read *this specific* order, exactly the gap [Web security](ch:web-security#broken-access-control-and-idor) warned against closing with scope checks alone.
 
@@ -222,7 +254,7 @@ SPAs are **public clients running in a hostile environment** (any XSS can read t
 | **Backend-for-Frontend (BFF)** | A thin server-side ASP.NET Core app (often with YARP) performs OIDC as a **confidential client**, keeps tokens **server-side**, and gives the browser only an **HttpOnly, Secure, SameSite** session cookie; it proxies API calls and attaches access tokens | **Recommended** by the IETF "OAuth 2.0 for Browser-Based Apps" guidance; needs CSRF protection (SameSite + antiforgery/custom header) |
 
 ```text
-Browser (SPA) ──cookie──▶ BFF (ASP.NET Core + YARP, holds tokens) ──Bearer token──▶ Shop API
+Browser (SPA) ──cookie──▶ BFF (ASP.NET Core + YARP, holds tokens) ──Bearer token──▶ Kettle API
                            └─ OIDC code flow + PKCE with Entra ID (confidential client)
 ```
 
@@ -290,6 +322,10 @@ Preferably via the Backend-for-Frontend pattern: a server-side component perform
 :::qa What is the On-Behalf-Of flow?
 A middle-tier API that received a user's access token exchanges it at the authorization server for a new access token for a downstream API, so the downstream call carries the user's identity and delegated permissions (Entra ID OBO, or RFC 8693 token exchange).
 :::
+
+## Next episode {b}
+
+By the end of Part XII, Kettle has been built, scaled, operated and secured. Part XIII is about telling that story well in an interview. [Part XIII · Telling Kettle's Story →](ch:interview-story)
 
 ## Further reading
 
@@ -363,7 +399,7 @@ bool VerifyJwtSignature(string jwt, byte[] secret)
 
 byte[] signingKey = RandomNumberGenerator.GetBytes(32);
 long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-string goodToken = MakeJwt(new { aud = "api://shop-api", exp = now + 300, sub = "user-123" }, signingKey);
+string goodToken = MakeJwt(new { aud = "api://kettle-api", exp = now + 300, sub = "user-123" }, signingKey);
 Check("a JWT signed with the issuer's key validates against that same key", VerifyJwtSignature(goodToken, signingKey));
 
 byte[] attackerKey = RandomNumberGenerator.GetBytes(32);
@@ -373,7 +409,7 @@ Check("the same JWT fails validation against a DIFFERENT key (an attacker can't 
 // Tamper with the payload (classic "none"/forged-claim attack) -- the
 // signature no longer matches because it was computed over the original body.
 var parts = goodToken.Split('.');
-string tamperedPayload = Base64Url(Encoding.UTF8.GetBytes("""{"aud":"api://shop-api","exp":9999999999,"sub":"admin"}"""));
+string tamperedPayload = Base64Url(Encoding.UTF8.GetBytes("""{"aud":"api://kettle-api","exp":9999999999,"sub":"admin"}"""));
 string tamperedToken = $"{parts[0]}.{tamperedPayload}.{parts[2]}";
 Check("changing the payload after signing invalidates the signature", !VerifyJwtSignature(tamperedToken, signingKey));
 
@@ -385,12 +421,12 @@ bool ValidateAudienceAndExpiry(JsonElement claims, string expectedAudience) =>
 
 var originalClaims = JsonSerializer.Deserialize<JsonElement>(Base64UrlDecode(parts[1]));
 Check("a token with the expected audience and a future exp passes validation",
-    ValidateAudienceAndExpiry(originalClaims, "api://shop-api"));
+    ValidateAudienceAndExpiry(originalClaims, "api://kettle-api"));
 Check("a token for a DIFFERENT audience fails validation (prevents the confused-deputy problem)",
     !ValidateAudienceAndExpiry(originalClaims, "api://inventory-api"));
 
-var expiredClaims = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new { aud = "api://shop-api", exp = now - 10 }));
-Check("an expired token (exp in the past) fails validation", !ValidateAudienceAndExpiry(expiredClaims, "api://shop-api"));
+var expiredClaims = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new { aud = "api://kettle-api", exp = now - 10 }));
+Check("an expired token (exp in the past) fails validation", !ValidateAudienceAndExpiry(expiredClaims, "api://kettle-api"));
 
 // 4. Scope/role authorization: the effective permission is the intersection
 // of what the client was granted (scopes) and what the user/app is allowed.
@@ -405,11 +441,11 @@ Check("an application token with the Orders.Reader role (no scopes) is authorize
 // misconfiguration lets an attacker register a URI like the real one plus
 // an extra path segment and redirect tokens/codes there instead.
 bool IsRegisteredRedirectUri(string requested, string[] registered) => registered.Contains(requested);
-string[] registeredUris = ["https://shop.example.com/signin-oidc"];
+string[] registeredUris = ["https://kettle.example.com/signin-oidc"];
 Check("the exact registered redirect URI is accepted",
-    IsRegisteredRedirectUri("https://shop.example.com/signin-oidc", registeredUris));
+    IsRegisteredRedirectUri("https://kettle.example.com/signin-oidc", registeredUris));
 Check("a redirect URI that merely STARTS WITH the registered one is rejected (exact match only)",
-    !IsRegisteredRedirectUri("https://shop.example.com/signin-oidc.attacker.com", registeredUris));
+    !IsRegisteredRedirectUri("https://kettle.example.com/signin-oidc.attacker.com", registeredUris));
 
 // Not runtime-verifiable here (needs a real authorization server, browser
 // redirects and user interaction): the full authorization code + PKCE

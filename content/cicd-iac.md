@@ -18,7 +18,19 @@ next: kubernetes, observability-aspire
 - Database schema changes during rolling/blue-green deploys need **expand → migrate → contract**: add the new shape first (compatibly), deploy code that works with both old and new, backfill, then remove the old shape in a *later* release — never in the same release that stops using it.
 - Infrastructure as Code (Bicep, Terraform) means infra lives in versioned, reviewed code instead of manual portal clicks — the same reproducibility argument as "define your app in code," now applied to the infra underneath it.
 
+## Previously at Kettle {b}
+
+Kettle's infrastructure is secure. Releases are still a monthly, manual, all-hands evening.
+
+**The problem:** Releases are a monthly, manual, all-hands evening.
+
+**This episode:** CI/CD pipelines, deployment strategies, database migrations in pipelines and infrastructure as code.
+
 ## CI, CD and CD {b}
+
+:::plain
+Continuous integration builds and tests every change automatically. Continuous delivery keeps every change ready to release. Continuous deployment releases each one automatically.
+:::
 
 | Practice | Definition | Gate |
 |---|---|---|
@@ -32,6 +44,10 @@ Small, frequent, automated releases are **less risky** than big, rare, manual on
 
 ## Branching strategies {b}
 
+:::plain
+Keep branches short-lived and merge to main often, hiding unfinished work behind feature flags, so integration problems surface while they're small.
+:::
+
 | Strategy | How | Fits |
 |---|---|---|
 | **Trunk-based development** | Short-lived branches (hours to a day) or direct commits to `main`; **feature flags** hide unfinished work | CI/CD, high-velocity teams (recommended by DORA research) |
@@ -42,6 +58,10 @@ Small, frequent, automated releases are **less risky** than big, rare, manual on
 PR hygiene: branch protection on `main` (required reviews, required status checks: build, tests, analyzers, security scans), small PRs, conventional commit messages, and automated dependency updates (Dependabot/Renovate).
 
 ## Anatomy of a .NET pipeline {i}
+
+:::plain
+A pipeline restores, builds, tests and scans the code, builds one image, then promotes that same image through each environment.
+:::
 
 ```text
  push/PR ─▶ CI ───────────────────────────────────────────────────────────▶  merge to main ─▶ CD ───────────────────────────────────────────▶
@@ -54,9 +74,13 @@ PR hygiene: branch protection on `main` (required reviews, required status check
 
 ## GitHub Actions: a complete example {i}
 
+:::plain
+GitHub Actions runs workflows written in YAML, triggered by pushes and pull requests, on hosted machines.
+:::
+
 ```yaml
-# .github/workflows/shop-api.yml
-name: shop-api
+# .github/workflows/kettle-api.yml
+name: kettle-api
 on:
   push:
     branches: [main]
@@ -69,7 +93,7 @@ permissions:
 
 env:
   DOTNET_VERSION: 10.0.x
-  IMAGE: shopacr.azurecr.io/shop-api
+  IMAGE: kettleacr.azurecr.io/kettle-api
 
 jobs:
   build-test:
@@ -102,7 +126,7 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - run: az acr login -n shopacr
+      - run: az acr login -n kettleacr
       - id: meta
         run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
       - run: |
@@ -122,12 +146,12 @@ jobs:
       - name: Apply database migrations (bundle)
         run: |
           dotnet tool restore
-          dotnet ef migrations bundle -p src/Shop.Infrastructure -s src/Shop.Api -o efbundle --self-contained -r linux-x64
+          dotnet ef migrations bundle -p src/Kettle.Infrastructure -s src/Kettle.Api -o efbundle --self-contained -r linux-x64
           ./efbundle --connection "${{ secrets.SQL_MIGRATION_CS }}"
       - name: Deploy new revision
-        run: az containerapp update -n shop-api -g rg-shop-staging --image $IMAGE:${{ needs.image.outputs.tag }}
+        run: az containerapp update -n kettle-api -g rg-kettle-staging --image $IMAGE:${{ needs.image.outputs.tag }}
       - name: Smoke test
-        run: curl --fail --retry 10 --retry-delay 6 https://shop-api-staging.example.com/health/ready
+        run: curl --fail --retry 10 --retry-delay 6 https://kettle-api-staging.example.com/health/ready
 
   deploy-prod:
     needs: [image, deploy-staging]
@@ -136,12 +160,16 @@ jobs:
     steps:
       - uses: azure/login@v2
         with: { client-id: "${{ vars.AZURE_CLIENT_ID }}", tenant-id: "${{ vars.AZURE_TENANT_ID }}", subscription-id: "${{ vars.AZURE_SUBSCRIPTION_ID }}" }
-      - run: az containerapp update -n shop-api -g rg-shop-prod --image $IMAGE:${{ needs.image.outputs.tag }} --revision-suffix ${{ needs.image.outputs.tag }}
+      - run: az containerapp update -n kettle-api -g rg-kettle-prod --image $IMAGE:${{ needs.image.outputs.tag }} --revision-suffix ${{ needs.image.outputs.tag }}
 ```
 
 Notice `deploy-staging` runs the EF migration bundle and `curl`s the readiness endpoint **before** `deploy-prod` is even allowed to start — the pipeline itself enforces exactly the "migrate, then verify, then promote" sequencing that a human following a runbook could forget under pressure. Concepts: **workflows** (YAML in `.github/workflows`), **triggers** (`on:`), **jobs** (run in parallel unless `needs:`), **steps**, **actions** (reusable steps from the marketplace), **runners** (GitHub-hosted or self-hosted), **environments** (protection rules, approvals, scoped secrets), **matrix builds**, **reusable workflows** and **composite actions** for sharing across repos, and **caching**.
 
 ## Azure DevOps Pipelines {i}
+
+:::plain
+Azure DevOps Pipelines does the same job, organised as stages, jobs and steps, and is common in enterprises.
+:::
 
 Many enterprises use **Azure DevOps** (Boards, Repos, **Pipelines**, Artifacts, Test Plans). YAML pipelines are structured as **stages → jobs → steps**, with **tasks** instead of actions, **service connections** (use workload identity federation), **environments** with approvals and checks, **variable groups** (optionally linked to Key Vault) and **templates** for reuse.
 
@@ -162,22 +190,26 @@ stages:
     - task: PublishTestResults@2
       inputs: { testResultsFormat: VSTest, testResultsFiles: "**/*.trx" }
     - task: Docker@2
-      inputs: { containerRegistry: acr-connection, repository: shop-api, command: buildAndPush, tags: $(Build.SourceVersion) }
+      inputs: { containerRegistry: acr-connection, repository: kettle-api, command: buildAndPush, tags: $(Build.SourceVersion) }
 
 - stage: Prod
   dependsOn: Build
   jobs:
   - deployment: deploy
-    environment: shop-prod          # approvals & checks configured on the environment
+    environment: kettle-prod        # approvals & checks configured on the environment
     strategy:
       runOnce:
         deploy:
           steps:
           - task: AzureWebAppContainer@1
-            inputs: { azureSubscription: azure-prod-wif, appName: app-shop-api-prod, containers: "shopacr.azurecr.io/shop-api:$(Build.SourceVersion)" }
+            inputs: { azureSubscription: azure-prod-wif, appName: app-kettle-api-prod, containers: "kettleacr.azurecr.io/kettle-api:$(Build.SourceVersion)" }
 ```
 
 ## Deployment strategies {i}
+
+:::plain
+Ways to release with less risk: replace instances gradually, switch all traffic at once to a warmed-up copy, or send a small share of traffic to the new version first.
+:::
 
 | Strategy | How | Rollback | Azure implementation |
 |---|---|---|---|
@@ -209,6 +241,10 @@ Schema changes are the hardest part of continuous deployment, because **old and 
 
 ## Infrastructure as Code {i}
 
+:::plain
+Describe your cloud resources in versioned files, such as Bicep or Terraform, and let a tool create or update them, instead of clicking in a portal.
+:::
+
 **IaC** defines infrastructure (resource groups, App Service plans, Container Apps environments, SQL servers, Key Vaults, role assignments, networking) in **versioned code**, reviewed in PRs and applied by pipelines.
 
 | Benefit | Explanation |
@@ -233,7 +269,7 @@ param location string = resourceGroup().location
 param env string
 param imageTag string
 
-var prefix = 'shop-${env}'
+var prefix = 'kettle-${env}'
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'id-${prefix}-api'
@@ -266,12 +302,12 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: cae.id
     configuration: {
       ingress: { external: true, targetPort: 8080 }
-      registries: [ { server: 'shopacr.azurecr.io', identity: identity.id } ]
+      registries: [ { server: 'kettleacr.azurecr.io', identity: identity.id } ]
     }
     template: {
       containers: [ {
         name: 'api'
-        image: 'shopacr.azurecr.io/shop-api:${imageTag}'
+        image: 'kettleacr.azurecr.io/kettle-api:${imageTag}'
         resources: { cpu: json('0.5'), memory: '1Gi' }
         env: [
           { name: 'ASPNETCORE_ENVIRONMENT', value: env == 'prod' ? 'Production' : 'Staging' }
@@ -290,8 +326,8 @@ output apiUrl string = 'https://${api.properties.configuration.ingress.fqdn}'
 ```
 
 ```bash
-az deployment group what-if -g rg-shop-prod -f main.bicep -p env=prod imageTag=3f1c2a9b7d10   # preview changes
-az deployment group create  -g rg-shop-prod -f main.bicep -p env=prod imageTag=3f1c2a9b7d10
+az deployment group what-if -g rg-kettle-prod -f main.bicep -p env=prod imageTag=3f1c2a9b7d10 # preview changes
+az deployment group create  -g rg-kettle-prod -f main.bicep -p env=prod imageTag=3f1c2a9b7d10
 ```
 
 Use **modules** for reuse, **Azure Verified Modules** (AVM) for well-architected building blocks, **parameter files** (`.bicepparam`) per environment, and **deployment stacks** to manage and lock groups of resources.
@@ -301,15 +337,15 @@ Use **modules** for reuse, **Azure Verified Modules** (AVM) for well-architected
 HashiCorp's **multi-cloud** IaC with HCL and a huge provider ecosystem (Azure, AWS, GCP, Kubernetes, GitHub, Datadog…). It keeps a **state file** (store it remotely, e.g. in an Azure Storage backend with locking) mapping code to real resources; `terraform plan` shows the diff and `apply` executes it.
 
 ```hcl
-resource "azurerm_resource_group" "shop" {
-  name     = "rg-shop-${var.env}"
+resource "azurerm_resource_group" "kettle" {
+  name   = "rg-kettle-${var.env}"
   location = "westeurope"
 }
 
 resource "azurerm_key_vault" "kv" {
-  name                      = "kv-shop-${var.env}"
-  resource_group_name       = azurerm_resource_group.shop.name
-  location                  = azurerm_resource_group.shop.location
+  name                    = "kv-kettle-${var.env}"
+  resource_group_name     = azurerm_resource_group.kettle.name
+  location                = azurerm_resource_group.kettle.location
   tenant_id                 = data.azurerm_client_config.current.tenant_id
   sku_name                  = "standard"
   enable_rbac_authorization = true
@@ -360,6 +396,10 @@ Bicep is Azure's native DSL compiling to ARM: Azure-only, no state file, immedia
 :::qa How should a pipeline authenticate to Azure?
 With workload identity federation (OIDC): a federated credential on an Entra app or user-assigned managed identity that trusts the specific repository/environment, so no client secret is stored. Grant that identity least-privilege RBAC per environment.
 :::
+
+## Next episode {b}
+
+At 3 a.m. a server dies, and someone has to restart Kettle by hand. [Episode 7 · Desired state →](ch:kubernetes)
 
 ## Further reading
 

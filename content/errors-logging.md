@@ -16,8 +16,16 @@ next: auth, observability-aspire, cqrs-mediator-result
 - `app.UseExceptionHandler()` must be the outermost middleware, so it can catch exceptions from everything registered after it. `IExceptionHandler` implementations are tried in registration order until one claims the exception.
 - **ProblemDetails** (RFC 9457) is a standard JSON shape for API errors — `type`/`title`/`status`/`detail` everywhere — so any client can handle errors from any endpoint the same way.
 - `ILogger<T>` is one API with pluggable destinations (console, Application Insights, Serilog). Log with **message templates** (`"{OrderId}"`), not string interpolation, so fields stay queryable.
-- **Scopes** attach extra fields (like `OrderId`) to every log line written inside a block, even across an `await`, because they ride on `AsyncLocal`.
+- **Scopes** attach extra fields (like `OrderId`) to every log line written inside a block, even across an `await`. They're stored in an `AsyncLocal<T>`, a variable whose value travels with the logical flow of the work (copied into each continuation) rather than staying with one thread, so it's still there after an `await` resumes on a different thread.
 - Never log secrets, tokens, or full PII. Log IDs, not whole objects, and reach for `[LoggerMessage]` in hot paths where the logging call itself costs enough to matter.
+
+## Previously at Kettle {b}
+
+The endpoints work, until they don't. Last night a customer saw a stack trace, and the logs were a wall of unsearchable text.
+
+**The problem:** A customer sees a stack trace, and the logs are unsearchable text.
+
+**This episode:** one place for exceptions, ProblemDetails, and structured logging.
 
 ## Two very different audiences for the same failure {b}
 
@@ -74,7 +82,7 @@ public sealed class DomainExceptionHandler(IProblemDetailsService problems, ILog
         {
             HttpContext = ctx,
             Exception = ex,
-            ProblemDetails = { Status = status, Title = title, Type = $"https://errors.shop.com/{status}" }
+            ProblemDetails = { Status = status, Title = title, Type = $"https://errors.kettle.com/{status}" }
         });
     }
 }
@@ -108,7 +116,7 @@ Mapping exceptions centrally like this is convenient, but it's worth being hones
 
 ```json
 {
-  "type": "https://errors.shop.com/409",
+  "type": "https://errors.kettle.com/409",
   "title": "Shipped orders can't be cancelled",
   "status": 409,
   "detail": "Order 1042 shipped on 2026-10-20.",
@@ -174,7 +182,7 @@ public sealed class PaymentService(ILogger<PaymentService> logger, IPaymentGatew
 }
 ```
 
-The **category** attached to every log line from this class is the full type name of `T` — `Shop.Payments.PaymentService` — and that's exactly what lets you dial logging verbosity up or down per namespace, as the next section shows.
+The **category** attached to every log line from this class is the full type name of `T` — `Kettle.Payments.PaymentService` — and that's exactly what lets you dial logging verbosity up or down per namespace, as the next section shows.
 
 ### Log levels: a severity ladder, not just labels
 
@@ -193,12 +201,12 @@ The **category** attached to every log line from this class is the full type nam
     "Default": "Information",
     "Microsoft.AspNetCore": "Warning",                       // framework noise down
     "Microsoft.EntityFrameworkCore.Database.Command": "Warning",  // set to Information to see SQL
-    "Shop.Payments": "Debug"                                 // more detail for one area
+    "Kettle.Payments": "Debug"                               // more detail for one area
   }
 }
 ```
 
-This is the exact same layered configuration mechanism from [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest), applied to log-level settings specifically — which is why you can crank `Shop.Payments` up to `Debug` in one environment via an environment variable, without touching the base `appsettings.json` at all.
+This is the exact same layered configuration mechanism from [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest), applied to log-level settings specifically — which is why you can crank `Kettle.Payments` up to `Debug` in one environment via an environment variable, without touching the base `appsettings.json` at all.
 
 ## Structured logging: keeping the data, not just the sentence {b}
 
@@ -235,7 +243,9 @@ using (logger.BeginScope(new Dictionary<string, object> { ["OrderId"] = order.Id
 }
 ```
 
-The scope survives across that `await` — even onto a different thread — because it's carried by `AsyncLocal`, the same ambient-state mechanism the async state machine relies on in [Async and await](ch:async-await). Logging didn't have to invent anything new for this. ASP.NET Core uses the same trick automatically: it wraps every request in a scope carrying `RequestId`, `RequestPath`, `TraceId` and `SpanId`, so any log line anywhere in that request's call graph can be traced straight back to its request and its place in a distributed trace. Turn this on in the console provider with `"IncludeScopes": true`.
+The scope survives across that `await`, even when the method resumes on a different thread. To see why that's not automatic, consider the obvious way to store "the current scope": a `[ThreadStatic]` field, one value per thread. That breaks immediately with async code. Thread 7 sets the scope, the method awaits, thread 7 goes off to serve another request, and the continuation runs on thread 3, whose field holds nothing (or worse, some other request's scope).
+
+`AsyncLocal<T>` fixes this by attaching the value to the **flow of execution** instead of the thread. Every time .NET schedules a continuation, it captures the current `ExecutionContext`, a small bundle that contains all `AsyncLocal` values, and restores it when the continuation runs, whichever thread that is. Changes made inside an async method flow *down* into the code it awaits, but don't leak back *up* into its caller. Logging didn't have to invent anything for this: `BeginScope` just pushes onto an `AsyncLocal` stack, and the same mechanism carries `Activity.Current` (the trace ID) and the current culture. ASP.NET Core uses the same trick automatically: it wraps every request in a scope carrying `RequestId`, `RequestPath`, `TraceId` and `SpanId`, so any log line anywhere in that request's call graph can be traced straight back to its request and its place in a distributed trace. Turn this on in the console provider with `"IncludeScopes": true`.
 
 ## High-performance logging: when the logging call itself becomes the bottleneck {a}
 
@@ -271,7 +281,7 @@ The generated method checks `IsEnabled` as the very first thing, before touching
 builder.Host.UseSerilog((ctx, services, cfg) => cfg
     .ReadFrom.Configuration(ctx.Configuration)
     .Enrich.FromLogContext()
-    .Enrich.WithProperty("Service", "shop-api")
+    .Enrich.WithProperty("Service", "kettle-api")
     .WriteTo.Console(new RenderedCompactJsonFormatter())        // JSON to stdout: containers ship it
     .WriteTo.Seq("http://seq:5341"));
 
@@ -346,6 +356,10 @@ Information for normal business milestones, Warning for unexpected but handled s
 Use W3C trace context propagation (traceparent header, automatic with HttpClient and OpenTelemetry) so every service logs with the same TraceId, include the trace ID in ProblemDetails responses, and send logs to a central store that can filter by TraceId and link to the distributed trace.
 :::
 
+## Next episode {b}
+
+Anyone can call DELETE /orders/42. [Episode 8 · Who are you, and may you? →](ch:auth)
+
 ## Further reading
 
 - [Handle errors in ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/error-handling)
@@ -380,7 +394,7 @@ using Microsoft.Extensions.Logging;
 
 var provider = new CapturingLoggerProvider();
 using var factory = LoggerFactory.Create(b => b.AddProvider(provider).SetMinimumLevel(LogLevel.Information));
-var logger = factory.CreateLogger("Shop.Payments");
+var logger = factory.CreateLogger("Kettle.Payments");
 
 // Claim: a message template keeps placeholders as named, queryable properties; string interpolation does not.
 {

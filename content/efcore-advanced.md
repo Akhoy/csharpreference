@@ -19,7 +19,19 @@ next: ddd, messaging-events, integration-testing
 - **Global query filters** (soft delete, multi-tenancy) apply automatically to every query against that entity — watch for a required navigation pulling a filtered-out row back in through an `INNER JOIN`.
 - Writing outbox rows in the *same* `SaveChanges` transaction as the business data is what makes "save the order and record the event" atomic, without needing a real distributed transaction.
 
+## Previously at Kettle {b}
+
+Queries are fast. Now two staff members edit the same order, and the second save silently wipes out the first.
+
+**The problem:** Two staff members edit the same order. The second save silently wins.
+
+**This episode:** optimistic concurrency, transactions, global filters, bulk updates and interceptors.
+
 ## Optimistic concurrency: catching a lost update without ever locking {i}
+
+:::plain
+Each row carries a version number. Saving checks that the version hasn't changed since you read it, so a second person's stale save fails instead of silently overwriting the first.
+:::
 
 Here's the concrete failure this section exists to prevent: two users both load order 42 at the same moment. Alice changes the shipping address and saves. Bob, still holding the version he loaded a moment earlier — before Alice's save — changes the status and saves too, and his save **overwrites Alice's change** with the old address he never actually touched. Nobody did anything wrong individually; the collision is purely a timing accident. This is a **lost update**, the same anomaly named in [Relational fundamentals](ch:relational-fundamentals#isolation-levels-and-the-anomalies-each-one-actually-prevent).
 
@@ -70,6 +82,10 @@ Optimistic concurrency isn't only about preventing overwritten edits — it also
 
 ## Transactions: when SaveChanges's own transaction isn't enough {i}
 
+:::plain
+SaveChanges already wraps its changes in one transaction. You need an explicit transaction only when several SaveChanges calls, or raw SQL, must succeed or fail together.
+:::
+
 `SaveChanges` is **already transactional** on its own — every change made in one call commits or rolls back together, with no extra code needed. You need an *explicit* transaction specifically when that single-call guarantee isn't wide enough, which happens when:
 
 - several `SaveChanges` calls must be atomic together,
@@ -117,6 +133,10 @@ A transaction, no matter how it's opened, covers **one database connection**. Yo
 :::
 
 ## Set-based updates and deletes: skipping the entity entirely {i}
+
+:::plain
+ExecuteUpdate and ExecuteDelete send one UPDATE or DELETE statement to the database, without loading the rows. They're fast for bulk changes, but bypass change tracking.
+:::
 
 EF 7+ offers a second way to write to the database that deliberately skips the tracking machinery altogether, running a set-based SQL statement **without loading any entities into memory first**:
 
@@ -169,7 +189,7 @@ public sealed class AuditInterceptor(TimeProvider clock, ICurrentUser user) : Sa
 }
 
 builder.Services.AddScoped<AuditInterceptor>();
-builder.Services.AddDbContext<ShopDb>((sp, o) => o.UseSqlServer(cs).AddInterceptors(sp.GetRequiredService<AuditInterceptor>()));
+builder.Services.AddDbContext<KettleDb>((sp, o) => o.UseSqlServer(cs).AddInterceptors(sp.GetRequiredService<AuditInterceptor>()));
 ```
 
 This interceptor is never called explicitly anywhere. Every `IAuditable` entity gets its timestamps stamped automatically just by sitting in the change tracker when `SaveChanges` runs — that's the appeal: uniform behavior, with nothing for a developer to remember to call.
@@ -179,7 +199,7 @@ This interceptor is never called explicitly anywhere. Every `IAuditable` entity 
 A filter defined once in the model gets automatically appended to **every** query against that entity type, with no need to repeat it anywhere it's queried:
 
 ```csharp
-public sealed class ShopDb(DbContextOptions<ShopDb> o, ITenantContext tenant) : DbContext(o)
+public sealed class KettleDb(DbContextOptions<KettleDb> o, ITenantContext tenant) : DbContext(o)
 {
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -248,6 +268,45 @@ public sealed class OutboxInterceptor(TimeProvider clock) : SaveChangesIntercept
 
 This shape matters because the outbox rows are written inside the *same* `SaveChanges()` transaction as the business data: the order and its "order placed" event either both commit or both roll back. There's no window where one happens without the other — which sidesteps the "no distributed transaction" problem from earlier in this chapter entirely, rather than solving it. MassTransit, NServiceBus and Wolverine ship **ready-made EF Core outboxes**, so this pattern rarely needs to be hand-rolled in practice.
 
+## EF Core in production {a}
+
+:::plain
+Most EF Core problems in production come from a handful of settings and habits: how contexts are created, how queries are found and timed, and how migrations reach the database. Get these right once, in shared setup code.
+:::
+
+**Context creation.** A `DbContext` is cheap but not free: each one sets up a change tracker and internal services. Under high request rates, **pool** them:
+
+```csharp norun
+builder.Services.AddDbContextPool<KettleDb>(o => o.UseSqlServer(cs), poolSize: 1024);
+// or, for code that creates its own contexts (Blazor Server, background jobs):
+builder.Services.AddPooledDbContextFactory<KettleDb>(o => o.UseSqlServer(cs));
+```
+
+Pooled contexts are reset and reused, so they must not hold per-request state in fields, and their `OnConfiguring` runs only once. Don't confuse this with **connection** pooling, which ADO.NET does for you underneath anyway ([ADO.NET & Dapper](ch:ado-dapper)).
+
+**Finding the slow query.** You can't fix SQL you can't see.
+
+- **Tag queries** so they're recognisable in database tools: `db.Orders.TagWith("Orders: customer history").Where(…)` adds a comment to the generated SQL.
+- **Log slow commands.** EF Core logs every command with its duration at the `Microsoft.EntityFrameworkCore.Database.Command` category. Keep it at Warning in production, and use an interceptor that logs commands slower than a threshold, together with the trace ID ([Interceptors](ch:efcore-advanced#interceptors-cross-cutting-behaviour-without-touching-busine)).
+- **Never enable `EnableSensitiveDataLogging` in production.** It writes parameter values, meaning customers' data, into the logs.
+- **Watch the database side too:** Query Store or `pg_stat_statements` show which statements cost the most in total, which is often not the slowest single one.
+
+**Timeouts.** The default command timeout is 30 seconds, which is longer than any customer will wait. Set it per context (`o.UseSqlServer(cs, x => x.CommandTimeout(5))`), and pass `CancellationToken`s, so abandoned requests stop their queries.
+
+**Start-up and hot paths.**
+
+- **Compiled models** (`dotnet ef dbcontext optimize`) generate the model-building code at build time. That's worth it for models with hundreds of entities, where building the model at start-up takes noticeable time, and it's required for Native AOT.
+- **Compiled queries** (`EF.CompileAsyncQuery((KettleDb db, int id) => db.Orders.First(o => o.Id == id))`) skip the query-translation cache lookup on very hot paths. EF Core already caches translations, so measure before reaching for them.
+- **Default read contexts to no tracking** (`o.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)`) for services that only read.
+
+**Migrations in the pipeline.** Don't let the application migrate its own database on start-up: with several replicas starting at once, they race, and the app's identity would need permission to change the schema. Generate an idempotent script (`dotnet ef migrations script --idempotent`) or a **migration bundle** (`dotnet ef migrations bundle`), and run it as a pipeline step with a dedicated identity, before the new code deploys ([CI/CD](ch:cicd-iac#databases-in-the-pipeline)). Keep schema changes backward compatible (expand, migrate, contract), because old and new code run side by side during a rollout.
+
+**Connection pool exhaustion** shows up as timeouts waiting for a connection, while the database itself looks idle. The usual causes are contexts that live too long (a scoped context in a Blazor Server circuit, or a singleton holding one), long transactions, and synchronous calls blocking threads while holding connections. Fix the lifetimes first; raising the pool size only delays the problem.
+
+:::qa How would you run EF Core under production load?
+Pool contexts with `AddDbContextPool` or a pooled factory, keep their lifetimes short, and default read-only paths to no tracking. Set short command timeouts and pass cancellation tokens. Tag queries and log slow commands with trace IDs, without sensitive-data logging. Use compiled models for very large models or Native AOT. Apply migrations from the pipeline with idempotent scripts or bundles, keep changes backward compatible, and watch for connection-pool exhaustion caused by long-lived contexts.
+:::
+
 ## Other advanced features {a}
 
 | Feature | What it gives you |
@@ -264,6 +323,10 @@ This shape matters because the outbox rows are written inside the *same* `SaveCh
 | **Read replicas** | A second context/connection string pointing at a read-only replica for queries |
 
 ## Testing EF Core code {i}
+
+:::plain
+Test queries against a real database engine, usually in a container, because the in-memory provider behaves differently from SQL. Keep business rules out of EF code so most tests don't need a database at all.
+:::
 
 | Approach | Fidelity | Speed | Verdict |
 |---|---|---|---|
@@ -306,6 +369,10 @@ Cross-cutting hooks into EF operations: SaveChanges interceptors for auditing, s
 It isn't a relational database: it doesn't enforce constraints, transactions or SQL semantics, and it translates queries differently, so tests can pass while real queries fail. Use the real engine via Testcontainers (or at least SQLite) for data access tests.
 :::
 
+## Next episode {b}
+
+Shopping carts change constantly and are read by one key. A relational table is overkill. [Episode 6 · Not everything is a table →](ch:nosql-redis)
+
 ## Further reading
 
 - [Handling concurrency conflicts](https://learn.microsoft.com/en-us/ef/core/saving/concurrency)
@@ -326,9 +393,9 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 var connString = "DataSource=file:verifydb2?mode=memory&cache=shared";
 await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(connString);
 await conn.OpenAsync();
-var opts = new DbContextOptionsBuilder<ShopDb>().UseSqlite(conn).Options;
+var opts = new DbContextOptionsBuilder<KettleDb>().UseSqlite(conn).Options;
 
-await using (var seed = new ShopDb(opts))
+await using (var seed = new KettleDb(opts))
 {
     await seed.Database.EnsureCreatedAsync();
     seed.Products.Add(new Product { Id = 1, Name = "Widget", Price = 10, Version = 1, IsDeleted = false });
@@ -338,10 +405,10 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: optimistic concurrency — a stale version throws DbUpdateConcurrencyException.
 {
-    await using var ctx1 = new ShopDb(opts);
+    await using var ctx1 = new KettleDb(opts);
     var p1 = await ctx1.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1); // Version = 1
 
-    await using (var ctx2 = new ShopDb(opts))
+    await using (var ctx2 = new KettleDb(opts))
     {
         var p2 = await ctx2.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1);
         p2.Price = 20;
@@ -360,7 +427,7 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: ExecuteUpdate bypasses the change tracker — an already-tracked entity is not refreshed.
 {
-    await using var ctx = new ShopDb(opts);
+    await using var ctx = new KettleDb(opts);
     var tracked = await ctx.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1); // Price = 20 after the test above
 
     await ctx.Products.IgnoreQueryFilters().Where(p => p.Id == 1)
@@ -369,7 +436,7 @@ await using (var seed = new ShopDb(opts))
     if (tracked.Price == 999m) throw new Exception("FAIL: ExecuteUpdate updated the tracked instance");
     Console.WriteLine("OK: ExecuteUpdate leaves an already-tracked in-memory entity stale");
 
-    await using var fresh = new ShopDb(opts);
+    await using var fresh = new KettleDb(opts);
     var reread = await fresh.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1);
     if (reread.Price != 999m) throw new Exception("FAIL: the database wasn't actually updated");
     Console.WriteLine("OK: ExecuteUpdate did write the new value to the database");
@@ -377,7 +444,7 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: a global query filter (soft delete) excludes rows by default, and IgnoreQueryFilters() includes them.
 {
-    await using var ctx = new ShopDb(opts);
+    await using var ctx = new KettleDb(opts);
     var visible = await ctx.Products.ToListAsync();
     if (visible.Any(p => p.Id == 2)) throw new Exception("FAIL: soft-deleted row leaked through the default filter");
     Console.WriteLine("OK: a global query filter hides soft-deleted rows by default");
@@ -389,12 +456,12 @@ await using (var seed = new ShopDb(opts))
 
 // Claim: a SaveChangesInterceptor runs for every SaveChanges, without being called explicitly anywhere.
 {
-    var auditOpts = new DbContextOptionsBuilder<AuditedShopDb>()
+    var auditOpts = new DbContextOptionsBuilder<AuditedKettleDb>()
         .UseSqlite(conn)
         .AddInterceptors(new StampingInterceptor())
         .Options;
 
-    await using var ctx = new AuditedShopDb(auditOpts);
+    await using var ctx = new AuditedKettleDb(auditOpts);
     var p = await ctx.Products.IgnoreQueryFilters().SingleAsync(p => p.Id == 1);
     p.Name = "Stamped";
     await ctx.SaveChangesAsync();
@@ -419,7 +486,7 @@ class Product
     public string? UpdatedBy { get; set; }
 }
 
-class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options)
+class KettleDb(DbContextOptions<KettleDb> options) : DbContext(options)
 {
     public DbSet<Product> Products => Set<Product>();
     protected override void OnModelCreating(ModelBuilder b)
@@ -429,7 +496,7 @@ class ShopDb(DbContextOptions<ShopDb> options) : DbContext(options)
     }
 }
 
-class AuditedShopDb(DbContextOptions<AuditedShopDb> options) : DbContext(options)
+class AuditedKettleDb(DbContextOptions<AuditedKettleDb> options) : DbContext(options)
 {
     public DbSet<Product> Products => Set<Product>();
     protected override void OnModelCreating(ModelBuilder b)

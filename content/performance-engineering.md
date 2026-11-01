@@ -19,7 +19,19 @@ next: web-security, system-design
 - `dotnet-counters`/`dotnet-trace`/`dotnet-dump` are the day-to-day diagnostic toolbox; load testing (k6, NBomber) checks the whole system under concurrency, not just one method.
 - Fix things in order of impact: indexes/N+1 first, then async/concurrency, then payload size, then micro-level allocations — in that order, because each later category's wins are usually dwarfed by the earlier ones.
 
+## Previously at Kettle {b}
+
+Kettle's counters are correct. A developer rewrote a parser with spans to speed up the order page, and the page is exactly as slow as before.
+
+**The problem:** Someone rewrote a loop with Span. The page is still slow.
+
+**This episode:** measuring before optimising, percentiles, profilers and load tests.
+
 ## The method: measure, don't guess {i}
+
+:::plain
+Find where the time actually goes before changing anything, fix the biggest cost, measure again, and stop when the goal is met.
+:::
 
 Every other technique in this chapter — profilers, benchmarks, the optimisation catalogue — only pays off once you've committed to one discipline: find out where time is *actually* going before changing anything. The alternative, guessing based on intuition about what "feels slow," reliably sends people optimising the wrong 95% of the code while the real bottleneck sits untouched.
 
@@ -36,6 +48,10 @@ Every other technique in this chapter — profilers, benchmarks, the optimisatio
 
 ## Latency, throughput and percentiles {i}
 
+:::plain
+Latency is how long one request takes, throughput is how many you handle per second, and percentiles show how slow the slowest requests are, which averages hide.
+:::
+
 | Metric | Meaning |
 |---|---|
 | **Latency** | Time for one operation (request duration) |
@@ -45,7 +61,37 @@ Every other technique in this chapter — profilers, benchmarks, the optimisatio
 
 **Use percentiles, not averages.** Here's a concrete illustration of why: out of 100 requests, if 98 take 50 ms and 2 take 5,000 ms, the *average* is about 148 ms — already looks bad, but still hides what's going on — while the p99 is 5,000 ms, the number that actually describes the experience of the unluckiest 2% of users. (Source: this is just `latency[⌈p·N⌉ − 1]` on the sorted array — verified below.) At real traffic volumes, that 2% is thousands of people, and a user loading a page that fires ten API calls hits that unlucky tail on nearly every page load, not just rarely. **Little's Law** links the three core metrics precisely: concurrency = throughput × latency (so 500 RPS × 0.2 s = 100 concurrent requests in flight) — a formula worth keeping handy when sizing a thread pool or a connection pool, since it tells you exactly how many requests you need to support *simultaneously*, not just per second.
 
+### See it run: what an average hides
+
+:::walk Ten requests, three summaries
+```csharp
+double[] latencyMs = [48, 52, 50, 49, 51, 47, 53, 50, 5000, 4800];
+Array.Sort(latencyMs);
+
+Console.WriteLine($"average: {latencyMs.Average():N0} ms");
+Console.WriteLine($"p50: {Percentile(latencyMs, 0.50)} ms");
+Console.WriteLine($"p90: {Percentile(latencyMs, 0.90)} ms");
+Console.WriteLine($"p99: {Percentile(latencyMs, 0.99)} ms");
+
+static double Percentile(double[] sorted, double p) => sorted[(int)Math.Ceiling(p * sorted.Length) - 1];
+```
+@1-2 | latencyMs = [47, 48, 49, 50, 50, 51, 52, 53, 4800, 5000]
+Eight fast requests and two that hit a slow dependency. Sorted, so percentiles can be read by position.
+@4 | | > average: 1,020 ms
+The average describes **no actual request**: nobody waited about a second. It's dragged up by the two slow ones and hides that most requests were fast.
+@5 | | > p50: 50 ms
+The median: half the requests took 50 ms or less. A typical user's experience.
+@6 | | > p90: 4800 ms
+One in ten requests took nearly five seconds. That's the number to alert on.
+@7 | | > p99: 5000 ms
+The tail. A page that makes ten API calls hits this tail on most loads.
+:::
+
 ## Where time goes in a .NET backend {i}
+
+:::plain
+Most slowness is the database or calls to other services, then blocked threads, then serialization and allocations. Pure CPU work is rarely the problem.
+:::
 
 Typical request time, in order of how often it's actually the culprit — notice this ordering is itself a product of experience across many real investigations, and it's worth checking top-down rather than jumping straight to whichever cause feels most interesting:
 
@@ -127,10 +173,10 @@ Rules: **always Release**, never with a debugger attached; return results (or us
 | **SQL tools** | Execution plans, Query Store, `SET STATISTICS IO`, Azure SQL Insights | Database time |
 
 ```bash
-dotnet-counters monitor -n Shop.Api --counters System.Runtime,Microsoft.AspNetCore.Hosting,System.Net.Http
-dotnet-trace collect -n Shop.Api --profile cpu-sampling --duration 00:00:30 -o cpu.nettrace
+dotnet-counters monitor -n Kettle.Api --counters System.Runtime,Microsoft.AspNetCore.Hosting,System.Net.Http
+dotnet-trace collect -n Kettle.Api --profile cpu-sampling --duration 00:00:30 -o cpu.nettrace
 dotnet-trace convert cpu.nettrace --format Speedscope                     # open at speedscope.app
-dotnet-dump collect -n Shop.Api && dotnet-dump analyze <file>             # > clrstack -all   (look for threads blocked in Wait/GetResult)
+dotnet-dump collect -n Kettle.Api && dotnet-dump analyze <file>           # > clrstack -all   (look for threads blocked in Wait/GetResult)
 ```
 
 ### Reading the symptoms
@@ -161,7 +207,7 @@ export const options = {
   thresholds: { http_req_duration: ['p(95)<150', 'p(99)<400'], http_req_failed: ['rate<0.01'] },
 };
 export default function () {
-  const res = http.get('https://staging.shop.com/api/products?page=1');
+  const res = http.get('https://staging.kettle.com/api/products?page=1');
   check(res, { 'status 200': r => r.status === 200 });
   sleep(1);
 }
@@ -271,6 +317,10 @@ Fix indexes and N+1 queries, project to DTOs with AsNoTracking, paginate, cache 
 :::qa How do you improve cold-start time for a .NET service?
 Native AOT (or ReadyToRun), the slim builder, trimming, source generators instead of reflection, EF compiled models, deferring heavy initialisation out of startup, pre-warming instances (Premium/Flex always-ready, readiness probes, slot warm-up), and smaller container images.
 :::
+
+## Next episode {b}
+
+By the end of Part XI, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part XII. [Part XII · Kettle Gets Attacked →](ch:security-story)
 
 ## Further reading
 

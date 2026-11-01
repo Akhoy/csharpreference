@@ -19,7 +19,19 @@ next: observability-aspire, messaging-events
 - `Microsoft.Extensions.Http.Resilience`'s `.AddStandardResilienceHandler()` gives you timeout + retry + circuit breaker for HttpClient calls with one line.
 - **Liveness** checks "is the process alive?"; **readiness** checks "can it serve traffic right now?" — don't confuse the two, or a dependency blip restarts your whole fleet.
 
+## Previously at Kettle {b}
+
+Kettle's services talk through a broker. Its calls to the payment provider are still direct, and a two-second blip there turns into ten minutes of errors.
+
+**The problem:** The payment provider blips for 2 seconds, and Kettle shows errors for 10 minutes.
+
+**This episode:** retries with backoff and jitter, circuit breakers, timeouts and health checks.
+
 ## Everything fails {b}
+
+:::plain
+Networks blip, servers restart and partners slow down every day. A resilient system expects that and keeps working, perhaps with less, instead of falling over.
+:::
 
 In the cloud, failure is **normal**: instances restart during deployments, networks blip, load balancers move connections, databases fail over, dependencies throttle you (429), and noisy neighbours cause latency spikes. A resilient system **expects** these and keeps working, perhaps degraded, instead of turning a 2-second blip into an outage.
 
@@ -34,6 +46,10 @@ Notice the table's shape: each fault type gets a *different* response, and the r
 
 ## The resilience strategies {b}
 
+:::plain
+There's a tool for each kind of failure: retry brief glitches, time out slow calls, stop calling a dependency that's down, and fall back to something useful.
+:::
+
 | Strategy | Problem it solves | How |
 |---|---|---|
 | **Timeout** | A slow call holds threads, sockets and the user's patience indefinitely | Give up after N; cancel the operation |
@@ -45,6 +61,10 @@ Notice the table's shape: each fault type gets a *different* response, and the r
 | **Bulkhead** | One failing dependency exhausting shared resources (threads, connections) | Isolate resources per dependency (separate pools/limits) |
 
 ## Retry, done properly {i}
+
+:::plain
+Retry only failures that might succeed next time, wait a little longer before each attempt with some randomness, and give up after a few tries.
+:::
 
 ```text
 Attempt 1 ── fail ──▶ wait 200ms ±jitter ──▶ Attempt 2 ── fail ──▶ wait 400ms ±jitter ──▶ Attempt 3 ── fail ──▶ wait 800ms ──▶ Attempt 4 → give up
@@ -60,7 +80,43 @@ Attempt 1 ── fail ──▶ wait 200ms ±jitter ──▶ Attempt 2 ── f
 If every layer retries 3 times (gateway → API → service → database), one failure becomes 3 × 3 × 3 = **27** attempts on the bottom layer, right when it's struggling. Retry at **one** layer (usually closest to the failing dependency), keep counts low, combine with circuit breakers, and set **timeout budgets** that shrink as calls go deeper.
 :::
 
+### See it run: retrying with backoff
+
+:::walk Two timeouts, then success
+```csharp
+int attempt = 0;
+string CallPaymentApi() => ++attempt < 3 ? throw new TimeoutException($"attempt {attempt} timed out") : "charged";
+
+for (int retry = 0; ; retry++)
+{
+    try
+    {
+        Console.WriteLine(CallPaymentApi());
+        break;
+    }
+    catch (TimeoutException e) when (retry < 3)
+    {
+        var delay = TimeSpan.FromMilliseconds(200 * Math.Pow(2, retry));
+        Console.WriteLine($"{e.Message}; retrying in {delay.TotalMilliseconds} ms (plus jitter)");
+    }
+}
+```
+@1-2 | attempt = 0
+A pretend payment API that times out twice, then succeeds: a typical transient fault.
+@4-9 | retry = 0 ; attempt = 1
+The first call throws a `TimeoutException`.
+@11-15 | retry = 0 ; delay = 200 ms | > attempt 1 timed out; retrying in 200 ms (plus jitter)
+The `when (retry < 3)` filter allows up to three retries. The delay doubles each time: 200, 400, 800 ms. A real retry would also wait, and add a random **jitter** so thousands of clients don't retry in step.
+@11-15 | retry = 1 ; delay = 400 ms | > attempt 2 timed out; retrying in 400 ms (plus jitter)
+@6-9 | retry = 2 ; attempt = 3 | > charged
+The third attempt succeeds. Once retries run out, the filter stops matching, and the exception reaches the caller.
+:::
+
 ## Circuit breaker {i}
+
+:::plain
+After too many failures, stop calling the dependency for a while and fail immediately instead. Then let one trial call through to see if it has recovered.
+:::
 
 ```text
             failure ratio > threshold within the sampling window
@@ -76,7 +132,50 @@ Why bother: waiting for every call to a down dependency to time out wastes threa
 
 Tune: the failure ratio (e.g. 50%), the **minimum throughput** before evaluating (to avoid tripping on 2 of 3 calls), the sampling window, and the break duration. **Log state changes** and expose them as metrics — a circuit flipping open is exactly the kind of event worth paging someone over.
 
+### See it run: a circuit breaker's states
+
+:::walk Closed, open, half-open, closed
+```csharp
+var breaker = new Breaker(failuresToOpen: 3);
+foreach (var succeeds in new[] { false, false, false, true })
+    Console.WriteLine(breaker.Call(succeeds));
+
+breaker.BreakDurationElapsed();
+Console.WriteLine(breaker.Call(true));
+
+sealed class Breaker(int failuresToOpen)
+{
+    private int _failures;
+    private string _state = "closed";
+
+    public string Call(bool succeeds)
+    {
+        if (_state == "open") return "open: failed fast, dependency not called";
+        if (succeeds) { _failures = 0; _state = "closed"; return "closed: call succeeded"; }
+        if (++_failures >= failuresToOpen || _state == "half-open") { _state = "open"; return $"failure {_failures}: circuit OPENS"; }
+        return $"failure {_failures}: still closed";
+    }
+
+    public void BreakDurationElapsed() => _state = "half-open";
+}
+```
+@1-3 | | > failure 1: still closed | > failure 2: still closed
+The breaker starts **closed**: calls go through and failures are counted.
+@2-3 | | > failure 3: circuit OPENS
+The third failure trips it **open**.
+@2-3 | | > open: failed fast, dependency not called
+While open, calls fail immediately without touching the dependency. That saves your threads and gives the dependency room to recover, even though this call would have succeeded.
+@5 | _state = "half-open"
+After the break duration, the breaker goes **half-open** and lets a trial call through.
+@6 | | > closed: call succeeded
+The trial succeeds, so the breaker **closes** again. A failure here would have reopened it at once.
+:::
+
 ## Timeouts {i}
+
+:::plain
+Set a limit for each attempt and an overall limit, and pass cancellation tokens so the work actually stops when the time runs out.
+:::
 
 Two levels, and conflating them is a common mistake:
 
@@ -86,6 +185,10 @@ Two levels, and conflating them is a common mistake:
 Always pass `CancellationToken`s so timeouts actually **cancel** the underlying work (EF Core commands, HTTP requests) — a timeout that only stops *waiting* for the result, without actually cancelling the work, still leaves the dependency doing pointless work for a caller that's already given up. And remember `HttpClient.Timeout` defaults to 100 seconds, far too long for most calls, exactly as [Calling other services](ch:http-client#timeouts-and-cancellation-getting-the-layering-right) warned; with a resilience pipeline, let the pipeline own timeouts instead.
 
 ## Polly v8 and Microsoft.Extensions.Resilience {i}
+
+:::plain
+Polly is .NET's resilience library. One line, AddStandardResilienceHandler, gives an HttpClient sensible timeouts, retries and a circuit breaker.
+:::
 
 **Polly** is .NET's resilience library. **v8** introduced **resilience pipelines** with strategies composed in order — notice the word "composed," because the ordering section below matters as much as which strategies you pick. Microsoft builds on it with `Microsoft.Extensions.Resilience` (DI integration, telemetry) and `Microsoft.Extensions.Http.Resilience` (HttpClient integration).
 
@@ -161,6 +264,10 @@ Pre-v8 code looks like `Policy.Handle<HttpRequestException>().WaitAndRetryAsync(
 
 ## Resilience beyond HTTP {i}
 
+:::plain
+Databases, the Azure SDKs, brokers and Redis clients have their own retry settings. Configure retries in one layer only.
+:::
+
 | Dependency | Built-in resilience |
 |---|---|
 | EF Core / SQL | `EnableRetryOnFailure()` execution strategy (wrap manual transactions with `CreateExecutionStrategy`) |
@@ -182,6 +289,10 @@ Resilience isn't only about libraries. Design so partial failure produces a **de
 - **Idempotency everywhere**, so retries are safe.
 
 ## Health checks {i}
+
+:::plain
+A liveness check says the process is alive; a readiness check says it can serve traffic right now. Orchestrators restart on the first and route on the second.
+:::
 
 Health endpoints let orchestrators and load balancers route around unhealthy instances.
 
@@ -239,6 +350,10 @@ Isolating resources (connection pools, thread or concurrency limits, separate in
 :::qa Liveness vs readiness health checks?
 Liveness tells the orchestrator whether the process is healthy or must be restarted, and should not depend on external services. Readiness tells the load balancer whether the instance can currently serve traffic (dependencies reachable, warmed up); failing readiness removes it from rotation without restarting it.
 :::
+
+## Next episode {b}
+
+"Checkout is slow." Which of the five services is it? [Episode 3 · See inside →](ch:observability-aspire)
 
 ## Further reading
 

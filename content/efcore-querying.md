@@ -19,7 +19,19 @@ next: efcore-advanced, caching-ratelimit-cors
 - Including multiple collections in one query can multiply rows instead of adding them (cartesian explosion); `AsSplitQuery()` trades that for extra round trips.
 - EF Core refuses to silently run C# it can't translate to SQL — write translatable expressions, or filter in memory explicitly, after a server-side filter has already cut the data down.
 
+## Previously at Kettle {b}
+
+EF Core does the busywork. Then the order list page goes slow, and the SQL log shows it sending 101 queries.
+
+**The problem:** The order list page sends 101 SQL queries.
+
+**This episode:** how LINQ becomes SQL, the N+1 problem, projections, AsNoTracking and split queries.
+
 ## From LINQ to SQL, and the one moment it actually runs {b}
+
+:::plain
+A LINQ query against a DbSet is only a description until you enumerate it, for example with ToListAsync. At that moment EF Core turns it into SQL and runs it.
+:::
 
 ```csharp
 var recent = await db.Orders
@@ -46,9 +58,13 @@ Here's the detail worth holding onto for the rest of this chapter: nothing above
 
 ## See the SQL first — you can't tune what you can't see {b}
 
+:::plain
+Before tuning a slow query, look at the SQL EF Core actually generated. Logging or ToQueryString shows it.
+:::
+
 ```csharp
 // 1. Log SQL (development)
-builder.Services.AddDbContext<ShopDb>(o => o.UseSqlServer(cs)
+builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(cs)
     .LogTo(Console.WriteLine, LogLevel.Information)
     .EnableSensitiveDataLogging()          // shows parameter values: DEV ONLY
     .EnableDetailedErrors());
@@ -64,6 +80,10 @@ var q = db.Orders.TagWith("Dashboard: recent big orders").Where(o => o.Total > 1
 In production, **OpenTelemetry EF Core instrumentation** ([Observability](ch:observability-aspire)) records every query as a span with its duration, and Query Store or Azure SQL Insights shows the slowest statements — the same "trace it before guessing" discipline that [Performance engineering](ch:performance-engineering) applies everywhere else.
 
 ## Tracking vs no-tracking: paying for a feature you often don't need {b}
+
+:::plain
+Tracking makes EF Core remember every loaded entity so it can save changes later. For read-only queries that's wasted work, so turn it off.
+:::
 
 Recall from [EF Core fundamentals](ch:efcore-fundamentals#change-tracking-and-savechanges-how-ef-core-knows-what-to-wr) that tracking means keeping a snapshot of every loaded entity so `SaveChanges()` can detect what changed. For a query that's purely reading data to send to a client — never going to be saved back — that snapshot is pure overhead:
 
@@ -83,6 +103,10 @@ You can flip the default for an entire context instead of annotating every query
 
 ## Projection: the single biggest win in this chapter {b}
 
+:::plain
+Select only the fields a screen needs into a small DTO. The database then sends fewer columns, and EF Core skips building and tracking full entities.
+:::
+
 ```csharp
 // ✘ Loads EVERY column of Orders, Customer AND Lines, tracks them all, then the API maps to a DTO
 var orders = await db.Orders.Include(o => o.Customer).Include(o => o.Lines).ToListAsync(ct);
@@ -97,6 +121,10 @@ var dtos2 = await db.Orders
 Notice everything the second version gets for free, just by moving the `Select` earlier: fewer columns actually travel over the wire, nothing gets tracked (projections into plain DTOs are never tracked at all), and — this is the part worth sitting with — **navigations referenced inside a `Select` get translated into joins or subqueries by EF Core itself**, which sidesteps the N+1 problem the next section covers entirely, without you having to think about `Include` at all. **Projecting with `Select` into DTOs** should be the default for every read endpoint you write. Mapping libraries can project too — AutoMapper's `ProjectTo`, Mapperly's `IQueryable` projections — if you'd rather not hand-write the DTO construction.
 
 ## Loading related data: four strategies, one clearly preferred {i}
+
+:::plain
+Related data can be loaded with Include, with a projection, separately on demand, or lazily on first access. Projection or Include are almost always right; lazy loading hides extra queries.
+:::
 
 | Strategy | How | SQL | When |
 |---|---|---|---|
@@ -115,6 +143,10 @@ var customer = await db.Customers
 That "rarely; hides N+1" note in the Lazy row isn't a footnote — it's exactly why the next section exists.
 
 ## The N+1 problem: the single most common EF Core performance bug {i}
+
+:::plain
+Loading a list with one query and then running one more query per item means N+1 round trips. Fetch what you need in the first query instead.
+:::
 
 The shape of this bug: **1 query** loads a list, then **N more queries** — one per item in that list — load each item's related data:
 
@@ -161,6 +193,10 @@ var blogs2 = await db.Blogs.Include(b => b.Posts).Include(b => b.Contributors)
 
 ## Client evaluation and translation errors {i}
 
+:::plain
+Some C# can't be turned into SQL. EF Core then throws instead of quietly loading everything into memory, so rewrite the query or move that part after the database work.
+:::
+
 EF Core can only translate what it actually understands into SQL: the standard LINQ operators, many `string`/`Math`/`DateTime` members, `EF.Functions.Like`, provider-specific functions, and any functions you've explicitly mapped yourself.
 
 ```csharp
@@ -177,6 +213,10 @@ var q2 = db.Products.Where(p => p.Price < p.ListPrice * 0.5m);   // ✔ inline t
 
 ## Paging, counting and existence {i}
 
+:::plain
+Always page large lists, use Any instead of Count when you only need to know whether something exists, and prefer keyset paging over Skip for deep pages.
+:::
+
 ```csharp
 // Offset paging: always ORDER BY a unique key for deterministic pages
 var page = await db.Products.OrderBy(p => p.Name).ThenBy(p => p.Id)
@@ -192,6 +232,10 @@ bool any = await db.Orders.AnyAsync(o => o.CustomerId == id, ct);       // EXIST
 Both paging styles here map directly onto the offset-vs-cursor tradeoff from [API design](ch:api-design#pagination-filtering-and-sorting-never-return-an-unbounded-l). One subtlety worth flagging on its own: a total count on a large, filtered table is itself an expensive query, essentially a full scan to count matches. For infinite-scroll UIs that only need to know "is there more," fetching `size + 1` rows and checking whether the extra one came back is usually far cheaper than computing an exact total.
 
 ## Raw SQL in EF Core {i}
+
+:::plain
+When LINQ can't express a query well, you can write SQL yourself and still get entities or DTOs back. Interpolated values are sent as parameters, so it stays safe.
+:::
 
 ```csharp
 // Entities from SQL (composable: you can add LINQ on top)
@@ -213,6 +257,10 @@ var n = await db.Database.ExecuteSqlAsync($"UPDATE Products SET IsActive = 0 WHE
 
 ## Async and cancellation {b}
 
+:::plain
+Use the async methods so threads aren't held while the database works, and pass the request's cancellation token so abandoned requests stop their queries.
+:::
+
 Use the async operators (`ToListAsync`, `SaveChangesAsync`…) in web apps and pass `CancellationToken` so abandoned requests cancel their SQL rather than running to completion for nobody. Don't run concurrent operations on one context — a `DbContext` isn't thread-safe, as [EF Core fundamentals](ch:efcore-fundamentals#dbcontext-and-dbset-your-session-with-the-database) warned. Stream genuinely large results with `AsAsyncEnumerable()` instead of buffering the entire result set in memory with `ToListAsync()`.
 
 ## Performance techniques {a}
@@ -232,14 +280,18 @@ Use the async operators (`ToListAsync`, `SaveChangesAsync`…) in web apps and p
 | **Caching** | For hot, rarely changing reads ([Caching](ch:caching-ratelimit-cors)) |
 
 ```csharp
-private static readonly Func<ShopDb, int, CancellationToken, Task<ProductDto?>> GetProductById =
-    EF.CompileAsyncQuery((ShopDb db, int id, CancellationToken ct) =>
+private static readonly Func<KettleDb, int, CancellationToken, Task<ProductDto?>> GetProductById =
+    EF.CompileAsyncQuery((KettleDb db, int id, CancellationToken ct) =>
         db.Products.Where(p => p.Id == id).Select(p => new ProductDto(p.Id, p.Name, p.Price)).FirstOrDefault());
 
 var p = await GetProductById(db, 42, ct);
 ```
 
 ## Checklist for a slow EF Core endpoint {i}
+
+:::plain
+Look at the SQL, count the queries, check that it projects and doesn't track, check the indexes, and only then consider raw SQL or caching.
+:::
 
 Work through this in order — each step is cheap to check and most slow endpoints are caught well before step 10:
 
@@ -286,6 +338,10 @@ Use FromSql / SqlQuery / ExecuteSql with interpolated strings: they take Formatt
 Project into a DTO with only the needed columns, use no-tracking, make sure a supporting index exists (check the plan), consider a compiled query and DbContext pooling, cache the result if staleness is acceptable, and use keyset pagination for large lists.
 :::
 
+## Next episode {b}
+
+Two staff members edit the same order. The second save silently wins. [Episode 5 · Two people, one order →](ch:efcore-advanced)
+
 ## Further reading
 
 - [Efficient querying](https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying)
@@ -305,9 +361,9 @@ using Microsoft.EntityFrameworkCore;
 var connString = "DataSource=file:verifydb?mode=memory&cache=shared";
 await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(connString);
 await conn.OpenAsync();
-var opts = new DbContextOptionsBuilder<ShopDb>().UseSqlite(conn).Options;
+var opts = new DbContextOptionsBuilder<KettleDb>().UseSqlite(conn).Options;
 
-await using (var seed = new ShopDb(opts))
+await using (var seed = new KettleDb(opts))
 {
     await seed.Database.EnsureCreatedAsync();
     var c = new Customer { Name = "Ada" };
@@ -320,7 +376,7 @@ await using (var seed = new ShopDb(opts))
 }
 
 // Claim: AsNoTracking() returned entities are not tracked (ChangeTracker has zero entries).
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var orders = await db.Orders.AsNoTracking().ToListAsync();
     if (db.ChangeTracker.Entries().Any()) throw new Exception("FAIL: AsNoTracking still tracked entities");
@@ -328,7 +384,7 @@ await using (var db = new ShopDb(opts))
 }
 
 // Claim: projecting with Select avoids tracking too, even without AsNoTracking.
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var dtos = await db.Orders.Select(o => new { o.Id, o.Total }).ToListAsync();
     if (db.ChangeTracker.Entries().Any()) throw new Exception("FAIL: projection was tracked");
@@ -338,7 +394,7 @@ await using (var db = new ShopDb(opts))
 // Claim: a query is not executed until a terminating operator runs (deferred execution).
 // Proof: build the query, THEN add a new row, THEN run it — if building ran the query early,
 // the new row would be missing from the result.
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var query = db.Orders.Where(o => o.Total > 0); // just builds the query, no SQL yet
 
@@ -354,7 +410,7 @@ await using (var db = new ShopDb(opts))
 }
 
 // Claim: N+1's fix — batching with Contains issues one query and returns all matching rows.
-await using (var db = new ShopDb(opts))
+await using (var db = new KettleDb(opts))
 {
     var ids = await db.Orders.Select(o => o.Id).ToListAsync();
     var totalsBatched = await db.Orders.Where(o => ids.Contains(o.Id))
@@ -368,9 +424,9 @@ Console.WriteLine("All checks passed.");
 // --- Minimal model, matching the chapter's examples ---
 class Customer { public int Id { get; set; } public string Name { get; set; } = ""; public List<Order> Orders { get; set; } = new(); }
 class Order { public int Id { get; set; } public int CustomerId { get; set; } public Customer Customer { get; set; } = null!; public decimal Total { get; set; } }
-class ShopDb : DbContext
+class KettleDb : DbContext
 {
-    public ShopDb(DbContextOptions<ShopDb> options) : base(options) { }
+    public KettleDb(DbContextOptions<KettleDb> options) : base(options) { }
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
 }

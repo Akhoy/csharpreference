@@ -100,7 +100,7 @@ A lot of confusion comes from one word meaning different things on different lay
 This trace touches nearly every chapter in the book, so it's the best way to see how the pieces connect. Imagine a mobile app calls:
 
 ```http
-POST https://api.shop.com/orders
+POST https://api.kettle.com/orders
 Authorization: Bearer eyJhbGciOi...
 Content-Type: application/json
 
@@ -109,11 +109,11 @@ Content-Type: application/json
 
 ### 1. Infrastructure: the request finds your code (layer 7)
 
-DNS points `api.shop.com` at an **Azure Front Door** or **Application Gateway**. It ends the TLS connection and forwards the request to one of several running instances of your app. Those instances run in **Azure Container Apps**, as a container built from your **Dockerfile** and deployed by your **CI/CD pipeline**. There are several instances because the app is **stateless** and **scaled out**: any instance can handle any request. → [Cloud & Azure overview](ch:cloud-azure-overview), [Docker](ch:docker), [Azure compute](ch:azure-compute).
+DNS points `api.kettle.com` at an **Azure Front Door** or **Application Gateway**. It ends the TLS connection and forwards the request to one of several running instances of your app. Those instances run in **Azure Container Apps**, as a container built from your **Dockerfile** and deployed by your **CI/CD pipeline**. There are several instances because the app is **stateless** and **scaled out**: any instance can handle any request. → [Cloud & Azure overview](ch:cloud-azure-overview), [Docker](ch:docker), [Azure compute](ch:azure-compute).
 
 ### 2. Runtime: a process is already running (layer 2)
 
-Inside the container, `dotnet Shop.Api.dll` started earlier. The **CLR** loaded your assemblies. The **JIT** compiled each method to machine code the first time it ran. The **GC** manages every object you allocate, and the **thread pool** supplies the threads that do the work. → [How code runs](ch:how-code-runs), [Memory & GC](ch:memory-gc).
+Inside the container, `dotnet Kettle.Api.dll` started earlier. The **CLR** loaded your assemblies. The **JIT** compiled each method to machine code the first time it ran. The **GC** manages every object you allocate, and the **thread pool** supplies the threads that do the work. → [How code runs](ch:how-code-runs), [Memory & GC](ch:memory-gc).
 
 ### 3. Framework: Kestrel and the host (layer 3)
 

@@ -18,7 +18,19 @@ next: design-patterns, app-architectures
 - DRY is about duplicated *knowledge*, not duplicated-looking text — don't merge two things that just happen to look alike today.
 - These are heuristics, not laws: an interface with one implementation that never changes is often over-engineering, not good design.
 
+## Previously at Kettle {b}
+
+Kettle's `OrderService` is 900 lines long. Adding Apple Pay means editing a class that also sends emails and renders invoices.
+
+**The problem:** Adding Apple Pay means editing a 900-line class that also sends emails.
+
+**This episode:** SOLID as a means to low coupling and high cohesion, and when to bend it.
+
 ## The problem every principle in this chapter is trying to solve {b}
+
+:::plain
+Code that's hard to change is the real cost of software. Every principle here is a way to make a likely change touch as little code as possible.
+:::
 
 Code is read and changed far more often than it's written fresh. Every principle in this chapter — SOLID and the others that follow it — exists for exactly one practical reason: to **reduce the cost of change**. When a requirement changes, the ideal is that as few places as possible need to change, and that changing them doesn't break something unrelated you weren't even thinking about. SOLID (named by Robert C. Martin, "Uncle Bob") packages five such principles specifically for classes and modules:
 
@@ -32,6 +44,10 @@ Code is read and changed far more often than it's written fresh. Every principle
 
 ## S: Single Responsibility Principle {b}
 
+:::plain
+A class should have one reason to change. If tax rules and email wording both force edits to the same class, split it.
+:::
+
 > A class should have **one reason to change**, meaning it is responsible to **one actor** (one stakeholder or source of requirements).
 
 ```csharp
@@ -43,8 +59,8 @@ public class OrderService
         o.Total = o.Lines.Sum(l => l.Price * l.Qty) * (o.Customer.IsVip ? 0.9m : 1m);  // pricing
         using var conn = new SqlConnection("…");                                       // persistence
         conn.Execute("INSERT INTO Orders …", o);
-        var smtp = new SmtpClient("smtp.shop.com");                                     // notification
-        smtp.Send("shop@shop.com", o.Customer.Email, "Thanks!", $"Your total is {o.Total}");
+        var smtp = new SmtpClient("smtp.kettle.com");                                   // notification
+        smtp.Send("kettle@kettle.com", o.Customer.Email, "Thanks!", $"Your total is {o.Total}");
     }
 }
 
@@ -69,6 +85,10 @@ It's about **cohesion around a reason to change**. Splitting a cohesive class in
 :::
 
 ## O: Open/Closed Principle {i}
+
+:::plain
+Add new behaviour by adding new code, such as a new payment class, rather than by editing working code.
+:::
 
 > Software entities should be **open for extension** but **closed for modification**. Add behaviour by adding new code, not by editing working, tested code.
 
@@ -96,6 +116,10 @@ public sealed class ShippingCalculator(IEnumerable<IShippingRate> rates)
 The payoff is specific: adding FedEx support in the first version means editing a method that DHL and UPS *already* depend on, risking a typo that breaks pricing for carriers nobody meant to touch. In the second version, adding FedEx is purely additive — a new class, one registration line — and `ShippingCalculator` itself never changes again, no matter how many carriers get added. **Where .NET does this:** middleware (extend the pipeline without modifying it, exactly as [Middleware](ch:middleware#now-heres-the-aha-a-middleware-is-just-a-function-wrapping-a) showed), DI registrations, MVC/endpoint filters, EF Core interceptors, `DelegatingHandler`s, configuration providers, logging providers, and authorization handlers. Tools: polymorphism, strategy, decorator, plugin points.
 
 ## L: Liskov Substitution Principle {i}
+
+:::plain
+A subclass must work anywhere its base class is expected, without surprising the caller. If it has to throw 'not supported', the inheritance is wrong.
+:::
 
 > If S is a subtype of T, objects of type T may be replaced with objects of type S **without breaking the program's correctness**.
 
@@ -132,6 +156,10 @@ public class ReadOnlyOrderRepository : IOrderRepository
 
 ## I: Interface Segregation Principle {i}
 
+:::plain
+Prefer several small interfaces to one big one, so each class depends only on the methods it actually uses.
+:::
+
 > Clients should not be forced to depend on methods they don't use. Prefer several small, role-specific interfaces over one large one.
 
 ```csharp
@@ -152,6 +180,10 @@ public interface IUserExporter { Task<byte[]> ExportCsvAsync(); }
 Notice exactly what this fixes in the `ReadOnlyOrderRepository` example from the LSP section above: splitting into `IOrderReader` and `IOrderWriter` means the read-only implementation simply never implements `IOrderWriter` at all, so there's no `Add` method left to throw from in the first place — the problem disappears rather than getting patched. **In .NET:** `IEnumerable<T>` / `IReadOnlyCollection<T>` / `IList<T>`; `IOptions<T>` giving each class only its own settings section; CQRS splitting read and write interfaces; the `IDisposable`/`IAsyncDisposable` split.
 
 ## D: Dependency Inversion Principle {b}
+
+:::plain
+Business code should depend on interfaces it owns, not on concrete databases or vendors. Then those details can change without touching the rules.
+:::
 
 > 1. High-level modules should not depend on low-level modules. **Both should depend on abstractions.**
 > 2. Abstractions should not depend on details. Details should depend on abstractions.
@@ -185,6 +217,10 @@ DIP is the principle; **DI** is the mechanism that makes it practical to wire up
 
 ## Coupling and cohesion: the two metrics SOLID is really about {i}
 
+:::plain
+Cohesion means the things inside a module belong together. Coupling means how much modules depend on each other. Aim for high cohesion and low coupling.
+:::
+
 Pull back from the five individual letters, and all of SOLID is really in service of two measurable properties:
 
 - **Cohesion** (want **high**): how strongly the elements *inside* a module belong together. A `Money` type with arithmetic and formatting is cohesive; a `Utils` class with email validation, date parsing and PDF generation is not.
@@ -203,6 +239,10 @@ Pull back from the five individual letters, and all of SOLID is really in servic
 
 ## DRY, KISS and YAGNI {b}
 
+:::plain
+Don't repeat knowledge, keep it simple, and don't build things before they're needed. Each one is a counterweight to over-applying the others.
+:::
+
 | Principle | Meaning | Caveat |
 |---|---|---|
 | **DRY**: Don't Repeat Yourself | Every piece of **knowledge** has one authoritative representation | About knowledge, not text. Two identical-looking snippets that change for different reasons are **not** duplication. Merging them creates coupling. "Prefer duplication over the wrong abstraction" (Sandi Metz) |
@@ -212,6 +252,10 @@ Pull back from the five individual letters, and all of SOLID is really in servic
 DRY's caveat is worth dwelling on, because it's where people most often over-apply the principle: two pieces of code can look textually identical today and still represent two entirely different pieces of *knowledge* — a shipping cost formula and a tax calculation might both happen to compute `base * rate` right now, purely by coincidence, and merging them into one shared helper creates a dependency between two business rules that have nothing to do with each other and will inevitably diverge later. The **Rule of Three** is the practical discipline that keeps this in check: tolerate duplication the first two times something looks similar; only abstract on the third occurrence, once the actual shared pattern — not just a visual coincidence — is genuinely clear.
 
 ## Other principles worth naming {i}
+
+:::plain
+A few more short rules come up in reviews and interviews: tell, don't ask; the Law of Demeter; and command-query separation.
+:::
 
 - **Composition over inheritance**: assemble behaviour from collaborators (decorators, strategies) instead of deep class hierarchies. See [OOP](ch:oop#inheritance-and-when-it-goes-wrong).
 - **Law of Demeter** (principle of least knowledge): talk to friends, not strangers. `order.Customer.Address.City.Name` couples you to four classes' structure; prefer `order.ShippingCity()`, or pass what's needed.
@@ -268,6 +312,10 @@ A method should only talk to its immediate collaborators (itself, its parameters
 :::qa When would you not create an interface for a class?
 When there's a single stable implementation that isn't an I/O or volatile boundary and doesn't need to be faked in tests (simple domain services, value objects, mappers). Interfaces pay off at seams: persistence, external services, time, randomness, and real variation points.
 :::
+
+## Next episode {b}
+
+The same design problems keep coming back in slightly different shapes. [Episode 2 · Named solutions →](ch:design-patterns)
 
 ## Further reading
 

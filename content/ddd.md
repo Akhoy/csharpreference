@@ -19,7 +19,19 @@ next: microservices, messaging-events
 - A **rich** model (behaviour and data together, like `order.Cancel(...)`) stops rules being bypassed; an **anemic** model (plain data + a separate service with the rules) doesn't.
 - Skip the tactical patterns for simple CRUD — they're worth their cost only in a domain that's genuinely complex and core to the business.
 
+## Previously at Kettle {b}
+
+Kettle's catalogue team and warehouse team keep breaking each other's code, because "Product" means something different to each.
+
+**The problem:** "Product" means one thing to the catalogue team and another to the warehouse.
+
+**This episode:** bounded contexts, aggregates, value objects and domain events.
+
 ## The problem DDD exists to solve {i}
+
+:::plain
+In complex businesses, most bugs come from code that doesn't match how the business actually works. DDD is a set of techniques for modelling that business precisely in code.
+:::
 
 **Domain-Driven Design** (Eric Evans, 2003) starts from a specific, honest observation about hard software: in genuinely complex business domains — insurance, logistics, banking, healthcare, e-commerce at scale — the hardest problem usually isn't a technical one at all. It's **understanding and correctly encoding the business itself**. When the rules governing that business get scattered across controllers, services and raw SQL, they inevitably get duplicated, start quietly contradicting each other, and eventually become something nobody can change with confidence anymore.
 
@@ -36,6 +48,10 @@ In complex domains — insurance, logistics, banking, healthcare, e-commerce at 
 :::
 
 ## Strategic DDD: ubiquitous language and bounded contexts {i}
+
+:::plain
+Developers and experts agree on one vocabulary and use it in the code. Where a word starts meaning something different, that's the edge of a bounded context.
+:::
 
 ### Ubiquitous language
 
@@ -74,6 +90,10 @@ How bounded contexts relate: **Shared Kernel** (a small shared model), **Custome
 
 ## Entities: identity that outlives any particular state {i}
 
+:::plain
+An entity is something with an identity that stays the same while its details change, like an order whose status moves from paid to shipped.
+:::
+
 An **entity** has an **identity that persists over time** and through changes. Two entities are the same if their IDs are equal, even if every other field differs — this is the single defining trait that separates an entity from the value objects covered next.
 
 ```csharp
@@ -88,6 +108,10 @@ public readonly record struct CustomerId(Guid Value) { public static CustomerId 
 ```
 
 ## Value objects: defined entirely by what they contain {i}
+
+:::plain
+A value object has no identity: two £5 amounts are interchangeable. Make value objects immutable and let them validate themselves.
+:::
 
 A **value object** is the mirror image of an entity: it's defined **entirely by its values**, has **no identity** of its own, and is **immutable**. Two value objects holding the same values are completely interchangeable — there's no sense in which one is "the same instance" as another, because that question doesn't apply. Examples: `Money`, `Address`, `EmailAddress`, `DateRange`, `Quantity`, `Percentage`, `GeoCoordinate`.
 
@@ -239,7 +263,78 @@ The outbox row is the one worth defaulting to for anything that genuinely matter
 
 The distinction worth holding onto between the first two rows: a *domain* service still speaks the business's language and can contain real rules (`TransferService` deciding how a transfer actually works), while an *application* service is pure orchestration — it calls other things in the right order and contains no judgment calls of its own. `PlaceOrderHandler` from earlier chapters is a textbook application service precisely because every actual decision inside it (can this order be placed? is this quantity valid?) was delegated to the aggregate itself.
 
+## See it run: an aggregate guarding its rules {i}
+
+Kettle's `Order` is an aggregate root. All changes go through its methods, so its rules can't be bypassed, and `Money` is a value object compared by value.
+
+:::walk An order that protects itself
+```csharp
+var order = Order.Place(customerId: 7);
+order.AddLine("TEA-01", 2, new Money(6.50m, "GBP"));
+order.AddLine("TEA-01", 1, new Money(6.50m, "GBP"));
+Console.WriteLine($"{order.Lines.Count} line, qty {order.Lines[0].Quantity}, total {order.Total}");
+
+order.Ship();
+try { order.AddLine("TEA-02", 1, new Money(4m, "GBP")); }
+catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+
+Console.WriteLine(new Money(6.50m, "GBP") == new Money(6.50m, "GBP"));
+
+readonly record struct Money(decimal Amount, string Currency)
+{
+    public Money Times(int n) => new(Amount * n, Currency);
+    public static Money operator +(Money a, Money b) => new(a.Amount + b.Amount, a.Currency);
+    public override string ToString() => $"{Currency} {Amount:0.00}";
+}
+
+sealed class OrderLine(string sku, int quantity, Money price)
+{
+    public string Sku { get; } = sku;
+    public int Quantity { get; internal set; } = quantity;
+    public Money Price { get; } = price;
+}
+
+sealed class Order
+{
+    private readonly List<OrderLine> _lines = [];
+    private bool _shipped;
+    private Order(int customerId) => CustomerId = customerId;
+
+    public int CustomerId { get; }
+    public IReadOnlyList<OrderLine> Lines => _lines;
+    public Money Total => _lines.Aggregate(new Money(0, "GBP"), (sum, l) => sum + l.Price.Times(l.Quantity));
+
+    public static Order Place(int customerId) => new(customerId);
+
+    public void AddLine(string sku, int quantity, Money price)
+    {
+        if (_shipped) throw new InvalidOperationException("can't change a shipped order");
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+        var existing = _lines.Find(l => l.Sku == sku);
+        if (existing is not null) existing.Quantity += quantity;
+        else _lines.Add(new OrderLine(sku, quantity, price));
+    }
+
+    public void Ship() => _shipped = true;
+}
+```
+@1 | order = Order { CustomerId = 7, Lines = [] }
+The constructor is private: orders are created only through `Place`, the one way in.
+@2-3 | order = Order { Lines = [TEA-01 × 3] }
+Adding the same tea twice merges into one line. That rule lives inside the aggregate, so no caller can create duplicate lines.
+@4 | | > 1 line, qty 3, total GBP 19.50
+`Total` is calculated from the lines, never stored separately, so it can't drift out of date.
+@6-8 | | > can't change a shipped order
+Once shipped, the aggregate refuses changes. Callers can't reach the line list to edit it, because it's only exposed as `IReadOnlyList`.
+@10 | | > True
+Two `Money` values with the same amount and currency are equal: a value object has no identity of its own.
+:::
+
 ## Rich vs anemic domain models {i}
+
+:::plain
+In a rich model, objects enforce their own rules through methods. In an anemic model they're just data, and the rules are scattered across services.
+:::
 
 ```csharp
 // ✘ Anemic: a bag of data; rules live in services and get duplicated and bypassed
@@ -291,6 +386,10 @@ Notice that `CustomerId` is mapped as a plain property with a value converter, n
 
 ## When DDD is overkill {i}
 
+:::plain
+Simple CRUD screens don't need aggregates and domain events. Use DDD's tactical patterns where the business rules are genuinely complex.
+:::
+
 Tactical DDD has real costs: more types, more mapping, a learning curve, and eventual consistency between aggregates. Use it for **core, complex domains with rich rules that change often** — exactly the "Core" row from the subdomain table earlier in this chapter. For CRUD-style supporting subdomains (reference data admin, simple forms), a straightforward model with EF Core and validation is better, and reaching for the full tactical toolkit there would be ceremony without payoff. **Strategic DDD** (bounded contexts, ubiquitous language) is valuable almost everywhere, even when you skip the tactical patterns entirely — the value of a shared, precise vocabulary doesn't depend on how rich the underlying model needs to be.
 
 :::qa What is an aggregate and what rules govern it?
@@ -328,6 +427,10 @@ A translation layer (adapters and mappers) between your bounded context and an e
 :::qa When would you not use DDD?
 For simple CRUD or supporting subdomains with little business logic, small short-lived apps, or when domain experts aren't available. Strategic ideas (bounded contexts, shared language) are still useful, but tactical patterns would add ceremony without benefit.
 :::
+
+## Next episode {b}
+
+Three teams keep blocking each other's releases. [Episode 6 · One app or many? →](ch:microservices)
 
 ## Further reading
 

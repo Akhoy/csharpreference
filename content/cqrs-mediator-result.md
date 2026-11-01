@@ -17,7 +17,19 @@ next: ddd, messaging-events
 - A **mediator** (e.g. MediatR) just forwards a command/query to its one handler, but the real value is the **pipeline** wrapped around every handler: logging, validation, transactions, done once instead of in every handler.
 - The **Result pattern** turns "this can fail" into part of a method's return type, instead of an exception the caller might forget to catch — use it for *expected* failures (not found, declined), keep exceptions for bugs and infrastructure failures.
 
+## Previously at Kettle {b}
+
+Kettle's code has a structure. Now the read screens need data shaped differently from the write rules, and "out of stock" is being thrown as an exception.
+
+**The problem:** Read screens need different shapes from write rules, and errors are thrown everywhere.
+
+**This episode:** CQRS, the mediator pattern, pipeline behaviours and the Result pattern.
+
 ## From a rule about methods to a rule about architecture {b}
+
+:::plain
+A method should either change something or answer a question, never both. CQRS applies the same split to a whole application: separate code for writes and for reads.
+:::
 
 **CQS** (Command-Query Separation, Bertrand Meyer) is a rule for **methods**: a method should either be a **command** (changes state, returns nothing) or a **query** (returns data, has no side effects), never both. Asking a question shouldn't change the answer — a useful discipline on its own, mentioned briefly back in [Design principles](ch:design-principles#other-principles-worth-naming).
 
@@ -38,6 +50,10 @@ They have **different needs**. Writes need **rich behaviour and invariants**: lo
 
 ## Levels of CQRS: a spectrum, not a binary choice {i}
 
+:::plain
+CQRS can be as small as separate handlers for reads and writes in one database, or as big as separate read databases updated by events. Most apps should stay near the small end.
+:::
+
 CQRS is a spectrum, and most teams should stop well before the far end:
 
 | Level | Write side | Read side | Consistency | Complexity |
@@ -55,6 +71,10 @@ They're often mentioned together, but they're independent. You can do CQRS witho
 :::
 
 ## Commands and queries in code {i}
+
+:::plain
+A command handler loads the domain model, applies the rules and saves. A query handler skips the domain model and projects straight from the database to a DTO.
+:::
 
 ```csharp
 // ── Commands: intent to change state; imperative names; return little (an id, a Result) ──
@@ -78,7 +98,7 @@ public sealed class PlaceOrderHandler(IOrderRepository orders, IPricing pricing,
 public sealed record GetOrderHistoryQuery(CustomerId CustomerId, int Page, int PageSize);
 public sealed record OrderHistoryItem(Guid Id, DateTimeOffset PlacedAt, string Status, decimal Total, int Items);
 
-public sealed class GetOrderHistoryHandler(ShopDb db)
+public sealed class GetOrderHistoryHandler(KettleDb db)
 {
     public async Task<PagedResult<OrderHistoryItem>> Handle(GetOrderHistoryQuery q, CancellationToken ct)
     {
@@ -96,6 +116,10 @@ public sealed class GetOrderHistoryHandler(ShopDb db)
 Notice how different these two handlers actually are in shape, not just in name: `PlaceOrderHandler` loads a rich `Order` aggregate and calls its own methods, while `GetOrderHistoryHandler` never touches the domain model at all — it projects straight from `DbSet` to DTO, exactly the pattern [EF Core querying](ch:efcore-querying#projection-the-single-biggest-win-in-this-chapter) recommended for every read endpoint. Rules of thumb that fall out of this: **queries never modify state**; queries can bypass the domain model entirely; **commands go through aggregates**; one handler per command or query.
 
 ## The mediator pattern and pipeline behaviours {i}
+
+:::plain
+A mediator sends each request to its one handler through a pipeline, so logging, validation and transactions are written once for every handler.
+:::
 
 A **mediator** dispatches a request object to its **single handler**, so the sender doesn't need a reference to the handler directly. That indirection alone is a modest convenience — its real value is the **pipeline** it enables: behaviours that wrap **every** handler, giving you one place to put cross-cutting concerns, exactly the role [Middleware](ch:middleware) plays for HTTP requests, now scoped to your application layer instead.
 
@@ -166,6 +190,10 @@ MediatR also has **notifications** (`INotification` with multiple `INotification
 The honest tradeoff behind all of this: indirection hides call graphs, a mediator is "service locator in disguise" when overused, and it's genuinely unnecessary ceremony for a small app with a handful of use cases. Against that: a uniform pipeline, decoupled endpoints, and an easy, repeatable per-use-case structure that scales well as the number of use cases grows. A good interview answer acknowledges both sides rather than picking a tribe.
 
 ## The Result pattern: making expected failure part of the method's contract {i}
+
+:::plain
+Instead of throwing for expected problems like 'out of stock', a method returns a Result that is either a value or an error. The caller can't forget the failure case.
+:::
 
 **Problem:** many failures are **expected outcomes**, not exceptional situations: "order not found", "insufficient stock", "email already registered", "card declined". Using exceptions for them creates a specific, recurring set of problems:
 
@@ -276,6 +304,60 @@ Returning an explicit success-or-failure object (with a typed error) from operat
 :::qa How would you implement validation in a CQRS/MediatR setup?
 FluentValidation validators per command, executed by a ValidationBehavior pipeline behaviour before the handler, which short-circuits with a validation-failure Result (or throws a ValidationException mapped to 400 ProblemDetails). Keep business-rule checks that need aggregates inside the domain.
 :::
+
+## See it run: a Result and a pipeline step {i}
+
+A command handler that returns a `Result` instead of throwing, and a validation step wrapped around it, the way a mediator pipeline behaviour would be.
+
+:::walk Expected failures as values
+```csharp
+var placeOrder = new ValidationStep<PlaceOrder>(
+    new PlaceOrderHandler(),
+    cmd => cmd.Quantity > 0 ? null : "Quantity must be positive");
+
+Show(placeOrder.Handle(new PlaceOrder("TEA-01", 2)));
+Show(placeOrder.Handle(new PlaceOrder("TEA-99", 1)));
+Show(placeOrder.Handle(new PlaceOrder("TEA-01", 0)));
+
+static void Show(Result<int> r) => Console.WriteLine(r.IsSuccess ? $"ok: order {r.Value}" : $"failed: {r.Error}");
+
+record PlaceOrder(string Sku, int Quantity);
+
+readonly record struct Result<T>(bool IsSuccess, T? Value, string? Error)
+{
+    public static Result<T> Ok(T value) => new(true, value, null);
+    public static Result<T> Fail(string error) => new(false, default, error);
+}
+
+interface IHandler<TRequest> { Result<int> Handle(TRequest request); }
+
+sealed class PlaceOrderHandler : IHandler<PlaceOrder>
+{
+    private int _lastOrder = 1041;
+    private readonly HashSet<string> _inStock = ["TEA-01", "TEA-02"];
+    public Result<int> Handle(PlaceOrder cmd) =>
+        _inStock.Contains(cmd.Sku) ? Result<int>.Ok(++_lastOrder) : Result<int>.Fail($"{cmd.Sku} is out of stock");
+}
+
+sealed class ValidationStep<TRequest>(IHandler<TRequest> next, Func<TRequest, string?> validate) : IHandler<TRequest>
+{
+    public Result<int> Handle(TRequest request) =>
+        validate(request) is { } error ? Result<int>.Fail(error) : next.Handle(request);
+}
+```
+@1-3 | placeOrder = ValidationStep → PlaceOrderHandler
+The handler is wrapped in a validation step with the same interface, like a mediator's pipeline behaviour.
+@5 | | > ok: order 1042
+Valid and in stock: the handler succeeds and returns the new order number inside a `Result`.
+@6 | | > failed: TEA-99 is out of stock
+Out of stock is an **expected** outcome, not an exception. The `Result` carries the reason, and the caller has to look at `IsSuccess` to get the value.
+@7 | | > failed: Quantity must be positive
+Bad input never reaches the handler: the validation step stops it first, for every command it wraps.
+:::
+
+## Next episode {b}
+
+"Product" means one thing to the catalogue team and another to the warehouse. [Episode 5 · Speak the business language →](ch:ddd)
 
 ## Further reading
 

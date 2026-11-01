@@ -19,6 +19,14 @@ next: errors-logging, api-design, app-architectures
 - **Filters** run inside endpoint execution and see the bound, typed arguments — middleware never does, because it runs before model binding happens.
 - Never bind a request body directly to an EF Core entity ("over-posting") and never return one either — always go through a DTO you control.
 
+## Previously at Kettle {b}
+
+Requests reach the right handler. The handlers themselves are a mess: they parse JSON by hand, validate nothing and return 200 for everything.
+
+**The problem:** POST /orders must accept JSON, reject bad input and say what it created.
+
+**This episode:** minimal APIs and controllers, binding, validation, typed results and OpenAPI.
+
 ## Two syntaxes, the same machinery underneath {b}
 
 Everything in the previous two chapters — the pipeline, the routing match — ends at exactly the same place: your code, deciding what to actually do with a request. ASP.NET Core gives you two different *syntaxes* for writing that code, and it's worth being clear up front that they are genuinely just syntax: both run on the same routing, the same DI container, the same authentication and the same middleware pipeline.
@@ -26,7 +34,7 @@ Everything in the previous two chapters — the pipeline, the routing match — 
 **Minimal APIs** (since .NET 6) map routes directly to functions:
 
 ```csharp
-app.MapGet("/products/{id:int}", async (int id, ShopDb db, CancellationToken ct) =>
+app.MapGet("/products/{id:int}", async (int id, KettleDb db, CancellationToken ct) =>
     await db.Products.FindAsync([id], ct) is { } p ? Results.Ok(p) : Results.NotFound());
 ```
 
@@ -35,7 +43,7 @@ app.MapGet("/products/{id:int}", async (int id, ShopDb db, CancellationToken ct)
 ```csharp
 [ApiController]
 [Route("products")]
-public class ProductsController(ShopDb db) : ControllerBase
+public class ProductsController(KettleDb db) : ControllerBase
 {
     [HttpGet("{id:int}")]
     public async Task<ActionResult<Product>> Get(int id, CancellationToken ct) =>
@@ -276,7 +284,7 @@ Request ─▶ [Authorization filters] ─▶ [Resource filters (before)] ─▶
 | Result | `IResultFilter` | Modify or wrap results, add headers |
 
 ```csharp
-public sealed class TransactionFilter(ShopDb db) : IAsyncActionFilter
+public sealed class TransactionFilter(KettleDb db) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)
     {
@@ -331,6 +339,38 @@ Return an EF Core entity with its navigation properties intact — `Order.Custom
 - Return files with `Results.File(bytes, "application/pdf", "invoice.pdf")` or `Results.Stream(stream, …)`; use `PhysicalFile` for files on disk, which adds HTTP range support for free.
 - Stream large datasets with `IAsyncEnumerable<T>`: the JSON array gets written to the response as items arrive, rather than buffering the entire result set in memory first.
 - **Server-Sent Events** (`TypedResults.ServerSentEvents`, .NET 10) for one-way streaming updates to a browser.
+
+## Mapping between entities and DTOs {i}
+
+:::plain
+Your database classes and your API's JSON shouldn't be the same classes, so something has to copy values from one to the other. Write that copy by hand or have a source generator write it; avoid magic that only fails at run time.
+:::
+
+Endpoints take **request DTOs** and return **response DTOs**, never EF entities ([why](ch:razor-mvc#forms-binding-validation-antiforgery-and-prg)). So every endpoint copies values between the two. There are four ways to do it, in order of preference for most teams:
+
+| Approach | How | Strengths | Weaknesses |
+|---|---|---|---|
+| **Project in the query** | `db.Orders.Select(o => new OrderDto(o.Id, o.Total, o.Customer.Name))` | EF fetches only those columns; no entity is loaded at all | only for reads |
+| **Hand-written mapping** | a static method or extension: `order.ToDto()` | obvious, debuggable, fastest; the compiler flags a renamed property | typing, for large types |
+| **Source-generated mapping** (Mapperly) | `[Mapper] partial class OrderMapper { public partial OrderDto ToDto(Order o); }` | no reflection; the generated code is readable; unmapped members become build warnings; works with Native AOT | another library; conventions to learn |
+| **Reflection-based mapping** (AutoMapper) | `mapper.Map<OrderDto>(order)` with profiles | very little code for big, similar types | mistakes surface at **run time**; hidden logic in profiles; harder to debug; reflection start-up cost |
+
+```csharp norun
+public static class OrderMappings
+{
+    public static OrderDto ToDto(this Order o) =>
+        new(o.Id, o.Number, o.Total, o.Status.ToString(), o.Lines.Select(l => l.ToDto()).ToList());
+
+    public static OrderLineDto ToDto(this OrderLine l) => new(l.Sku, l.Quantity, l.Price);
+}
+```
+
+Rules that keep mapping honest:
+
+- **Mapping isn't business logic.** Calculations and rules belong in the domain; a mapper only copies.
+- **For reads, project.** Mapping a loaded entity means EF fetched every column and tracked the entity first ([EF Core querying](ch:efcore-querying)).
+- **Test the mapping you can't see.** If you use a reflection mapper, call its configuration-validation method in a unit test, so a missing member fails the build pipeline instead of production.
+- **Check the licence.** Some popular .NET libraries, including AutoMapper and MediatR, moved to commercial licences for many uses in 2025. Hand-written or source-generated mapping avoids the question.
 
 ## Putting it together: a handler that stays genuinely thin {i}
 
@@ -393,6 +433,14 @@ It decouples the API contract from the database schema, prevents over-posting an
 :::qa How do you customise JSON serialization?
 ConfigureHttpJsonOptions (minimal APIs) or AddJsonOptions (controllers) to set naming policies, converters (JsonStringEnumConverter), ignore conditions and so on; attributes like [JsonPropertyName], [JsonIgnore] and [JsonPolymorphic]; custom JsonConverter&lt;T&gt;; and source-generated JsonSerializerContext for speed and AOT.
 :::
+
+:::tip Companion chapter
+Everything an endpoint reads and writes goes through System.Text.Json. Naming, enums, polymorphism, converters, streaming and source generation are in [JSON and System.Text.Json](ch:serialization).
+:::
+
+## Next episode {b}
+
+A customer sees a stack trace, and the logs are unsearchable text. [Episode 7 · When it breaks at 2 a.m. →](ch:errors-logging)
 
 ## Further reading
 

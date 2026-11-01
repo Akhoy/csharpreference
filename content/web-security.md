@@ -19,7 +19,19 @@ next: oauth-oidc-identity, system-design
 - **XSS** steals/runs script in someone else's browser; **CSRF** abuses cookies being sent automatically — they need different, sometimes opposite, defences (HttpOnly cookies help XSS, SameSite/antiforgery tokens help CSRF).
 - Treat every external input — request bodies, file uploads, outbound URLs you fetch on a user's behalf (SSRF) — as hostile until validated, and keep dependencies patched; most real breaches exploit a known, unfixed issue, not a novel attack.
 
+## Previously at Kettle {b}
+
+Kettle is fast and reliable. Then a security researcher emails: changing the number in /orders/41 shows a stranger's order.
+
+**The problem:** Change the number in /orders/41 and you can read a stranger's order.
+
+**This episode:** the OWASP risks, access control, injection, XSS and CSRF, and safe file uploads.
+
 ## Security principles {b}
+
+:::plain
+A few habits prevent most breaches: several layers of defence, the least access needed, safe defaults, and never trusting input.
+:::
 
 | Principle | Meaning | Example |
 |---|---|---|
@@ -37,6 +49,10 @@ Notice how many of these principles have already shown up by name earlier in thi
 **Threat modelling** (e.g. **STRIDE**: Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege) at design time finds problems before they're built.
 
 ## OWASP Top 10 mapped to .NET {i}
+
+:::plain
+OWASP's list ranks the most common web security risks. Each has standard defences in ASP.NET Core.
+:::
 
 The **OWASP Top 10** (web apps; 2021 edition, with a 2025 update) and **OWASP API Security Top 10** (2023) list the most critical risks.
 
@@ -59,14 +75,18 @@ The rest of this chapter walks through the table's top few rows in detail — th
 
 ## Broken access control and IDOR {b}
 
+:::plain
+Checking that a user is logged in isn't enough. Every request must also check that this user may see this particular record.
+:::
+
 The **#1 risk** in practice. An **IDOR** (Insecure Direct Object Reference, called **BOLA** in the API Top 10) is when an endpoint trusts an ID from the client without checking that the *caller* is actually allowed to see *that specific* resource:
 
 ```csharp
 // ✘ Any authenticated user can read ANY order by changing the id
-app.MapGet("/orders/{id:int}", async (int id, ShopDb db) => await db.Orders.FindAsync(id)).RequireAuthorization();
+app.MapGet("/orders/{id:int}", async (int id, KettleDb db) => await db.Orders.FindAsync(id)).RequireAuthorization();
 
 // ✔ Scope the query to the caller (and return 404, not 403, so you don't reveal what exists)
-app.MapGet("/orders/{id:int}", async (int id, ClaimsPrincipal user, ShopDb db, CancellationToken ct) =>
+app.MapGet("/orders/{id:int}", async (int id, ClaimsPrincipal user, KettleDb db, CancellationToken ct) =>
 {
     var customerId = user.GetCustomerId();
     var order = await db.Orders.AsNoTracking()
@@ -81,6 +101,10 @@ Notice the first version isn't missing authorization entirely — `RequireAuthor
 Also: **function-level** checks (`/admin/*` must require an admin policy, not just "authenticated"); **multi-tenant isolation** (global query filters by TenantId plus database row-level security as defence in depth; see [EF Core advanced](ch:efcore-advanced#global-query-filters-soft-delete-and-multi-tenancy)); don't rely on hidden UI or unguessable IDs (GUIDs aren't access control); and test authorization explicitly in integration tests ([Integration testing](ch:integration-testing#fake-authentication)).
 
 ## Injection {b}
+
+:::plain
+Never glue user input into SQL or commands. Send it as parameters, so it can only ever be data.
+:::
 
 ```csharp
 // ✘ SQL injection: input = "x' OR '1'='1"  or  "'; DROP TABLE Orders; --"
@@ -100,6 +124,10 @@ Dynamic identifiers (sort column, table name) **can't be parameters**: **allow-l
 
 ## XSS, CSRF and clickjacking {i}
 
+:::plain
+XSS runs an attacker's script in your page. CSRF makes a user's browser send requests they didn't intend. Clickjacking hides your page under a decoy. Each has its own defence.
+:::
+
 **Cross-Site Scripting (XSS):** attacker-supplied script runs in another user's browser.
 
 - **Razor encodes output by default** (`@Model.Name`); `Html.Raw` and `MarkupString` bypass it, so avoid them with user data or sanitise with HtmlSanitizer.
@@ -115,6 +143,10 @@ Dynamic identifiers (sort column, table name) **can't be parameters**: **allow-l
 **Clickjacking:** framing your site invisibly. Use `X-Frame-Options: DENY` or CSP `frame-ancestors 'none'`.
 
 ## Authentication failures and password storage {i}
+
+:::plain
+Let an identity provider handle sign-in where you can. If you store passwords, store slow, salted hashes, never the passwords themselves.
+:::
 
 - Prefer an **external identity provider** (Entra ID, Entra External ID, Auth0, Okta) with **MFA** and **Conditional Access**, over building login yourself ([OAuth & OIDC](ch:oauth-oidc-identity)) — the exact "don't roll your own token service" warning [Auth](ch:auth#jwt-bearer-authentication-traced-claim-by-claim) gave, extended to the whole login experience rather than just token issuance.
 - If you store passwords: **never** plain text, reversible encryption, or fast hashes (MD5, SHA-1, SHA-256). Use a **slow, salted, adaptive** algorithm: **PBKDF2** (ASP.NET Core Identity's `PasswordHasher<T>`: HMAC-SHA512 with 100,000 iterations since .NET 7), **Argon2id**, **bcrypt** or **scrypt**.
@@ -146,7 +178,7 @@ Rules: **don't invent crypto**; use vetted libraries and current algorithms; man
 ```csharp
 public sealed class InviteTokens(IDataProtectionProvider provider)
 {
-    private readonly ITimeLimitedDataProtector _p = provider.CreateProtector("Shop.Invites.v1").ToTimeLimitedDataProtector();
+    private readonly ITimeLimitedDataProtector _p = provider.CreateProtector("Kettle.Invites.v1").ToTimeLimitedDataProtector();
     public string Create(Guid inviteId) => _p.Protect(inviteId.ToString(), TimeSpan.FromDays(7));
     public Guid? Read(string token) { try { return Guid.Parse(_p.Unprotect(token)); } catch (CryptographicException) { return null; } }
 }
@@ -154,6 +186,10 @@ public sealed class InviteTokens(IDataProtectionProvider provider)
 ```
 
 ## Transport security and security headers {i}
+
+:::plain
+Serve everything over HTTPS, tell browsers to insist on it, and send headers that turn on the browser's built-in protections.
+:::
 
 ```csharp
 if (!app.Environment.IsDevelopment()) app.UseHsts();        // Strict-Transport-Security: browsers refuse plain HTTP
@@ -182,9 +218,13 @@ Defences: allow-list domains and schemes; resolve DNS and **block private, link-
 
 ## Mass assignment, over-posting and data exposure {i}
 
+:::plain
+Bind requests to DTOs with only the fields the client may set, and return DTOs with only the fields it may see.
+:::
+
 ```csharp
 // ✘ Binding the entity: a client can send {"isAdmin": true, "balance": 1000000}
-app.MapPut("/users/{id}", async (int id, User input, ShopDb db) => { db.Update(input); await db.SaveChangesAsync(); });
+app.MapPut("/users/{id}", async (int id, User input, KettleDb db) => { db.Update(input); await db.SaveChangesAsync(); });
 
 // ✔ Request DTO with only the allowed fields, mapped explicitly; response DTO with only the safe fields
 public sealed record UpdateProfileRequest(string DisplayName, string? Bio);
@@ -194,6 +234,10 @@ public sealed record ProfileResponse(Guid Id, string DisplayName, string? Bio); 
 This is exactly the over-posting trap from [Building APIs](ch:building-apis#parameter-binding-how-request-data-becomes-a-c-argument), repeated here because it's common enough to earn a dedicated OWASP API category of its own. Also avoid **excessive data exposure**: returning full entities and relying on the front end to hide fields. The API response *is* what an attacker sees — a front end hiding a field in its UI does nothing to stop someone reading the raw network response.
 
 ## Resource consumption and DoS protection {i}
+
+:::plain
+Limit request sizes, rates, page sizes and timeouts, so one client can't use up resources meant for everyone.
+:::
 
 - **Rate limiting** per user/IP/API key, with stricter limits on expensive and auth endpoints ([Caching, rate limiting & CORS](ch:caching-ratelimit-cors#rate-limiting-protecting-the-api-from-its-own-popularity)), plus WAF/Front Door/APIM limits at the edge.
 - **Request limits:** Kestrel `MaxRequestBodySize`, form/multipart limits, header size and timeouts, `[RequestSizeLimit]`.
@@ -221,6 +265,10 @@ Notice the comment on `FileSignatures.MatchesAsync`: checking the file **extensi
 
 ## Supply chain and dependencies {i}
 
+:::plain
+Most attacks use known holes in old packages. Keep dependencies updated, scan them, and control where packages come from.
+:::
+
 - **NuGet audit** on restore (warnings on known CVEs, fail CI on high severity), `dotnet list package --vulnerable --include-transitive`, Dependabot/Renovate PRs.
 - **Package source mapping** and private feeds (prevents dependency confusion), lock files, **Central Package Management** for consistent versions ([Projects & NuGet](ch:projects-sdk-nuget#package-hygiene)).
 - **Container images:** minimal or chiseled base images, regular rebuilds, scanning (Trivy, Defender for Containers), signing, SBOMs — the exact security practices [Docker](ch:docker#image-size-startup-and-security) detailed.
@@ -228,6 +276,10 @@ Notice the comment on `FileSignatures.MatchesAsync`: checking the file **extensi
 - **Unsafe APIs:** `BinaryFormatter` is removed (.NET 9); avoid `TypeNameHandling.All` in Newtonsoft.Json (deserialization gadget attacks); validate XML with DTD processing disabled (XXE; .NET's defaults are safe).
 
 ## Logging and monitoring securely {i}
+
+:::plain
+Log security events such as failed sign-ins and denied access, and never log passwords, tokens or personal data.
+:::
 
 Log **security events** (authentication failures, access denials, privilege changes, rate-limit hits, validation anomalies) with user and correlation IDs, and alert on spikes. **Never log** passwords, tokens, API keys, full card numbers or sensitive personal data; use redaction (`Microsoft.Extensions.Compliance.Redaction`) — exactly the "what not to log" table from [Errors & logging](ch:errors-logging#what-to-log-and-what-never-to-log), now framed as a security control rather than just a logging hygiene tip. Protect log stores with RBAC and retention policies. Use **Microsoft Defender for Cloud** for posture management and threat detection across App Service, SQL, Storage, Key Vault and containers.
 
@@ -266,6 +318,10 @@ Strict-Transport-Security (UseHsts), X-Content-Type-Options: nosniff, X-Frame-Op
 :::qa How do you keep dependencies secure?
 NuGet vulnerability auditing in restore and CI, automated update PRs (Dependabot/Renovate), Central Package Management with lock files and package source mapping, regular .NET runtime/SDK patching, minimal container base images that are scanned and rebuilt often, and avoiding dangerous serializers like BinaryFormatter or TypeNameHandling.All.
 :::
+
+## Next episode {b}
+
+Kettle shouldn't store passwords at all. Let an identity provider do it. [Episode 2 · Signing in without passwords →](ch:oauth-oidc-identity)
 
 ## Further reading
 

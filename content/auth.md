@@ -19,6 +19,14 @@ next: oauth-oidc-identity, web-security
 - **Policies** name a reusable authorization rule once, instead of scattering role checks everywhere. **Resource-based authorization** handles rules that depend on which specific row ("your own orders only").
 - ASP.NET Core Identity is a user-storage library, not an OAuth server — for real single sign-on, use an identity provider like Entra ID.
 
+## Previously at Kettle {b}
+
+Kettle can see what happens now, and the logs show something alarming: requests deleting orders that weren't theirs.
+
+**The problem:** Anyone can call DELETE /orders/42.
+
+**This episode:** authentication vs authorization, JWTs, policies and resource-based checks.
+
 ## Two questions that get conflated constantly, and shouldn't be {b}
 
 "The user isn't authorized" is one of those phrases that papers over two genuinely different failures. Before anything else in this chapter, pin these apart, because every bug and every design decision that follows traces back to keeping them separate:
@@ -49,7 +57,7 @@ ASP.NET Core doesn't represent a logged-in user as a username string or a databa
 ClaimsPrincipal (HttpContext.User)                 ← the user
  └── ClaimsIdentity  (AuthenticationType = "Bearer") ← one identity per scheme (usually one)
       ├── Claim  sub        = "7f3c…"                  (subject: unique user id)
-      ├── Claim  email      = "ana@shop.com"
+      ├── Claim  email      = "ana@kettle.com"
       ├── Claim  name       = "Ana"
       ├── Claim  role       = "admin"
       ├── Claim  scope      = "orders.read orders.write"
@@ -112,7 +120,7 @@ A **JWT** (JSON Web Token) is just three base64url-encoded parts joined with dot
 eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMyJ9 . eyJzdWIiOiI3ZjNjIiwiYXVkIjoiYXBpOi8vc2hvcCIsImV4cCI6MTc2… . MEUCIQD…
  header: {"alg":"RS256","kid":"123"}      payload (claims):                                            signature
                                           { "iss": "https://login.microsoftonline.com/<tenant>/v2.0",
-                                            "sub": "7f3c…", "aud": "api://shop-api",
+                                            "sub": "7f3c…", "aud": "api://kettle-api",
                                             "exp": 1767225600, "nbf": 1767222000, "iat": 1767222000,
                                             "scp": "orders.read", "roles": ["admin"] }
 ```
@@ -144,7 +152,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
         o.Authority = "https://login.microsoftonline.com/<tenant-id>/v2.0";   // discovery + signing keys
-        o.Audience = "api://shop-api";
+        o.Audience = "api://kettle-api";
         o.MapInboundClaims = false;            // keep "sub", "roles" as-is instead of long ClaimTypes URIs
         o.TokenValidationParameters = new TokenValidationParameters
         {
@@ -244,7 +252,7 @@ A **policy** is a named bundle of **requirements**, and a policy only passes if 
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("CanReadOrders",  p => p.RequireClaim("scp", "orders.read", "orders.write"))   // any of these values
     .AddPolicy("CanRefund",      p => p.RequireRole("support").RequireClaim("refund_limit"))
-    .AddPolicy("EmployeesOnly",  p => p.RequireAssertion(ctx => ctx.User.HasClaim(c => c.Type == "email" && c.Value.EndsWith("@shop.com"))))
+    .AddPolicy("EmployeesOnly",  p => p.RequireAssertion(ctx => ctx.User.HasClaim(c => c.Type == "email" && c.Value.EndsWith("@kettle.com"))))
     .AddPolicy("Over18",         p => p.AddRequirements(new MinimumAgeRequirement(18)));
 
 orders.MapPost("/{id}/refund", Refund).RequireAuthorization("CanRefund");
@@ -287,7 +295,7 @@ public sealed class OrderOwnerHandler : AuthorizationHandler<OperationAuthorizat
     }
 }
 
-app.MapGet("/orders/{id:int}", async (int id, ShopDb db, ClaimsPrincipal user, IAuthorizationService authz) =>
+app.MapGet("/orders/{id:int}", async (int id, KettleDb db, ClaimsPrincipal user, IAuthorizationService authz) =>
 {
     var order = await db.Orders.FindAsync(id);
     if (order is null) return Results.NotFound();
@@ -377,6 +385,10 @@ A membership library for user storage, password hashing, lockout, 2FA, confirmat
 Auth cookies (and antiforgery tokens) are encrypted with Data Protection keys. By default each instance has its own keys, so a cookie issued by one instance can't be decrypted by another and users get logged out. Persist the key ring to shared storage (Blob, Redis, DB) protected by Key Vault.
 :::
 
+## Next episode {b}
+
+Under load, Kettle runs out of sockets calling the shipping API. [Episode 9 · Calling other services →](ch:http-client)
+
 ## Further reading
 
 - [Overview of ASP.NET Core authentication](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/)
@@ -410,7 +422,7 @@ static string Base64UrlEncode(string s) =>
     Convert.ToBase64String(Encoding.UTF8.GetBytes(s)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
 var header = Base64UrlEncode("""{"alg":"RS256","kid":"123"}""");
-var payload = Base64UrlEncode("""{"sub":"7f3c","aud":"api://shop-api","exp":1767225600}""");
+var payload = Base64UrlEncode("""{"sub":"7f3c","aud":"api://kettle-api","exp":1767225600}""");
 var fakeSignature = Base64UrlEncode("not-a-real-signature");
 var jwt = $"{header}.{payload}.{fakeSignature}";
 

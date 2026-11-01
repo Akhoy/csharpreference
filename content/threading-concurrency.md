@@ -19,7 +19,19 @@ next: performance-engineering, background-work
 - The BCL ships thread-safe collections (`ConcurrentDictionary`, `Channel<T>`, immutable snapshots) specifically so you don't have to hand-roll locking for common patterns like caches and producer/consumer queues.
 - The one rule that matters most in ASP.NET Core: **every singleton must be thread-safe**, because it's the one instance every concurrent request shares.
 
+## Previously at Kettle {b}
+
+Kettle's memory is under control. Then the dashboard reports 994 orders for a day that had 1,000.
+
+**The problem:** 1,000 orders were placed. The counter says 994.
+
+**This episode:** race conditions, Interlocked, locks, deadlocks, concurrent collections and Channels.
+
 ## Three words people mix up constantly {b}
+
+:::plain
+Concurrency is several things in progress at once. Parallelism is several things running at the same instant. Asynchrony is not waiting while something slow happens.
+:::
 
 Before anything else, let's pin down three words that sound almost interchangeable and genuinely aren't — because half the confusion in this topic comes from people using them loosely.
 
@@ -34,6 +46,10 @@ Here's a sentence worth re-reading until it clicks: a web server is massively **
 One more related word you'll meet below: **multithreading**, which just means using more than one OS thread. It's the underlying mechanism both parallelism and (some) concurrency are built on.
 
 ## Threads are expensive; the pool exists because of that {b}
+
+:::plain
+Threads cost memory and time to create, so .NET keeps a pool of them and reuses them for short pieces of work.
+:::
 
 A **thread** is a path of execution the operating system schedules onto a CPU core, and every single one gets its own stack — about 1 MB reserved by default. Creating a thread from scratch costs real time (milliseconds, not microseconds) and real memory, and once you have too many of them, the OS spends more time *switching between* them than actually running your code.
 
@@ -56,6 +72,10 @@ Here's the mechanism worth really understanding, because it's the root cause of 
 Now put that together with one more fact: calling `.Result`, `Thread.Sleep`, or any *blocking* I/O call ties up a pool thread for the entire duration of the block — it can't go do other work in the meantime. Under load, with the pool only growing a thread or two a second, a sudden burst of blocked threads can genuinely starve the queue faster than the pool can backfill it. That specific failure mode has a name — **thread-pool starvation** — and it's covered in detail in [async/await](ch:async-await#deadlocks-and-thread-pool-starvation), because it's really a consequence of *not* using `async`/`await` properly.
 
 ## Race conditions: when "it depends on timing" becomes a bug {b}
+
+:::plain
+When two threads change shared data at the same time, the result can depend on which runs first, and updates can silently vanish.
+:::
 
 Here's a piece of code that looks completely harmless:
 
@@ -92,6 +112,10 @@ That gives you a simple, memorable rule: **every singleton must be thread-safe**
 
 ## Interlocked: the fastest fix, when it applies {i}
 
+:::plain
+Interlocked turns a read-change-write on one variable into a single step no other thread can interrupt.
+:::
+
 The simplest tool in that toolbox handles exactly the counter problem from above, when all you need to protect is a single variable:
 
 ```csharp
@@ -111,6 +135,10 @@ var old = Interlocked.Exchange(ref _currentConfig, newConfig);              // a
 That's also exactly why `Interlocked` is the fastest synchronisation tool in .NET: it needs no lock, no waiting, nothing but one CPU instruction. The trade-off is right there in the name — it only ever covers *one variable at a time*. The moment you need to keep two or more related pieces of state consistent with each other, `Interlocked` can't help, and you need a real lock.
 
 ## Locks: protecting more than one variable at once {i}
+
+:::plain
+A lock lets only one thread at a time run a block of code, so several related changes happen together.
+:::
 
 ### lock / Lock / Monitor
 
@@ -173,6 +201,10 @@ Notice the shape of `GetTokenAsync`: it checks the fast path *before* acquiring 
 
 ## Deadlocks: when locking itself becomes the bug {i}
 
+:::plain
+Two threads each hold a lock the other needs, so both wait forever. Always taking locks in the same order prevents it.
+:::
+
 Locks solve the race-condition problem — but used carelessly, they create a different one, and this one doesn't just lose an update, it freezes your app solid. Here's the simplest possible version:
 
 ```csharp
@@ -208,6 +240,10 @@ The fix is to tell the runtime, explicitly, "don't cache this — always go back
 
 ## Concurrent collections: built so you don't have to lock by hand {i}
 
+:::plain
+ConcurrentDictionary, ConcurrentQueue and Channel are already safe for many threads, so you don't write the locking yourself.
+:::
+
 Everything so far has been about protecting *your own* state with locks or atomics. The BCL also ships a set of collections that are already safe to use from multiple threads, without you writing any locking code at all:
 
 | Collection | Notes |
@@ -232,6 +268,10 @@ public void Reload(IEnumerable<FeatureFlag> all) => Interlocked.Exchange(ref _fl
 Here's why this works without a single lock anywhere: readers never modify `_flags`, they just read whatever reference happens to be there right now — and reading a reference is already atomic. When new flags arrive, `Reload` doesn't mutate the existing dictionary at all; it builds a brand new one and then uses `Interlocked.Exchange` to atomically swap the *reference* `_flags` points at. Any reader that grabbed the old reference a moment earlier keeps working with a perfectly consistent, if slightly stale, snapshot. Nobody ever sees a half-updated dictionary, because nobody ever updates one — they only ever replace the whole thing at once.
 
 ## Producer/consumer pipelines with Channels {i}
+
+:::plain
+A Channel is an async queue between code that produces work and code that processes it, and a bounded one slows the producer when the consumer falls behind.
+:::
 
 `Channel<T>` is the async-aware queue that connects a producer doing one job to one or more consumers doing another, with built-in backpressure:
 
@@ -263,6 +303,10 @@ The word **bounded** is doing real work here. If the channel had no capacity lim
 This exact pattern — one bounded queue, several workers, cancellation, a clean completion signal — covers the large majority of in-process pipeline needs you'll run into. For genuinely multi-stage pipelines with branching and merging, look at **TPL Dataflow** (`System.Threading.Tasks.Dataflow`), which generalises this idea into a graph of connected blocks.
 
 ## Data parallelism: Parallel and PLINQ {i}
+
+:::plain
+Parallel loops split CPU-heavy work across all cores. They don't help with I/O, and they steal threads from web requests.
+:::
 
 Everything above this point has mostly been about *correctness* under concurrency. This last tool is about *speed*: deliberately spreading genuinely CPU-bound work — not I/O waiting, actual computation — across multiple cores at once.
 
@@ -329,6 +373,10 @@ Parallel.ForEachAsync for processing a (possibly large) collection with a bounde
 :::qa What are Channels used for?
 In-process asynchronous producer/consumer queues (System.Threading.Channels), with bounded capacity for backpressure, completion signalling, and async reading via ReadAllAsync. They're used for background work queues and pipelines between hosted services and request handlers.
 :::
+
+## Next episode {b}
+
+Someone rewrote a loop with Span. The page is still slow. [Episode 3 · Measure, don't guess →](ch:performance-engineering)
 
 ## Further reading
 

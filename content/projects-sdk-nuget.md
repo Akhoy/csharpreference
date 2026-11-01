@@ -19,23 +19,31 @@ next: csharp-story, type-system, app-architectures
 - **Central Package Management** (`Directory.Packages.props`) stops different projects in one solution from drifting to different versions of the same package.
 - Debug builds skip optimizations for easy debugging; Release builds are optimized — always benchmark and ship Release.
 
+## Previously at Kettle {b}
+
+The team knows how code runs. Now Kettle needs a real solution layout, other people's libraries, and a build that behaves the same on every machine.
+
+**The problem:** Kettle needs other people's libraries, and a repeatable build.
+
+**This episode:** projects and solutions, the SDK and MSBuild, NuGet packages, and keeping versions consistent.
+
 ## The physical structure of a .NET codebase {b}
 
 ```text
-Shop/                              ← git repository root
-├── Shop.slnx                      ← solution: groups projects for IDE/build
+Kettle/                            ← git repository root
+├── Kettle.slnx                    ← solution: groups projects for IDE/build
 ├── Directory.Build.props          ← settings shared by every project
 ├── Directory.Packages.props       ← package versions shared by every project
 ├── global.json                    ← pins the SDK version
 ├── .editorconfig                  ← code style rules
 ├── src/
-│   ├── Shop.Api/Shop.Api.csproj           → Shop.Api.dll
-│   ├── Shop.Application/…csproj           → Shop.Application.dll
-│   ├── Shop.Domain/…csproj                → Shop.Domain.dll
-│   └── Shop.Infrastructure/…csproj        → Shop.Infrastructure.dll
+│   ├── Kettle.Api/Kettle.Api.csproj     → Kettle.Api.dll
+│   ├── Kettle.Application/…csproj       → Kettle.Application.dll
+│   ├── Kettle.Domain/…csproj            → Kettle.Domain.dll
+│   └── Kettle.Infrastructure/…csproj    → Kettle.Infrastructure.dll
 └── tests/
-    ├── Shop.Domain.Tests/…csproj
-    └── Shop.Api.IntegrationTests/…csproj
+    ├── Kettle.Domain.Tests/…csproj
+    └── Kettle.Api.IntegrationTests/…csproj
 ```
 
 - A **project** (`.csproj`) produces **one assembly**.
@@ -51,18 +59,18 @@ Shop/                              ← git repository root
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Shop.Api</RootNamespace>
+    <RootNamespace>Kettle.Api</RootNamespace>
     <UserSecretsId>7b8f…</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
-    <ProjectReference Include="..\Shop.Application\Shop.Application.csproj" />
-    <ProjectReference Include="..\Shop.Infrastructure\Shop.Infrastructure.csproj" />
+    <ProjectReference Include="..\Kettle.Application\Kettle.Application.csproj" />
+    <ProjectReference Include="..\Kettle.Infrastructure\Kettle.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Shop.Api.IntegrationTests" />
+    <InternalsVisibleTo Include="Kettle.Api.IntegrationTests" />
   </ItemGroup>
 
 </Project>
@@ -124,9 +132,9 @@ MSBuild automatically imports the nearest **`Directory.Build.props`** walking up
 
 | Command | What it does |
 |---|---|
-| `dotnet new list` / `dotnet new webapi -n Shop.Api` | List templates / create a project |
+| `dotnet new list` / `dotnet new webapi -n Kettle.Api` | List templates / create a project |
 | `dotnet new sln` / `dotnet sln add src/**/*.csproj` | Create a solution / add projects |
-| `dotnet add reference ../Shop.Domain` | Add a project reference |
+| `dotnet add reference ../Kettle.Domain` | Add a project reference |
 | `dotnet add package Polly` | Add a NuGet package |
 | `dotnet restore` | Download packages (also runs implicitly on build) |
 | `dotnet build -c Release` | Compile |
@@ -188,7 +196,7 @@ Here's the problem CPM solves: in a multi-project solution, it's easy for one pr
 
 ```bash
 dotnet pack -c Release -p:PackageVersion=1.4.0
-dotnet nuget push bin/Release/Shop.Contracts.1.4.0.nupkg --source "company-feed" --api-key az
+dotnet nuget push bin/Release/Kettle.Contracts.1.4.0.nupkg --source "company-feed" --api-key az
 ```
 
 Companies often publish a shared **contracts** package (message types, DTOs) used by several services.
@@ -230,7 +238,7 @@ dotnet_naming_rule.private_fields_underscore.severity = warning
 | **Cloud CLIs** | Azure CLI (`az`), Azure Developer CLI (`azd`), `kubectl`, Bicep/Terraform |
 
 ```http
-### Shop.Api.http: committed next to the project so anyone can try endpoints
+### Kettle.Api.http: committed next to the project so anyone can try endpoints
 @host = https://localhost:7180
 @token = {{$dotenv TOKEN}}
 
@@ -272,6 +280,10 @@ Debug disables optimisations and emits full debugging info, so code maps one-to-
 :::qa How do you enforce code style across a team?
 An .editorconfig in the repo, analyzers enabled with `AnalysisLevel` and `EnforceCodeStyleInBuild`, warnings as errors in CI, `dotnet format --verify-no-changes` in the pipeline, plus optional SonarQube quality gates.
 :::
+
+## Next episode {b}
+
+By the end of Part I, Kettle has a platform, a solution layout and a build that turns C# into running machine code. Now it needs actual code, and its first bug is waiting. [Part II · Meet Kettle →](ch:csharp-story)
 
 ## Further reading
 

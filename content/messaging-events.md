@@ -19,7 +19,19 @@ next: resilience, observability-aspire, azure-data-messaging
 - Most brokers don't guarantee global order; design for disorder (sequence numbers, partition/session keys) instead of assuming it.
 - A **saga** runs a multi-step business process as a chain of local transactions with compensating "undo" steps, either coordinated by services reacting to each other's events (**choreography**) or by a central state machine (**orchestration**).
 
+## Previously at Kettle {b}
+
+Checkout calls email, stock and analytics one after another. When the email service is down, nobody can buy anything.
+
+**The problem:** Checkout calls email, stock and analytics in turn. If one is down, checkout fails.
+
+**This episode:** brokers, commands vs events, at-least-once delivery, the outbox and sagas.
+
 ## What putting a broker in the middle actually buys you {b}
+
+:::plain
+A broker holds messages between services, so the sender can carry on without waiting and the receiver can process them when it's ready, even after being down.
+:::
 
 With synchronous HTTP between services, the caller **waits**, and if the callee is down or slow, that failure propagates straight back to the caller — exactly the "chatty synchronous chains" problem [Microservices](ch:microservices#why-microservices-and-what-they-genuinely-cost) warned about. **Messaging** fixes this by putting a **broker** in between: the sender hands a message to the broker and moves on; receivers process it when they can, entirely decoupled from whether the sender is even still running.
 
@@ -43,6 +55,10 @@ Notice the diagram's last line: Analytics was "added later without touching Orde
 
 ## Commands, events and queries: three different conversations {b}
 
+:::plain
+A command asks one specific service to do something. An event announces that something has happened, to whoever cares. A query asks for data.
+:::
+
 | | Command | Event | Query |
 |---|---|---|---|
 | Meaning | "Please do X" | "X happened" | "Tell me X" |
@@ -58,6 +74,10 @@ This is the exact same Command-vs-Event naming discipline from [Design patterns]
 
 ## Queues and topics {b}
 
+:::plain
+A queue gives each message to one consumer. A topic gives every subscription its own copy.
+:::
+
 ```text
 QUEUE (point-to-point, competing consumers)         TOPIC (publish/subscribe)
 Producer ─▶ [ m3 m2 m1 ] ─▶ Consumer A (gets m1)     Publisher ─▶ (topic) ─┬─▶ [subscription: billing ] ─▶ Billing
@@ -69,6 +89,10 @@ each message goes to ONE consumer instance                                └─
 A message is processed by **one** instance per queue or subscription, so scaling out consumers increases throughput without duplicate processing (in theory: see delivery guarantees, next).
 
 ## Brokers compared {i}
+
+:::plain
+Service Bus removes a message once it's handled, like a to-do list. Kafka and Event Hubs keep messages as a log that consumers can replay.
+:::
 
 | | **Azure Service Bus** | **RabbitMQ** | **Kafka / Azure Event Hubs** | Azure Storage Queues |
 |---|---|---|---|---|
@@ -84,6 +108,10 @@ The "Consumption" row is the real distinguishing feature between Service Bus and
 Also on Azure: **Event Grid**, a push-based **event router** for reactive programming (a blob was created, a resource changed, custom events to webhooks or functions). It's lightweight notification fan-out, not a work queue. See [Azure data & messaging](ch:azure-data-messaging).
 
 ## Delivery guarantees: why "exactly once" isn't really on the table {i}
+
+:::plain
+A broker can't know whether a consumer finished its work before crashing, so it may deliver the same message again. Assume duplicates, and make handlers safe to repeat.
+:::
 
 | Guarantee | Meaning | Reality |
 |---|---|---|
@@ -128,7 +156,7 @@ public sealed class OutboxRelay(IServiceScopeFactory scopes, IMessagePublisher p
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             await using var scope = scopes.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<ShopDb>();
+            var db = scope.ServiceProvider.GetRequiredService<KettleDb>();
             var batch = await db.OutboxMessages
                 .FromSql($"SELECT TOP (50) * FROM OutboxMessages WITH (UPDLOCK, READPAST, ROWLOCK) WHERE ProcessedAt IS NULL ORDER BY OccurredAt")
                 .ToListAsync(stoppingToken);                                       // READPAST lets several relays run without clashing
@@ -162,7 +190,7 @@ Make processing the same message twice harmless — not by preventing duplicates
 | **Broker duplicate detection** | Service Bus duplicate detection by `MessageId` within a time window (helps with producer retries, not consumer crashes) |
 
 ```csharp
-public sealed class ChargeOnOrderPlaced(ShopDb db, IPaymentGateway payments) : IConsumer<OrderPlaced>
+public sealed class ChargeOnOrderPlaced(KettleDb db, IPaymentGateway payments) : IConsumer<OrderPlaced>
 {
     public async Task Consume(ConsumeContext<OrderPlaced> ctx)
     {
@@ -181,7 +209,48 @@ public sealed class ChargeOnOrderPlaced(ShopDb db, IPaymentGateway payments) : I
 
 Note the **idempotency key passed to `payments.ChargeAsync`** — the exact pattern from [API design](ch:api-design#idempotency-keys-for-post-making-the-one-unsafe-by-default-m) — because the inbox table alone only protects your own database. The payment provider is a *different* system with no visibility into your inbox, so if this consumer crashes after charging but before the inbox row commits, redelivery would charge the card a second time unless the idempotency key passed to the gateway itself prevents it. External side effects always need their own deduplication, because your database transaction can't roll back a card charge.
 
+## See it run: a duplicate that does no harm {i}
+
+The broker delivers `OrderPlaced` twice, as it's allowed to. The consumer records each message ID in an **inbox** and skips any it has already handled.
+
+:::walk An idempotent consumer
+```csharp
+var inbox = new HashSet<Guid>();
+var stock = new Dictionary<string, int> { ["TEA-01"] = 10 };
+var message = new OrderPlaced(Guid.Parse("7f3a0000-0000-0000-0000-000000000001"), "TEA-01", 2);
+
+Handle(message);
+Handle(message);
+Console.WriteLine($"stock left: {stock["TEA-01"]}");
+
+void Handle(OrderPlaced m)
+{
+    if (!inbox.Add(m.MessageId))
+    {
+        Console.WriteLine($"duplicate {m.MessageId.ToString()[..8]}: skipped");
+        return;
+    }
+    stock[m.Sku] -= m.Quantity;
+    Console.WriteLine($"reserved {m.Quantity} × {m.Sku}");
+}
+
+record OrderPlaced(Guid MessageId, string Sku, int Quantity);
+```
+@1-3 | inbox = {} ; stock = { TEA-01 → 10 }
+The inbox remembers which messages have been handled. Each message carries an ID that stays the same when it's redelivered.
+@5 | inbox = { 7f3a… } ; stock = { TEA-01 → 8 } | > reserved 2 × TEA-01
+First delivery: the ID is new, so the stock is reserved.
+@6 | | > duplicate 7f3a0000: skipped
+The broker delivers the same message again, perhaps because the consumer crashed before acknowledging it. `HashSet.Add` returns false for an ID it already has, so the handler does nothing.
+@7 | | > stock left: 8
+Two deliveries, one reservation. In production, the inbox row and the stock change are saved in **the same database transaction**, so a crash can't record one without the other.
+:::
+
 ## Retries, poison messages and dead-lettering {i}
+
+:::plain
+A message that keeps failing is retried a few times, then moved to a dead-letter queue, so it doesn't block everything behind it while someone investigates.
+:::
 
 - **Immediate retries** for transient glitches (deadlocks, brief timeouts).
 - **Delayed redelivery** with backoff (seconds → minutes) for longer outages of a dependency.
@@ -195,7 +264,7 @@ cfg.ReceiveEndpoint("billing-order-placed", e =>
     e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200))
                             .Ignore<ValidationException>());
     e.UseDelayedRedelivery(r => r.Intervals(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30)));
-    e.UseEntityFrameworkOutbox<ShopDb>(context);          // inbox/outbox for this endpoint
+    e.UseEntityFrameworkOutbox<KettleDb>(context);        // inbox/outbox for this endpoint
     e.ConfigureConsumer<ChargeOnOrderPlaced>(context);
 });
 ```
@@ -269,6 +338,10 @@ Alternatives for long-running orchestration: **Azure Durable Functions**, **Temp
 
 ## Messaging libraries for .NET {i}
 
+:::plain
+Libraries such as MassTransit, NServiceBus and Wolverine handle the hard parts for you: retries, the outbox, sagas and testing.
+:::
+
 Using the raw broker SDKs (`Azure.Messaging.ServiceBus`, `RabbitMQ.Client`, `Confluent.Kafka`) is fine for simple cases. Libraries add the hard parts: serialization, topology, retries, the outbox/inbox, sagas, scheduling, test harnesses and OpenTelemetry.
 
 | Library | Notes |
@@ -281,7 +354,7 @@ Using the raw broker SDKs (`Azure.Messaging.ServiceBus`, `RabbitMQ.Client`, `Con
 
 ```csharp
 // Raw Service Bus SDK (minimal)
-await using var client = new ServiceBusClient("shop.servicebus.windows.net", new DefaultAzureCredential());
+await using var client = new ServiceBusClient("kettle.servicebus.windows.net", new DefaultAzureCredential());
 await using var sender = client.CreateSender("orders");
 await sender.SendMessageAsync(new ServiceBusMessage(BinaryData.FromObjectAsJson(new OrderPlaced(id, total)))
 {
@@ -366,6 +439,10 @@ Most brokers don't guarantee global order, especially with competing consumers. 
 :::qa Service Bus vs Kafka/Event Hubs?
 Service Bus is a message broker for business messaging: messages are removed when completed, and it offers sessions, dead-lettering, transactions, scheduling and duplicate detection. Kafka/Event Hubs are distributed logs for high-throughput event streaming: messages are retained and replayable, consumers track offsets, and ordering is per partition.
 :::
+
+## Next episode {b}
+
+The payment provider blips for 2 seconds, and Kettle shows errors for 10 minutes. [Episode 2 · Expect failure →](ch:resilience)
 
 ## Further reading
 

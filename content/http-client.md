@@ -19,6 +19,14 @@ next: resilience, messaging-events, observability-aspire
 - **`DelegatingHandler`**s are middleware for outbound calls: auth tokens, correlation headers, logging, and resilience (retries, circuit breakers) all slot into the same chain.
 - Pass the incoming request's `CancellationToken` through to every outbound call, and read the error body before calling `EnsureSuccessStatusCode()` — it throws away any `ProblemDetails` the server sent you.
 
+## Previously at Kettle {b}
+
+Kettle knows who's calling. Kettle itself now calls a courier API and a payment provider, and under load it runs out of sockets.
+
+**The problem:** Under load, Kettle runs out of sockets calling the shipping API.
+
+**This episode:** IHttpClientFactory, typed clients, timeouts and the resilience handler.
+
 ## The basic calls {b}
 
 ```csharp
@@ -92,7 +100,7 @@ Notice what `IHttpClientFactory` actually buys you, looking back at the diagram:
 builder.Services.AddHttpClient("github", c =>
 {
     c.BaseAddress = new Uri("https://api.github.com/");
-    c.DefaultRequestHeaders.UserAgent.ParseAdd("shop-api/1.0");
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("kettle-api/1.0");
     c.Timeout = TimeSpan.FromSeconds(15);
 });
 
@@ -270,6 +278,10 @@ HttpClient.Timeout (default 100 s, usually too long), or better, the resilience 
 :::qa How do you unit test a class that uses HttpClient?
 Construct the HttpClient with a stub HttpMessageHandler that returns canned responses (or use a mocking library for handlers), or run WireMock.Net for higher-fidelity tests. Don't mock HttpClient directly.
 :::
+
+## Next episode {b}
+
+The tea catalogue is read 10,000 times a minute and changes once a day. [Episode 10 · Cache, limit, allow →](ch:caching-ratelimit-cors)
 
 ## Further reading
 

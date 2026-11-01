@@ -18,6 +18,14 @@ next: configuration-options, middleware, design-principles
 - Outside a request (background jobs, startup code) there's no scope automatically; create one yourself with `IServiceScopeFactory`.
 - `Program.cs` is the **composition root** — the one place that should know about concrete types. Everywhere else should depend only on interfaces.
 
+## Previously at Kettle {b}
+
+Kettle's API is up. But Program.cs has turned into a wall of `new`: every class builds its own database connection, payment client and logger.
+
+**The problem:** Every class news up its own dependencies. Swapping the payment provider means editing ten files.
+
+**This episode:** how a container builds object graphs for you, lifetimes, and the captive-dependency bug.
+
 ## Start with the version that goes wrong {b}
 
 ```csharp
@@ -150,7 +158,7 @@ public class NightlyCleanup(IServiceScopeFactory scopeFactory, ILogger<NightlyCl
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             await using var scope = scopeFactory.CreateAsyncScope();     // one scope per unit of work
-            var db = scope.ServiceProvider.GetRequiredService<ShopDb>();  // fresh DbContext
+            var db = scope.ServiceProvider.GetRequiredService<KettleDb>();  // fresh DbContext
             var removed = await db.Carts.Where(c => c.UpdatedAt < DateTime.UtcNow.AddDays(-30)).ExecuteDeleteAsync(stoppingToken);
             log.LogInformation("Removed {Count} stale carts", removed);
         }                                                                  // scope disposed → DbContext disposed
@@ -160,7 +168,7 @@ public class NightlyCleanup(IServiceScopeFactory scopeFactory, ILogger<NightlyCl
 // At startup (e.g. migrations/seeding in development)
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<ShopDb>();
+    var db = scope.ServiceProvider.GetRequiredService<KettleDb>();
     await db.Database.MigrateAsync();
 }
 ```
@@ -183,22 +191,22 @@ Why does this matter so much for the singleton row specifically? A singleton is 
 
 ```csharp
 builder.Services.AddSingleton<PriceCache>();     // lives forever
-builder.Services.AddScoped<ShopDb>();            // should live one request
+builder.Services.AddScoped<KettleDb>();          // should live one request
 
-public class PriceCache(ShopDb db) { }           // ✘ the FIRST request's DbContext is captured forever
+public class PriceCache(KettleDb db) { }         // ✘ the FIRST request's DbContext is captured forever
 ```
 
 ![A singleton captures the first request's scoped DbContext and keeps it long after that request ends](visuals/captive-dependency.svg)
 
 Walk through exactly what the diagram shows, because each step explains one real symptom you'll see in production:
 
-1. **Request 1 arrives.** Its scope creates `ShopDb #1`. The very first time `PriceCache` is resolved — which, being a singleton, only ever happens once — it receives `ShopDb #1` through its constructor and holds that reference from now on.
-2. **Request 1 finishes.** Its scope ends, and `ShopDb #1` gets disposed, exactly as a scoped service should be. But `PriceCache` is a singleton — nobody tells it anything changed, and it's still holding that same reference.
-3. **Request 2 arrives.** A brand-new scope creates `ShopDb #2`, fresh and ready. But `PriceCache` was never reconstructed — it's the same singleton instance from before — so it has no idea `ShopDb #2` even exists. It's still pointing at the disposed `ShopDb #1`.
+1. **Request 1 arrives.** Its scope creates `KettleDb #1`. The very first time `PriceCache` is resolved — which, being a singleton, only ever happens once — it receives `KettleDb #1` through its constructor and holds that reference from now on.
+2. **Request 1 finishes.** Its scope ends, and `KettleDb #1` gets disposed, exactly as a scoped service should be. But `PriceCache` is a singleton — nobody tells it anything changed, and it's still holding that same reference.
+3. **Request 2 arrives.** A brand-new scope creates `KettleDb #2`, fresh and ready. But `PriceCache` was never reconstructed — it's the same singleton instance from before — so it has no idea `KettleDb #2` even exists. It's still pointing at the disposed `KettleDb #1`.
 
 That mismatch produces three distinct, nasty symptoms, worth being able to name all three. `DbContext` isn't thread-safe, so concurrent requests sharing that one captured instance risk **"a second operation was started on this context"** errors. Nobody ever disposes and recreates it the normal way, so its change-tracker just keeps growing, quietly feeding you **stale data**. And once request 1's `using` block actually disposes it, every later access throws **`ObjectDisposedException`**. Three different-looking bugs, one single root cause.
 
-**How do you catch this before it ships?** In Development, `ValidateScopes = true` makes the container actively check for exactly this shape and throw a clear `InvalidOperationException: Cannot consume scoped service 'ShopDb' from singleton 'PriceCache'` the moment it would happen — turning a subtle runtime bug into a loud startup failure. It's usually worth enabling everywhere, not just in Development, for the small extra startup cost:
+**How do you catch this before it ships?** In Development, `ValidateScopes = true` makes the container actively check for exactly this shape and throw a clear `InvalidOperationException: Cannot consume scoped service 'KettleDb' from singleton 'PriceCache'` the moment it would happen — turning a subtle runtime bug into a loud startup failure. It's usually worth enabling everywhere, not just in Development, for the small extra startup cost:
 
 ```csharp
 builder.Host.UseDefaultServiceProvider(o => { o.ValidateScopes = true; o.ValidateOnBuild = true; });
@@ -284,9 +292,9 @@ public static class InfrastructureRegistration
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        services.AddDbContext<ShopDb>(o => o.UseSqlServer(config.GetConnectionString("Shop")));
+        services.AddDbContext<KettleDb>(o => o.UseSqlServer(config.GetConnectionString("Kettle")));
         services.AddScoped<IOrderRepository, EfOrderRepository>();
-        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShopDb>());
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<KettleDb>());
         services.AddSingleton(TimeProvider.System);
         return services;
     }
@@ -391,6 +399,10 @@ A .NET 8 feature to register multiple implementations of the same service type u
 :::qa What is the composition root?
 The single place where the object graph is composed, meaning all interfaces are bound to implementations: Program.cs and the AddX extension methods it calls. Other code receives dependencies and never knows concrete types.
 :::
+
+## Next episode {b}
+
+The payment key differs on a laptop, in staging and in production. [Episode 3 · Settings in layers →](ch:configuration-options)
 
 ## Further reading
 

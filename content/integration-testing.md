@@ -19,7 +19,19 @@ next: cicd-iac, docker
 - A fake authentication handler lets you control *who* the caller claims to be while your real authorization policies still run unmodified — so you can actually test that the wrong role gets a 403.
 - Modern tooling (containers, in-memory hosting) shifted many teams' confidence from the classic unit-test-heavy pyramid toward integration tests for APIs.
 
+## Previously at Kettle {b}
+
+Kettle's unit tests all pass. The release that went out yesterday returned 401 for every customer anyway.
+
+**The problem:** Every unit test passes, but the deployed API returns 401 for everyone.
+
+**This episode:** WebApplicationFactory, Testcontainers, contract tests and tests in CI.
+
 ## What unit tests structurally cannot catch {b}
+
+:::plain
+Unit tests can't see bugs that live between parts: middleware order, missing registrations, JSON settings, SQL that the real database rejects.
+:::
 
 Think back to what a unit test, by its own definition from [Unit testing](ch:unit-testing#what-a-unit-test-is-and-the-question-that-divides-testers), deliberately isolates away: real infrastructure, real wiring, the real pipeline. That's exactly what makes a whole category of bug invisible to it — bugs that live **between** components, not inside any one of them:
 
@@ -34,6 +46,10 @@ Think back to what a unit test, by its own definition from [Unit testing](ch:uni
 An **integration test** runs real components together (often the whole app in-process against real infrastructure in containers) and asserts on observable behaviour (HTTP responses, database state, published messages) — precisely the gap unit tests leave open.
 
 ## Test pyramid, trophy and honeycomb: how much weight goes where {i}
+
+:::plain
+These shapes are different answers to 'how many of each kind of test?'. For web APIs, many teams now put most weight on integration tests, because they're fast enough and catch more.
+:::
 
 ```text
      Pyramid (Mike Cohn)              Trophy (Kent C. Dodds)            Honeycomb (Spotify, microservices)
@@ -57,6 +73,10 @@ The classic **pyramid** says: many unit tests, fewer integration tests, very few
 
 ## WebApplicationFactory: booting the real app in memory {b}
 
+:::plain
+WebApplicationFactory starts your real Program.cs inside the test process, with an HttpClient wired straight into it, so tests send real HTTP requests with no network.
+:::
+
 `Microsoft.AspNetCore.Mvc.Testing` boots your **real `Program.cs`** in memory on a **TestServer** (no network ports) and gives you an `HttpClient` wired straight into the pipeline.
 
 ```csharp
@@ -79,8 +99,12 @@ The reason this test is worth more than it looks: everything runs **for real** �
 
 ## Customising the app under test {i}
 
+:::plain
+Tests can swap out only what they must, such as a payment provider or the clock, while keeping your own code and database real.
+:::
+
 ```csharp
-public sealed class ShopApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public sealed class KettleApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly MsSqlContainer _sql = new MsSqlBuilder().WithImage("mcr.microsoft.com/mssql/server:2022-latest").Build();
     public FakeEmailSender Emails { get; } = new();
@@ -89,7 +113,7 @@ public sealed class ShopApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        builder.UseSetting("ConnectionStrings:Shop", _sql.GetConnectionString());   // override configuration
+        builder.UseSetting("ConnectionStrings:Kettle", _sql.GetConnectionString());   // override configuration
         builder.ConfigureTestServices(services =>                                    // runs AFTER Program.cs registrations
         {
             services.RemoveAll<IEmailSender>();
@@ -105,7 +129,7 @@ public sealed class ShopApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     {
         await _sql.StartAsync();
         using var scope = Services.CreateScope();
-        await scope.ServiceProvider.GetRequiredService<ShopDb>().Database.MigrateAsync();   // real schema from real migrations
+        await scope.ServiceProvider.GetRequiredService<KettleDb>().Database.MigrateAsync();   // real schema from real migrations
     }
 
     public new async ValueTask DisposeAsync() { await _sql.DisposeAsync(); await base.DisposeAsync(); }
@@ -143,6 +167,10 @@ This handler is worth writing instead of just disabling auth for tests: it repla
 
 ## Real databases with Testcontainers {i}
 
+:::plain
+Testcontainers starts a real database in a throwaway Docker container for the test run, so tests run against the same engine as production.
+:::
+
 **Testcontainers for .NET** starts throwaway **Docker containers** (lightweight, isolated environments that run a piece of software — see [Docker](ch:docker) for the full picture) from tests: SQL Server, PostgreSQL, Redis, RabbitMQ, Azurite (Azure Storage), the Service Bus emulator, Cosmos DB emulator, Kafka, LocalStack.
 
 ```csharp
@@ -161,10 +189,10 @@ Starting a container takes seconds, which is long enough that doing it per-test 
 
 ```csharp
 [CollectionDefinition(nameof(ApiCollection))]
-public sealed class ApiCollection : ICollectionFixture<ShopApiFactory>;   // one factory + container for all API tests
+public sealed class ApiCollection : ICollectionFixture<KettleApiFactory>; // one factory + container for all API tests
 
 [Collection(nameof(ApiCollection))]
-public sealed class PlaceOrderTests(ShopApiFactory app) : IAsyncLifetime
+public sealed class PlaceOrderTests(KettleApiFactory app) : IAsyncLifetime
 {
     private Respawner _respawner = null!;
 
@@ -215,6 +243,10 @@ It isn't relational: no SQL translation, no constraints, no transactions, differ
 
 ## Testing dependencies you don't own {i}
 
+:::plain
+For third-party APIs, use a fake HTTP server or the vendor's sandbox, and check the contract separately, rather than calling the real service from every test.
+:::
+
 | Dependency | Approach |
 |---|---|
 | Third-party HTTP APIs | **WireMock.Net** fake server (realistic HTTP, delays, faults) or a stub `HttpMessageHandler` ([HttpClient](ch:http-client#testing-code-that-uses-httpclient)) |
@@ -246,6 +278,10 @@ await client.PostAsJsonAsync("/api/orders", request);
 - **Chaos testing** (Azure Chaos Studio, Polly's chaos strategies via `AddChaos…`): inject faults to verify resilience behaviour.
 
 ## Tests in CI {i}
+
+:::plain
+Run unit tests on every push and integration tests on every pull request, fix flaky tests immediately, and make passing tests a required merge check.
+:::
 
 ```yaml
 - run: dotnet test --configuration Release --logger "trx;LogFileName=results.trx" --collect:"XPlat Code Coverage"
@@ -286,6 +322,10 @@ Tests verifying that a provider service honours the API or message contract its 
 :::qa Test pyramid vs testing trophy?
 The pyramid recommends mostly unit tests, fewer integration tests and very few E2E tests. The trophy shifts the weight to integration tests, because modern tooling makes them fast and they give more confidence per test, with unit tests reserved for complex logic and only a few E2E tests.
 :::
+
+## Next episode {b}
+
+By the end of Part VII, Kettle's releases are boring, which is how releases should be. With that safety net in place, Kettle can start splitting into separate services. Part VIII deals with what goes wrong once they have to talk to each other. [Part VIII · Kettle Becomes Several Services →](ch:distributed-story)
 
 ## Further reading
 

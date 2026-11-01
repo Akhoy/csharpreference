@@ -32,7 +32,19 @@ Picture a few transparent sheets, each with one paragraph of a letter printed on
 Photocopy that stack and you get a letter you can hand out — that's a **container**: a running copy with one extra, blank sheet on top for anything it scribbles while it runs. Photocopy the same stack again and you get another, independent letter. Many containers, one image.
 :::
 
+## Previously at Kettle {b}
+
+Kettle is moving to the cloud. The first deploy failed, because production had a different runtime and different libraries from the developers' laptops.
+
+**The problem:** "It works on my machine." Production has a different runtime and libraries.
+
+**This episode:** images and layers, multi-stage Dockerfiles, and .NET in containers.
+
 ## What a container is {b}
+
+:::plain
+A container is your app plus everything it needs to run, packed into one unit that runs the same everywhere. It shares the host's operating system kernel, which makes it light and fast to start.
+:::
 
 A **container** is an isolated process (or group of processes) with **its own filesystem, network and process space** — packaged with everything it needs: your app, the .NET runtime, OS libraries. One detail explains both its biggest strength and its biggest limit: a container shares the **host's kernel** instead of running its own. That's why it starts in milliseconds and barely costs anything to run — but it's also why its isolation is weaker than a full virtual machine's.
 
@@ -50,25 +62,33 @@ A **container** is an isolated process (or group of processes) with **its own fi
 
 ## Images, layers, containers and registries {b}
 
+:::plain
+An image is the packed, read-only template, built in layers. A container is a running copy of an image. A registry stores images so servers can pull them.
+:::
+
 | Term | Meaning |
 |---|---|
 | **Image** | A read-only template: a stack of **layers** (filesystem diffs) plus metadata (entrypoint, env, exposed ports, user) |
 | **Layer** | Each Dockerfile instruction (`FROM`, `COPY`, `RUN`) creates a layer, **cached** and shared between images |
 | **Container** | A running (or stopped) instance of an image, with a thin writable layer on top |
 | **Registry** | Stores and distributes images: Docker Hub, **Azure Container Registry (ACR)**, GitHub Container Registry, **MCR** (Microsoft Container Registry, where official .NET images live) |
-| **Tag** | A human label: `shop-api:1.4.2`, `:latest` (mutable) |
-| **Digest** | Immutable content hash: `shop-api@sha256:3f1c…` |
+| **Tag** | A human label: `kettle-api:1.4.2`, `:latest` (mutable) |
+| **Digest** | Immutable content hash: `kettle-api@sha256:3f1c…` |
 | **Dockerfile** | Instructions to build an image |
 
 ```bash
-docker build -t shop-api:1.4.2 .
-docker run -d -p 8080:8080 --name api -e ASPNETCORE_ENVIRONMENT=Staging shop-api:1.4.2
+docker build -t kettle-api:1.4.2 .
+docker run -d -p 8080:8080 --name api -e ASPNETCORE_ENVIRONMENT=Staging kettle-api:1.4.2
 docker ps · docker logs -f api · docker exec -it api sh · docker stop api   # stop sends SIGTERM → graceful shutdown
-docker tag shop-api:1.4.2 shopacr.azurecr.io/shop-api:1.4.2
-az acr login -n shopacr && docker push shopacr.azurecr.io/shop-api:1.4.2
+docker tag kettle-api:1.4.2 kettleacr.azurecr.io/kettle-api:1.4.2
+az acr login -n kettleacr && docker push kettleacr.azurecr.io/kettle-api:1.4.2
 ```
 
 ## .NET container images {i}
+
+:::plain
+Microsoft publishes official images for building (the SDK) and for running (ASP.NET, runtime, runtime-deps), in several sizes. Build with the big one, ship the small one.
+:::
 
 Official images are published on **mcr.microsoft.com/dotnet/**:
 
@@ -87,6 +107,10 @@ Since .NET 8, ASP.NET Core images **listen on port 8080** by default (`ASPNETCOR
 
 ## A production-grade Dockerfile {i}
 
+:::plain
+A good Dockerfile restores packages before copying source so builds are cached, compiles in one stage, ships only the output in a small final stage, and runs as a non-root user.
+:::
+
 ```dockerfile
 # syntax=docker/dockerfile:1
 
@@ -96,15 +120,15 @@ WORKDIR /src
 
 # 1. Copy only project files and restore first → this layer is cached until dependencies change
 COPY Directory.Build.props Directory.Packages.props global.json ./
-COPY src/Shop.Api/Shop.Api.csproj                       src/Shop.Api/
-COPY src/Shop.Application/Shop.Application.csproj       src/Shop.Application/
-COPY src/Shop.Domain/Shop.Domain.csproj                 src/Shop.Domain/
-COPY src/Shop.Infrastructure/Shop.Infrastructure.csproj src/Shop.Infrastructure/
-RUN dotnet restore src/Shop.Api/Shop.Api.csproj
+COPY src/Kettle.Api/Kettle.Api.csproj                 src/Kettle.Api/
+COPY src/Kettle.Application/Kettle.Application.csproj src/Kettle.Application/
+COPY src/Kettle.Domain/Kettle.Domain.csproj           src/Kettle.Domain/
+COPY src/Kettle.Infrastructure/Kettle.Infrastructure.csproj src/Kettle.Infrastructure/
+RUN dotnet restore src/Kettle.Api/Kettle.Api.csproj
 
 # 2. Copy the rest and publish
 COPY src/ src/
-RUN dotnet publish src/Shop.Api/Shop.Api.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
+RUN dotnet publish src/Kettle.Api/Kettle.Api.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
 # ---------- runtime stage ----------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final
@@ -114,7 +138,7 @@ USER app                                   # non-root (chiseled images default t
 EXPOSE 8080
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_gcServer=1
-ENTRYPOINT ["dotnet", "Shop.Api.dll"]
+ENTRYPOINT ["dotnet", "Kettle.Api.dll"]
 ```
 
 Key techniques:
@@ -140,19 +164,23 @@ Key techniques:
 
 ## Building images without a Dockerfile {i}
 
+:::plain
+The .NET SDK can build a container image directly with dotnet publish, with sensible defaults and no Dockerfile at all.
+:::
+
 The .NET SDK can build OCI images directly, with no Docker daemon needed for the build:
 
 ```bash
-dotnet publish src/Shop.Api -c Release /t:PublishContainer \
-  -p ContainerRepository=shop-api \
+dotnet publish src/Kettle.Api -c Release /t:PublishContainer \
+  -p ContainerRepository=kettle-api \
   -p ContainerImageTags='"1.4.2;latest"' \
   -p ContainerFamily=noble-chiseled \
-  -p ContainerRegistry=shopacr.azurecr.io            # push directly to a registry
+  -p ContainerRegistry=kettleacr.azurecr.io          # push directly to a registry
 ```
 
 ```xml
 <PropertyGroup>
-  <ContainerRepository>shop-api</ContainerRepository>
+  <ContainerRepository>kettle-api</ContainerRepository>
   <ContainerFamily>noble-chiseled</ContainerFamily>
   <ContainerPort Include="8080" Type="tcp" />
 </PropertyGroup>
@@ -162,7 +190,11 @@ Great for standard apps and CI; use a Dockerfile when you need custom OS package
 
 ## Configuration, secrets and storage in containers {i}
 
-- **Configuration via environment variables** (`ConnectionStrings__Shop`, `ASPNETCORE_ENVIRONMENT`), set by the platform at runtime, **never baked into the image** — exactly the layered-configuration discipline [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest) covered, applied at the container level. The same image is promoted through all environments.
+:::plain
+Containers get their settings from environment variables, never secrets baked into the image, and anything they write to their own disk vanishes when they're replaced.
+:::
+
+- **Configuration via environment variables** (`ConnectionStrings__Kettle`, `ASPNETCORE_ENVIRONMENT`), set by the platform at runtime, **never baked into the image** — exactly the layered-configuration discipline [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest) covered, applied at the container level. The same image is promoted through all environments.
 - **Secrets**: never `COPY` them into images or pass them as build args (they persist in layers). Use the platform's secret store (Key Vault references, Kubernetes Secrets, Container Apps secrets) or **managed identity** so there's nothing secret to inject.
 - **Filesystem is ephemeral**: anything written inside a container is lost when it's replaced. Use Blob Storage or a database; mount **volumes** only for genuinely needed persistent paths.
 - **Data Protection keys** must be persisted outside the container when running multiple instances (Blob + Key Vault), or cookies and antiforgery tokens break — exactly the shared-key-ring requirement [Auth](ch:auth#cookie-authentication) raised for cookie auth across instances.
@@ -170,6 +202,10 @@ Great for standard apps and CI; use a Dockerfile when you need custom OS package
 - **Health endpoints** for the orchestrator's probes ([Resilience](ch:resilience#health-checks)).
 
 ## docker compose for local development {b}
+
+:::plain
+Compose starts your app and its dependencies, such as a database and a broker, together on your laptop from one file.
+:::
 
 Run the API with its dependencies locally:
 
@@ -181,7 +217,7 @@ services:
     ports: ["8080:8080"]
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Shop: "Server=sql;Database=Shop;User Id=sa;Password=Your_strong_pw1;TrustServerCertificate=True"
+      ConnectionStrings__Kettle: "Server=sql;Database=Kettle;User Id=sa;Password=Your_strong_pw1;TrustServerCertificate=True"
       ConnectionStrings__Redis: "redis:6379"
     depends_on:
       sql: { condition: service_healthy }
@@ -262,6 +298,10 @@ The official images default ASPNETCORE_HTTP_PORTS to 8080 and run as a non-root 
 :::qa What happens when you run docker stop on a .NET container?
 Docker sends SIGTERM to PID 1. With an exec-form ENTRYPOINT, that's dotnet, so the .NET host begins graceful shutdown (stops accepting connections, drains requests, stops hosted services). After the timeout (10 s default), Docker sends SIGKILL.
 :::
+
+## Next episode {b}
+
+VMs, Kubernetes, App Service, Functions… which one? [Episode 3 · Where Kettle runs →](ch:azure-compute)
 
 ## Further reading
 

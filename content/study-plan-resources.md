@@ -17,7 +17,19 @@ prereqs: big-picture
 - Use the **self-assessment checklist** to know what "Beginner/Intermediate/Advanced" actually means for each topic.
 - Answer interview questions with a structure: **definition → why it exists → how it works → trade-offs → your own experience.**
 
+## Previously at Kettle {b}
+
+You've seen every part of Kettle's story once. The last step is making it stick.
+
+**The problem:** You've seen every topic once. Now make it stick.
+
+**This episode:** how to study, an eight-week plan, a practice project and a self-assessment.
+
 ## How to study (so it sticks) {b}
+
+:::plain
+Explaining from memory and revisiting topics over spaced intervals beat rereading. Building things beats both.
+:::
 
 Reading isn't learning, and it's worth being honest with yourself about why: recognising an explanation when you reread it feels like understanding, but it tests recognition, not recall — the exact skill an interview actually demands. These techniques are backed by learning research and work especially well for interview preparation:
 
@@ -32,6 +44,10 @@ Reading isn't learning, and it's worth being honest with yourself about why: rec
 
 ## An eight-week plan {b}
 
+:::plain
+Work through the parts in order, about one week each, building a small project as you go.
+:::
+
 Around 1–2 hours on weekdays, plus a longer weekend session for the project. Adjust to your timeline; the **order** matters more than the pace.
 
 | Week | Read (Beginner + Intermediate sections first) | Build | Drill |
@@ -40,14 +56,18 @@ Around 1–2 hours on weekdays, plus a longer weekend session for the project. A
 | **2** | [Delegates](ch:delegates-events), [Collections](ch:collections), [LINQ](ch:linq), [Exceptions](ch:exceptions-disposal), [async/await](ch:async-await), [Modern C#](ch:modern-csharp) | Re-implement `Where`/`Select` with `yield`; write an async fan-out with `WhenAll` + cancellation | Part II |
 | **3** | [Hosting](ch:aspnet-hosting), [DI](ch:dependency-injection), [Configuration](ch:configuration-options), [Middleware](ch:middleware), [Routing](ch:routing), [Building APIs](ch:building-apis) | Start the **practice API** (below): minimal APIs, DI lifetimes demo, custom middleware, options with validation | Part III (first half) |
 | **4** | [Errors & logging](ch:errors-logging), [Auth](ch:auth), [HttpClient](ch:http-client), [Caching/rate limiting/CORS](ch:caching-ratelimit-cors), [Background work](ch:background-work), [API design](ch:api-design) | Add ProblemDetails, JWT auth with policies, a typed HttpClient with resilience, HybridCache, rate limiting, a BackgroundService with Channel | Part III |
-| **5** | Part IV: [Relational fundamentals](ch:relational-fundamentals), [EF Core](ch:efcore-fundamentals), [Querying](ch:efcore-querying), [Advanced](ch:efcore-advanced), [Dapper](ch:ado-dapper), [NoSQL & Redis](ch:nosql-redis) | EF Core with migrations; reproduce and fix an N+1; optimistic concurrency; a Dapper read model; Redis cache | Part IV |
-| **6** | Part V: [Principles](ch:design-principles), [Patterns](ch:design-patterns), [Architectures](ch:app-architectures), [CQRS & Result](ch:cqrs-mediator-result), [DDD](ch:ddd), Part VI: [testing](ch:unit-testing) | Refactor the API into Clean Architecture or vertical slices; rich domain model; Result pattern; unit tests + integration tests with Testcontainers | Parts V–VI |
-| **7** | Part VII: [Messaging](ch:messaging-events), [Resilience](ch:resilience), [Observability & Aspire](ch:observability-aspire), [Microservices](ch:microservices); Part VIII: [Cloud](ch:cloud-azure-overview), [Docker](ch:docker) | Add an Aspire AppHost, a worker service, RabbitMQ/Service Bus emulator + outbox, OpenTelemetry; containerise | Parts VII–VIII |
-| **8** | [Azure compute](ch:azure-compute), [Azure data](ch:azure-data-messaging), [Identity & secrets](ch:azure-identity-secrets), [CI/CD & IaC](ch:cicd-iac), [Kubernetes](ch:kubernetes), Part IX, Part X, [System design](ch:system-design) | GitHub Actions pipeline; deploy to Azure Container Apps with managed identity + Key Vault (azd/Bicep); load test with k6 | Everything, mixed. Do two mock system-design sessions |
+| **5** | Part V: [Relational fundamentals](ch:relational-fundamentals), [EF Core](ch:efcore-fundamentals), [Querying](ch:efcore-querying), [Advanced](ch:efcore-advanced), [Dapper](ch:ado-dapper), [NoSQL & Redis](ch:nosql-redis) | EF Core with migrations; reproduce and fix an N+1; optimistic concurrency; a Dapper read model; Redis cache | Part V |
+| **6** | Part VI: [Principles](ch:design-principles), [Patterns](ch:design-patterns), [Architectures](ch:app-architectures), [CQRS & Result](ch:cqrs-mediator-result), [DDD](ch:ddd), Part VII: [testing](ch:unit-testing) | Refactor the API into Clean Architecture or vertical slices; rich domain model; Result pattern; unit tests + integration tests with Testcontainers | Parts VI–VII |
+| **7** | Part VIII: [Messaging](ch:messaging-events), [Resilience](ch:resilience), [Observability & Aspire](ch:observability-aspire), [Microservices](ch:microservices); Part X: [Cloud](ch:cloud-azure-overview), [Docker](ch:docker) | Add an Aspire AppHost, a worker service, RabbitMQ/Service Bus emulator + outbox, OpenTelemetry; containerise | Parts VIII–IX |
+| **8** | [Azure compute](ch:azure-compute), [Azure data](ch:azure-data-messaging), [Identity & secrets](ch:azure-identity-secrets), [CI/CD & IaC](ch:cicd-iac), [Kubernetes](ch:kubernetes), Part XI, Part XII, [System design](ch:system-design) | GitHub Actions pipeline; deploy to Azure Container Apps with managed identity + Key Vault (azd/Bicep); load test with k6 | Everything, mixed. Do two mock system-design sessions |
 
 **Then:** go back through every **Advanced** section, and keep drilling daily (15 minutes) until the interview.
 
 ## The practice project: one app, every layer {i}
+
+:::plain
+Build your own small Kettle, end to end. The bugs you hit become your best interview stories.
+:::
 
 Build a small but complete **"Shop" backend**. Each feature exercises specific chapters, and together they give you real stories to tell in interviews ("When I implemented the outbox, I ran into…") — which matters more than it sounds, because a concrete bug you actually debugged is a far more convincing answer than a correct definition recited from memory.
 
@@ -68,6 +88,10 @@ Build a small but complete **"Shop" backend**. Each feature exercises specific c
 Microsoft's **eShop** reference application (github.com/dotnet/eShop) is a good model to compare against once you've built your own.
 
 ## Self-assessment checklist {i}
+
+:::plain
+For each level, a list of things you should be able to explain clearly. Use it to find your gaps.
+:::
 
 ### Beginner: can you explain these clearly in 1–2 minutes each?
 
@@ -130,6 +154,10 @@ Microsoft's **eShop** reference application (github.com/dotnet/eShop) is a good 
 
 ## Answering interview questions well {i}
 
+:::plain
+Define it, say why it exists, explain how it works, name the trade-offs, then give a real example from your own work.
+:::
+
 A reliable structure for technical questions: **definition → why it exists → how it works / example → trade-offs or pitfalls → your experience.**
 
 > **Q: What's the difference between scoped and singleton services?**
@@ -187,6 +215,10 @@ Drill the question bank daily in mixed mode, answering out loud before revealing
 :::qa How do you answer a question you don't fully know?
 Be honest about the gap, connect it to what you do know, and reason from first principles out loud, e.g. "I haven't used X directly, but it's a partitioned log like Kafka, so I'd expect ordering per partition and consumers tracking offsets." Interviewers value structured reasoning and honesty over bluffing.
 :::
+
+## Next episode {b}
+
+That's the end of Kettle's story. Everything an interviewer can ask about lives somewhere on this road.
 
 ## Further reading
 

@@ -19,6 +19,14 @@ next: middleware, azure-identity-secrets
 - Secrets never belong in a committed file: **User Secrets** in development, **Key Vault**/platform secret stores (or better, no secret at all via managed identity) in production.
 - **Feature flags** separate *deploying* code from *releasing* it — ship a feature switched off, then turn it on gradually without a redeploy.
 
+## Previously at Kettle {b}
+
+The services are wired by the container. Last week, though, the staging site charged real cards, because the payment key was hard-coded and nobody changed it per environment.
+
+**The problem:** The payment key differs on a laptop, in staging and in production.
+
+**This episode:** layered configuration, typed and validated options, and where secrets belong.
+
 ## The same build, four different places, four different answers {b}
 
 Here's a constraint that sounds simple but shapes this entire chapter: the **exact same compiled binary** has to run on your laptop, in a CI pipeline, in staging, and in production — and in each of those four places, it needs a different database connection string, a different payment-gateway URL, and a set of secrets that absolutely cannot be the same ones twice.
@@ -27,7 +35,7 @@ Walk through what happens if you try to solve this the naive way, by baking the 
 
 ```csharp
 // DON'T: this is the naive approach, and it breaks immediately
-string connectionString = "Server=localhost;Database=Shop;...";
+string connectionString = "Server=localhost;Database=Kettle;...";
 ```
 
 That compiles fine on your laptop. The moment you deploy it to staging, it's still pointing at `localhost` — which, inside a staging container, doesn't mean your laptop at all, it means the staging container itself, and there's no database there. You'd have to **rebuild** the app with a different hardcoded string for every environment, which means you're no longer testing the same binary you'll ship — exactly the problem [ASP.NET Core architecture](ch:aspnet-hosting#environments-the-one-variable-thats-meant-to-change-configur) flagged about letting environment branch code paths instead of just values. And if any of those hardcoded strings is a real secret, it's now sitting in your git history forever, readable by anyone with repo access, discoverable even after you "remove" it in a later commit.
@@ -52,7 +60,7 @@ Let's trace one key through all five layers with real values, because "later ove
 ```json
 // appsettings.json — the base, checked into git
 {
-  "ConnectionStrings": { "Shop": "Server=localhost;Database=Shop;Trusted_Connection=True" },
+  "ConnectionStrings": { "Kettle": "Server=localhost;Database=Kettle;Trusted_Connection=True" },
   "Payments": { "BaseUrl": "https://sandbox.pay.example", "TimeoutSeconds": 10, "Retries": 3 },
   "Logging": { "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning" } },
   "AllowedHosts": "*"
@@ -77,7 +85,7 @@ IConfiguration config = builder.Configuration;
 
 string? url = config["Payments:BaseUrl"];                              // raw string
 int timeout = config.GetValue<int>("Payments:TimeoutSeconds", 30);      // converted, with default
-string? cs = config.GetConnectionString("Shop");                        // = config["ConnectionStrings:Shop"]
+string? cs = config.GetConnectionString("Kettle");                    // = config["ConnectionStrings:Kettle"]
 IConfigurationSection section = config.GetSection("Payments");
 var opts = section.Get<PaymentOptions>();                               // bind section to a class
 bool exists = section.Exists();
@@ -92,12 +100,12 @@ Here's a wrinkle worth knowing before it costs you a debugging session: the `:` 
 | Configuration key | Environment variable |
 |---|---|
 | `Payments:BaseUrl` | `Payments__BaseUrl` |
-| `ConnectionStrings:Shop` | `ConnectionStrings__Shop` |
+| `ConnectionStrings:Kettle` | `ConnectionStrings__Kettle` |
 | `Logging:LogLevel:Default` | `Logging__LogLevel__Default` |
 | `AllowedOrigins:0` | `AllowedOrigins__0` |
 
 ```bash
-docker run -e ConnectionStrings__Shop="Server=sql;..." -e ASPNETCORE_ENVIRONMENT=Staging shop-api
+docker run -e ConnectionStrings__Kettle="Server=sql;..." -e ASPNETCORE_ENVIRONMENT=Staging kettle-api
 ```
 
 Get the underscores wrong — a single `_` instead of `__`, say — and nothing errors. The variable just doesn't match any key the provider recognises, so your app silently falls back to whatever the JSON file said, and you spend an hour wondering why a value you clearly set isn't taking effect. Two variable prefixes are reserved specifically for the **host itself** rather than your application settings: `ASPNETCORE_` and `DOTNET_` (as you saw with `ASPNETCORE_ENVIRONMENT` in the previous chapter). And one small mercy: configuration keys, including environment variable names, are matched **case-insensitively**, so `payments__baseurl` works exactly as well as `Payments__BaseUrl`.
@@ -269,7 +277,7 @@ IOptions is a singleton computed once, with no reload. IOptionsSnapshot is scope
 :::
 
 :::qa How do you set a nested configuration value via an environment variable?
-Replace each `:` with a double underscore, e.g. `Payments__BaseUrl` for `Payments:BaseUrl`, or `ConnectionStrings__Shop`.
+Replace each `:` with a double underscore, e.g. `Payments__BaseUrl` for `Payments:BaseUrl`, or `ConnectionStrings__Kettle`.
 :::
 
 :::qa How do you manage secrets in development vs production?
@@ -283,6 +291,10 @@ Use `AddOptions<T>().BindConfiguration(...).ValidateDataAnnotations().Validate(.
 :::qa What are feature flags and why use them?
 Runtime switches (e.g. via Microsoft.FeatureManagement and Azure App Configuration) that enable or disable features without redeploying. They decouple deployment from release, allow gradual rollouts, A/B tests and instant rollback.
 :::
+
+## Next episode {b}
+
+Every request needs logging, auth and error handling, and copying it into each endpoint won't scale. [Episode 4 · The request pipeline →](ch:middleware)
 
 ## Further reading
 
@@ -309,7 +321,7 @@ var layer2_productionJson = new Dictionary<string, string?>
 };
 var layer4_envVars = new Dictionary<string, string?>
 {
-    ["ConnectionStrings:Shop"] = "Server=prod-sql;...", // never appeared in either JSON file
+    ["ConnectionStrings:Kettle"] = "Server=prod-sql;...", // never appeared in either JSON file
 };
 
 string? Merged(string key, params Dictionary<string, string?>[] layersLowToHigh)
@@ -322,7 +334,7 @@ string? Merged(string key, params Dictionary<string, string?>[] layersLowToHigh)
 
 var baseUrl = Merged("Payments:BaseUrl", layer1_appsettingsJson, layer2_productionJson, layer4_envVars);
 var timeout = Merged("Payments:TimeoutSeconds", layer1_appsettingsJson, layer2_productionJson, layer4_envVars);
-var connStr = Merged("ConnectionStrings:Shop", layer1_appsettingsJson, layer2_productionJson, layer4_envVars);
+var connStr = Merged("ConnectionStrings:Kettle", layer1_appsettingsJson, layer2_productionJson, layer4_envVars);
 
 if (baseUrl != "https://api.pay.example") throw new Exception($"FAIL: expected the production override to win, got {baseUrl}");
 if (timeout != "10") throw new Exception($"FAIL: expected the un-overridden base value 10 to survive, got {timeout}");

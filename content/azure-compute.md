@@ -20,7 +20,19 @@ next: azure-data-messaging, azure-identity-secrets, kubernetes
 - **AKS**: full Kubernetes, for when you genuinely need its API/ecosystem and have the team to operate it.
 - Pick based on how much operational effort you want to own, not which option sounds most powerful.
 
+## Previously at Kettle {b}
+
+Kettle's services are containers now. Azure offers half a dozen places to run them, and the team can't agree which.
+
+**The problem:** VMs, Kubernetes, App Service, Functions… which one?
+
+**This episode:** App Service, Functions, Container Apps, AKS and VMs, and how to choose.
+
 ## The options at a glance {b}
+
+:::plain
+Azure's places to run code range from virtual machines, where you manage everything, to Functions, where you only write code. Pick by how much operations work you want.
+:::
 
 ```text
 More control, more ops ◀──────────────────────────────────────────────────────────────▶ Less ops, more opinionated
@@ -41,6 +53,10 @@ Every option on this spectrum is the exact same trade-off from [Cloud fundamenta
 
 ## Azure App Service {b}
 
+:::plain
+App Service hosts web apps and APIs for you: you deploy code or a container, and Azure handles servers, patching, scaling and certificates.
+:::
+
 **App Service** hosts web apps, REST APIs and background WebJobs, on Windows or Linux, from **code** (.NET published output) or a **container image**.
 
 **App Service plan** = the underlying compute (VM size and instance count) that one or more apps share. The tier determines features:
@@ -54,19 +70,19 @@ Every option on this spectrum is the exact same trade-off from [Cloud fundamenta
 
 ### Deployment slots
 
-Slots are **live apps with their own hostnames** (e.g. `shop-api-staging.azurewebsites.net`) on the same plan. Deploy to `staging`, **warm it up** and run smoke tests, then **swap** with production: the swap is near-instant, and you roll back by swapping again — the same zero-downtime instinct behind blue/green deployments generally, just built directly into the platform.
+Slots are **live apps with their own hostnames** (e.g. `kettle-api-staging.azurewebsites.net`) on the same plan. Deploy to `staging`, **warm it up** and run smoke tests, then **swap** with production: the swap is near-instant, and you roll back by swapping again — the same zero-downtime instinct behind blue/green deployments generally, just built directly into the platform.
 
 ```bash
-az webapp deployment slot create -g rg-shop -n shop-api --slot staging
-az webapp deploy -g rg-shop -n shop-api --slot staging --src-path app.zip --type zip
-az webapp deployment slot swap -g rg-shop -n shop-api --slot staging --target-slot production
+az webapp deployment slot create -g rg-kettle -n kettle-api --slot staging
+az webapp deploy -g rg-kettle -n kettle-api --slot staging --src-path app.zip --type zip
+az webapp deployment slot swap -g rg-kettle -n kettle-api --slot staging --target-slot production
 ```
 
 Settings can be marked **slot-specific** ("sticky"), like a connection string pointing to a staging database, so they don't swap.
 
 ### Configuration and features
 
-- **App settings** become **environment variables** (`Payments__ApiKey`); connection strings likewise — exactly the environment-variable binding [Configuration](ch:configuration-options#environment-variables-need-their-own-naming-convention) described. Use **Key Vault references**: `@Microsoft.KeyVault(SecretUri=https://kv-shop.vault.azure.net/secrets/StripeKey/)`.
+- **App settings** become **environment variables** (`Payments__ApiKey`); connection strings likewise — exactly the environment-variable binding [Configuration](ch:configuration-options#environment-variables-need-their-own-naming-convention) described. Use **Key Vault references**: `@Microsoft.KeyVault(SecretUri=https://kv-kettle.vault.azure.net/secrets/StripeKey/)`.
 - **Managed identity** (system- or user-assigned) for passwordless access to SQL, Storage and Key Vault ([Identity & secrets](ch:azure-identity-secrets)).
 - **Autoscale** rules (CPU > 70% → +1 instance) or **automatic scaling** (Premium v3: HTTP-traffic based).
 - **Health check** path: unhealthy instances are removed from the load balancer and replaced.
@@ -76,6 +92,10 @@ Settings can be marked **slot-specific** ("sticky"), like a connection string po
 - **WebJobs** run background tasks alongside the app (prefer hosted services or Functions in new code).
 
 ## Azure Functions {i}
+
+:::plain
+Functions run small pieces of code in response to events, such as a timer or a queue message, and you pay only while they run.
+:::
 
 **Azure Functions** runs small pieces of code in response to **triggers**, with automatic scaling and pay-per-use pricing.
 
@@ -94,7 +114,7 @@ Modern .NET functions run in the **isolated worker model**: your code runs in a 
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();                 // ASP.NET Core integration for HTTP triggers
 builder.Services.AddApplicationInsightsTelemetryWorkerService().ConfigureFunctionsApplicationInsights();
-builder.Services.AddDbContext<ShopDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Shop")));
+builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Kettle")));
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Build().Run();
 
@@ -163,6 +183,10 @@ Notice `catch (TaskFailedException)` calling `ReleaseStock` — this is a saga's
 
 ## Azure Container Apps {i}
 
+:::plain
+Container Apps runs your containers with Kubernetes underneath, but without you managing a cluster. It scales on traffic or queue length, down to zero.
+:::
+
 **Container Apps** runs containers on a **managed, serverless Kubernetes-based platform**: you get revisions, ingress, autoscaling (KEDA), Dapr and jobs **without operating a cluster** — the middle point on the compute spectrum, deliberately positioned to give most of AKS's capability without most of AKS's operational cost.
 
 | Concept | Meaning |
@@ -177,9 +201,9 @@ Notice `catch (TaskFailedException)` calling `ReleaseStock` — this is a saga's
 | **Workload profiles** | Consumption (serverless) or dedicated (reserved hardware, GPUs) |
 
 ```bash
-az containerapp up -n shop-api -g rg-shop --environment cae-shop \
-  --image shopacr.azurecr.io/shop-api:1.4.2 --ingress external --target-port 8080 \
-  --env-vars ASPNETCORE_ENVIRONMENT=Production ConnectionStrings__Shop=secretref:sql-cs
+az containerapp up -n kettle-api -g rg-kettle --environment cae-kettle \
+  --image kettleacr.azurecr.io/kettle-api:1.4.2 --ingress external --target-port 8080 \
+  --env-vars ASPNETCORE_ENVIRONMENT=Production ConnectionStrings__Kettle=secretref:sql-cs
 ```
 
 ```bicep
@@ -189,7 +213,7 @@ scale: {
   maxReplicas: 20
   rules: [ {
     name: 'orders-queue'
-    custom: { type: 'azure-servicebus', metadata: { queueName: 'orders', namespace: 'sb-shop', messageCount: '50' }, identity: 'system' }
+    custom: { type: 'azure-servicebus', metadata: { queueName: 'orders', namespace: 'sb-kettle', messageCount: '50' }, identity: 'system' }
   } ]
 }
 ```
@@ -208,6 +232,10 @@ Key AKS integrations: **Workload Identity** (pods get Entra identities), **Key V
 - **Azure Spring Apps** has been retired (it was for Java). **Azure Static Web Apps** serves SPAs with optional Functions APIs. **Azure Batch** handles large parallel compute jobs.
 
 ## Choosing compute: a decision guide {i}
+
+:::plain
+Start with the most managed option that fits, and move to more control only when you hit a real limit.
+:::
 
 ```text
 Is it a small piece of code triggered by events/timers, spiky or infrequent?    → Azure Functions (Flex Consumption)
@@ -248,6 +276,10 @@ An Azure Functions extension for stateful, long-running workflows written as orc
 :::qa How does Azure Container Apps scale?
 With KEDA-based scale rules: HTTP concurrency, CPU/memory, or event sources like Service Bus queue length, Kafka lag or cron, between min and max replicas, including scaling to zero. Revisions allow traffic splitting for canary and blue/green deployments.
 :::
+
+## Next episode {b}
+
+Kettle needs a database, file storage, a cache and a message broker, without running any of them. [Episode 4 · Managed data and messaging →](ch:azure-data-messaging)
 
 ## Further reading
 

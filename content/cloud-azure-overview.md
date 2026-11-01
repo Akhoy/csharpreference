@@ -20,13 +20,29 @@ next: docker, azure-compute, azure-data-messaging
 - Azure resources nest: tenant → management groups → subscriptions → resource groups → resources, with RBAC and Policy applying at any level.
 - The **Well-Architected Framework**'s five pillars (Reliability, Security, Cost, Operations, Performance) are the lens interviewers use for system-design questions.
 
+## Previously at Kettle {b}
+
+All of Kettle's services run on one server in a cupboard. The holiday rush is coming, and a disk failure would take the business down.
+
+**The problem:** Kettle's single server in a cupboard can't handle the holiday rush.
+
+**This episode:** service models, regions and zones, scaling out, twelve-factor apps and the Azure map.
+
 ## What "the cloud" means {b}
+
+:::plain
+The cloud is renting computers, storage and ready-made services by the minute from someone else's data centres, instead of buying and running your own.
+:::
 
 Renting computing resources (servers, storage, databases, networking, managed services) **on demand, over the internet, paying for what you use**, instead of buying and running your own hardware.
 
 Essential characteristics (NIST): **on-demand self-service** (create a database in minutes via the portal, CLI or code), **broad network access**, **resource pooling** (multi-tenant), **rapid elasticity** (scale up and down quickly), and **measured service** (pay per use).
 
 ## Service models: who manages what {b}
+
+:::plain
+The more the provider manages, from the hardware up to the runtime, the less operational work is yours, and the less control you have.
+:::
 
 ```text
                   On-premises    IaaS           PaaS            Serverless / FaaS   SaaS
@@ -56,9 +72,17 @@ Reading down any one column tells you exactly where your team's operational burd
 
 ## The shared responsibility model {b}
 
+:::plain
+The provider secures the data centres and the platform. You always remain responsible for your data, your identities and how you configure access.
+:::
+
 The provider secures **the cloud** (datacentres, hardware, hypervisor, the services' infrastructure); **you** secure what you put **in the cloud**: your code, data, identities, access policies, network rules and configuration. The split shifts with the service model, but **identities, data and access are always yours**. Most cloud breaches are customer misconfigurations (public storage containers, leaked keys, over-privileged identities), not provider failures — a sobering fact worth keeping in mind every time [Azure identity & secrets](ch:azure-identity-secrets) asks you to configure an access policy.
 
 ## Regions, availability zones and resilience {i}
+
+:::plain
+A region is a place; zones are separate data centres within it. Spreading copies across zones survives a data-centre failure, and across regions survives a regional one.
+:::
 
 | Concept | Meaning | Use |
 |---|---|---|
@@ -81,6 +105,10 @@ Pick the tier your workload's actual availability requirement justifies — not 
 
 ## Scaling and elasticity {b}
 
+:::plain
+Scaling up means a bigger machine; scaling out means more copies. Scaling out only works if any copy can handle any request.
+:::
+
 | | Scale **up** (vertical) | Scale **out** (horizontal) |
 |---|---|---|
 | How | A bigger machine/tier (more CPU and RAM) | More instances behind a load balancer |
@@ -93,6 +121,10 @@ The "Requirement" row is the important one: scaling out isn't free just because 
 **Autoscaling** adds or removes instances automatically, based on metrics (CPU, memory, requests per second, or queue length via **KEDA**, a Kubernetes add-on that scales workloads using metrics from outside the cluster, like a message queue's depth) or on a schedule. **Elasticity** specifically means scaling *down* too, not just up — so you stop paying for capacity nobody's using.
 
 ## Cloud-native app design: the twelve factors {i}
+
+:::plain
+Twelve rules that make an app easy to run in the cloud, such as config in environment variables, no local state and fast, graceful shutdown.
+:::
 
 The **Twelve-Factor App** methodology (Heroku) summarises how to build apps that run well on cloud platforms, and ASP.NET Core supports each factor:
 
@@ -119,11 +151,15 @@ In-memory sessions or caches assumed to be shared, files written to the local di
 
 ## Azure's resource hierarchy {i}
 
+:::plain
+Azure groups everything in nested containers: tenant, management groups, subscriptions, resource groups and resources. Permissions and policies flow down from each level.
+:::
+
 ```text
 Microsoft Entra tenant (identity boundary: users, groups, app registrations)
 └── Management groups (policy & RBAC inheritance for many subscriptions)
     └── Subscriptions (billing + quota + access boundary; often one per environment or team)
-        └── Resource groups (lifecycle container: deploy/delete together, e.g. "rg-shop-prod-weu")
+        └── Resource groups (lifecycle container: deploy/delete together, e.g. "rg-kettle-prod-weu")
             └── Resources (App Service, SQL database, Key Vault, Storage account…)
 ```
 
@@ -131,9 +167,13 @@ Microsoft Entra tenant (identity boundary: users, groups, app registrations)
 - **RBAC** role assignments at any scope (management group → resource) grant **who can do what** (Owner, Contributor, Reader, plus data-plane roles like *Storage Blob Data Reader*).
 - **Azure Policy** enforces rules ("only these regions", "storage must not allow public access", "tags required").
 - **Tags** (`env=prod`, `owner=team-orders`, `costCenter=123`) enable cost reporting and governance.
-- **Naming conventions** (Cloud Adoption Framework): `app-shop-api-prod-weu-001`, `kv-shop-prod-weu`.
+- **Naming conventions** (Cloud Adoption Framework): `app-kettle-api-prod-weu-001`, `kv-kettle-prod-weu`.
 
 ## The Azure map for .NET backend developers {b}
+
+:::plain
+For each thing a backend needs, such as hosting, a database, a cache, messaging or secrets, Azure has one or two standard services. This table is the map.
+:::
 
 | Need | Azure service(s) | Chapter |
 |---|---|---|
@@ -165,6 +205,10 @@ Microsoft Entra tenant (identity boundary: users, groups, app registrations)
 - **Front Door** (global, edge) → **Application Gateway / API Management** (regional) → apps.
 
 ## Cost {i}
+
+:::plain
+Cloud bills grow from many small choices. Right-size, scale down when idle, commit to steady usage, and watch data transfer and logging volume.
+:::
 
 Cloud costs grow quietly — nobody decides to overspend, it accumulates from dozens of individually-reasonable-looking choices. Know the levers:
 
@@ -225,6 +269,10 @@ Network interfaces that give an Azure PaaS service a private IP address inside y
 Recovery Time Objective: the maximum acceptable downtime after a disaster. Recovery Point Objective: the maximum acceptable data loss measured in time. Both drive backup, replication and failover design.
 :::
 
+## Next episode {b}
+
+"It works on my machine." Production has a different runtime and libraries. [Episode 2 · Ship the whole box →](ch:docker)
+
 ## Further reading
 
 - [Azure fundamentals (Microsoft Learn path, AZ-900)](https://learn.microsoft.com/en-us/training/paths/azure-fundamentals-describe-cloud-concepts/)
@@ -241,8 +289,8 @@ Most of this chapter is about Azure services, pricing and network topology, whic
 
 ```csharp
 // Claim (twelve-factor, factor 3): "store config in the environment" — .NET's config system reads env vars directly.
-Environment.SetEnvironmentVariable("SHOP_API_KEY", "demo-key-123"); // stands in for a real deployment setting this
-var apiKeyFromEnv = Environment.GetEnvironmentVariable("SHOP_API_KEY");
+Environment.SetEnvironmentVariable("KETTLE_API_KEY", "demo-key-123"); // stands in for a real deployment setting this
+var apiKeyFromEnv = Environment.GetEnvironmentVariable("KETTLE_API_KEY");
 if (apiKeyFromEnv != "demo-key-123")
     throw new Exception("FAIL: expected config to come from the environment, not a hardcoded value");
 Console.WriteLine($"OK: config read from the environment ({apiKeyFromEnv}), exactly how IConfiguration's environment provider works");

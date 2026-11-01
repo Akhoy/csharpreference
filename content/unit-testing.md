@@ -18,7 +18,19 @@ next: integration-testing
 - Inject sources of non-determinism (`TimeProvider`, not `DateTime.Now`) so tests are repeatable.
 - Coverage percentage is a diagnostic, not a goal — a test can run every line and still assert nothing meaningful.
 
+## Previously at Kettle {b}
+
+Kettle now deploys several times a week. Last month a discount change quietly broke free shipping, and nobody noticed for a week.
+
+**The problem:** A discount change quietly broke free shipping. Nobody noticed for a week.
+
+**This episode:** fast tests on behaviour, fakes at the edges, and test design.
+
 ## What a unit test is, and the question that divides testers {b}
+
+:::plain
+A unit test runs a small piece of code in isolation and checks one behaviour, in milliseconds. Testers disagree mainly about how small the 'unit' should be.
+:::
 
 A **unit test** verifies **one unit of behaviour** in isolation, quickly and deterministically. That sounds simple until you ask the obvious follow-up: what, exactly, is "one unit"? There are two genuinely different schools of thought here, and they lead to noticeably different-looking tests:
 
@@ -35,11 +47,15 @@ Modern guidance (e.g. Vladimir Khorikov's *Unit Testing Principles, Practices, a
 
 ## xUnit essentials {b}
 
+:::plain
+In xUnit, a method marked [Fact] is one test, and [Theory] runs the same test with several sets of data. Each test gets a fresh instance of its class.
+:::
+
 **xUnit** is the most common test framework in modern .NET (the ASP.NET Core and .NET runtime teams use it). **xUnit v3** is the current major version.
 
 ```bash
-dotnet new xunit -n Shop.Domain.Tests
-dotnet add Shop.Domain.Tests reference src/Shop.Domain
+dotnet new xunit -n Kettle.Domain.Tests
+dotnet add Kettle.Domain.Tests reference src/Kettle.Domain
 dotnet test                                   # discovers and runs all tests
 dotnet test --filter "FullyQualifiedName~Orders&Category=Unit"
 ```
@@ -114,6 +130,10 @@ All three are fine; consistency within a codebase matters most.
 
 ## Naming and structure {b}
 
+:::plain
+Name a test after the behaviour it checks, and lay it out as arrange, act, assert, so anyone can see what broke from the name alone.
+:::
+
 A test name should say **what behaviour** is expected **under which condition**, readable as a specification rather than as an implementation detail:
 
 ```text
@@ -125,6 +145,10 @@ Plain English (Khorikov)                     Shipped_order_cannot_be_cancelled
 Rules: **one behaviour per test** (multiple asserts are fine if they verify one outcome), **no logic in tests** (no `if`, no loops computing expected values: the test should be obviously correct by inspection, never itself a thing that could have a bug), and **Arrange-Act-Assert** with a single Act.
 
 ## Assertions {b}
+
+:::plain
+An assertion is the check that fails the test. Assert one behaviour per test, and make the failure message say what was expected.
+:::
 
 ```csharp
 // Built-in xUnit
@@ -145,6 +169,10 @@ Should.Throw<DomainException>(() => order.Cancel("x")).Code.ShouldBe("order.alre
 Popular libraries: **Shouldly** (MIT), **FluentAssertions** (commercial licence since v8 in 2025; v7 remains Apache-licensed), **AwesomeAssertions** (an MIT community fork of FluentAssertions). For snapshot testing (approve the whole output once, then detect changes), use **Verify**.
 
 ## Test doubles: a precise vocabulary for "fake dependency" {i}
+
+:::plain
+A test double replaces a real dependency. Stubs return canned answers, fakes are simple working versions, and mocks also check how they were called.
+:::
 
 A **test double** stands in for a real dependency, and Gerard Meszaros gave the vocabulary that lets testers talk precisely about *which kind* of double a given test needs, rather than lumping everything under "mock":
 
@@ -197,6 +225,10 @@ Don't mock types you don't own with complex behaviour (`HttpClient`, `DbContext`
 
 ## Testing time, randomness and async {i}
 
+:::plain
+Anything that depends on the clock, random numbers or timing must be injected, so a test can control it. Async tests must be awaited, never blocked on.
+:::
+
 Code that calls `DateTime.UtcNow`, `Guid.NewGuid()` or `Random` directly is non-deterministic — the exact same test can pass today and fail tomorrow purely because the clock moved. The fix is the same dependency-injection discipline the rest of this book applies everywhere else: inject the source of non-determinism instead of calling it directly.
 
 ```csharp
@@ -218,7 +250,50 @@ sut.IsExpired(new Subscription { EndsAt = new DateTimeOffset(2026, 10, 28, 12, 0
 - **Timers, delays, `PeriodicTimer`**: pass `TimeProvider` so `FakeTimeProvider.Advance` drives them without real waiting.
 - **Logging**: `FakeLogger<T>` (Microsoft.Extensions.Diagnostics.Testing) captures log records to assert on.
 
+## See it run: a test that controls time {i}
+
+A promotion that depends on today's date can't be tested with the real clock. Inject a clock, and the test decides what time it is.
+
+:::walk Testing a Black Friday rule without waiting for Black Friday
+```csharp
+var clock = new FakeClock(new DateTimeOffset(2026, 11, 26, 23, 0, 0, TimeSpan.Zero));
+var promo = new BlackFridayPromotion(clock);
+
+Check(promo.DiscountFor(100m) == 0m, "no discount the evening before");
+clock.Now = clock.Now.AddHours(2);
+Check(promo.DiscountFor(100m) == 30m, "30% off on Black Friday");
+
+static void Check(bool ok, string behaviour) => Console.WriteLine($"{(ok ? "PASS" : "FAIL")}: {behaviour}");
+
+interface IClock { DateTimeOffset Now { get; } }
+
+sealed class FakeClock(DateTimeOffset start) : IClock
+{
+    public DateTimeOffset Now { get; set; } = start;
+}
+
+sealed class BlackFridayPromotion(IClock clock)
+{
+    private static readonly DateOnly BlackFriday = new(2026, 11, 27);
+    public decimal DiscountFor(decimal total) =>
+        DateOnly.FromDateTime(clock.Now.UtcDateTime) == BlackFriday ? total * 0.30m : 0m;
+}
+```
+@1-2 | clock.Now = 2026-11-26 23:00 UTC
+**Arrange:** a fake clock set to the evening before, injected into the class under test.
+@4 | | > PASS: no discount the evening before
+**Act and assert:** the rule gives no discount yet.
+@5 | clock.Now = 2026-11-27 01:00 UTC
+The test moves time forward two hours, instantly. No waiting, and no dependence on the day the test happens to run.
+@6 | | > PASS: 30% off on Black Friday
+In real code, inject .NET's `TimeProvider` and use `FakeTimeProvider` in tests, which does the same job and also controls timers ([Everyday types](ch:everyday-types#dates-and-times)).
+:::
+
 ## Test data builders and fixtures {i}
+
+:::plain
+Builders create valid test objects with sensible defaults, so each test states only the detail it cares about. Fixtures share expensive setup across tests.
+:::
 
 Tests drown in setup code without builders — constructing a valid `Order` by hand, every single time, for a test that only cares about one specific edge case, is exactly the kind of repetitive ceremony that makes a test suite unpleasant to maintain. The **Test Data Builder** pattern (or "Object Mother") — the same Builder from [Design patterns](ch:design-patterns#builder) — gives valid defaults and lets each test override only what actually matters to it:
 
@@ -256,6 +331,10 @@ Notice how little the test itself has to say: `new OrderBuilder().Placed().Build
 **AutoFixture** and **Bogus** generate anonymous or realistic data when values don't matter to the test.
 
 ## What to unit test (and what not to) {i}
+
+:::plain
+Unit test your business rules and decisions. Don't unit test framework behaviour, simple data classes, or code that only passes values through.
+:::
 
 | High value | Low value |
 |---|---|
@@ -304,6 +383,10 @@ No. Coverage shows which lines executed, not whether behaviour was verified, and
 :::qa What is TDD?
 Test-Driven Development: write a failing test for a small piece of behaviour (red), write the minimum code to pass (green), then refactor safely, in short cycles. It yields tests by construction and testable, usage-driven designs.
 :::
+
+## Next episode {b}
+
+Every unit test passes, but the deployed API returns 401 for everyone. [Episode 2 · Prove the parts fit →](ch:integration-testing)
 
 ## Further reading
 

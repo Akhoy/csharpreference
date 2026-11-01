@@ -18,7 +18,19 @@ next: study-plan-resources
 - Practice the three worked designs here (URL shortener, checkout, notifications) — each reuses patterns from earlier chapters: outbox, idempotency, sagas, bulkheads.
 - Always name the **trade-off**, not just the choice: "I'd use X because Y; the cost is Z."
 
+## Previously at Kettle {b}
+
+You've built Kettle, end to end. Now an interviewer asks you to design a checkout for ten million users, in 45 minutes.
+
+**The problem:** "Design a checkout for 10 million users." 45 minutes. Go.
+
+**This episode:** a repeatable framework, estimates, building blocks and worked designs.
+
 ## What interviewers are looking for {i}
+
+:::plain
+Interviewers watch how you think: clarifying the problem, reasoning with numbers, choosing components with reasons, and handling failure.
+:::
 
 A system design interview isn't about the "right" answer. It tests whether you can:
 
@@ -32,6 +44,10 @@ A system design interview isn't about the "right" answer. It tests whether you c
 For .NET backend roles, interviewers also like hearing **concrete .NET and Azure choices** (EF Core vs Dapper, Service Bus vs Event Hubs, Container Apps vs AKS) and **code-level patterns** (outbox, idempotency, caching strategy) — exactly the vocabulary the rest of this book has spent dozens of chapters building up. This chapter is where all of it gets exercised at once, under time pressure, on a whiteboard.
 
 ## A repeatable framework (45 minutes) {i}
+
+:::plain
+Clarify requirements, estimate scale, sketch the API and data, draw the system, then go deep on the hardest parts.
+:::
 
 | Step | Time | What you do |
 |---|---|---|
@@ -47,6 +63,10 @@ Step 2 is placed right after requirements and before any architecture on purpose
 
 ## Back-of-the-envelope numbers {i}
 
+:::plain
+A few remembered numbers, such as requests per day to per second and how slow each kind of call is, let you size a design quickly.
+:::
+
 | Quantity | Rough value |
 |---|---|
 | Seconds per day | ~86,400 ≈ **10⁵** |
@@ -61,7 +81,37 @@ Step 2 is placed right after requirements and before any architecture on purpose
 
 **Example:** 10M daily active users, each making 20 reads and 1 write per day → reads ≈ 200M/day ≈ 2,300 RPS average (~10k peak); writes ≈ 10M/day ≈ 115 RPS average. That's a **read-heavy** system, so caching and read replicas matter more than write sharding.
 
+### See it run: estimating Kettle at ten million users
+
+:::walk From users to requests per second and storage
+```csharp
+long dailyUsers = 10_000_000;
+long readsPerDay = dailyUsers * 20;
+long writesPerDay = dailyUsers * 1;
+const int secondsPerDay = 86_400;
+
+Console.WriteLine($"reads: {readsPerDay / secondsPerDay:N0}/s average, about {readsPerDay / secondsPerDay * 5:N0}/s at peak");
+Console.WriteLine($"writes: {writesPerDay / secondsPerDay:N0}/s average");
+
+long bytesPerOrder = 2_000;
+double terabytesPerYear = writesPerDay * 365.0 * bytesPerOrder / 1e12;
+Console.WriteLine($"storage: {terabytesPerYear:N1} TB of orders per year");
+```
+@1-4 | dailyUsers = 10,000,000 ; readsPerDay = 200,000,000 ; writesPerDay = 10,000,000
+Assume each user makes 20 reads and 1 write a day. A day is about 100,000 seconds (86,400 exactly).
+@6 | | > reads: 2,314/s average, about 11,570/s at peak
+Peaks are often 2 to 10 times the average; 5× is a reasonable guess to say out loud.
+@7 | | > writes: 115/s average
+Reads outnumber writes 20 to 1, so the design should spend its effort on **caching and read replicas**, not on sharding writes.
+@9-11 | | > storage: 7.3 TB of orders per year
+At 2 KB per order, one relational database holds years of orders. No exotic storage is needed yet, and the estimate says so.
+:::
+
 ## Building blocks and their .NET/Azure choices {i}
+
+:::plain
+Most designs combine the same blocks: a CDN, a gateway, stateless services, a cache, a database, a queue and workers. Know a concrete choice for each.
+:::
 
 | Building block | Purpose | .NET / Azure options |
 |---|---|---|
@@ -195,6 +245,10 @@ Each row in this table is a decision this book has already made once, explicitly
 
 ## Code-level design questions {i}
 
+:::plain
+Some interviews ask you to design classes rather than systems. Find the entities and rules, apply the principles and patterns, then write a little real code.
+:::
+
 Many .NET interviews include "low-level design": design a parking lot, a rate limiter, an LRU cache, a library system, or "how would you structure this API?". Approach:
 
 1. Clarify requirements and edge cases.
@@ -255,6 +309,10 @@ Clarify per-user/IP/API-key limits and the algorithm (token bucket for bursts, s
 :::qa How do you scale a read-heavy API?
 Make the service stateless and scale out; add caching layers (CDN/output cache for public responses, HybridCache/Redis for data); use read replicas or CQRS read models; optimise queries and indexes; paginate and project; and move expensive work to async background processing.
 :::
+
+## Next episode {b}
+
+You've seen every topic once. Now make it stick. [Episode 2 · What's next →](ch:study-plan-resources)
 
 ## Further reading
 

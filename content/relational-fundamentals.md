@@ -18,7 +18,19 @@ next: ado-dapper, efcore-fundamentals
 - **Deadlocks** happen when two transactions each wait on a lock the other holds; the database kills one and your code should retry it.
 - **Connection pooling** reuses expensive-to-open connections; most "pool exhausted" errors trace back to code not disposing connections/DbContexts promptly.
 
+## Previously at Kettle {b}
+
+Kettle's API keeps orders in a list in memory, so every deploy wipes them. It needs storage that survives restarts and stays consistent when two things happen at once.
+
+**The problem:** Kettle's orders need to survive crashes, and finding them must stay fast.
+
+**This episode:** tables and keys, normalisation, indexes, transactions and isolation levels.
+
 ## The relational model {b}
+
+:::plain
+Data lives in tables of rows and columns. Each row has a key that identifies it, and rows in different tables point at each other through those keys.
+:::
 
 A relational database stores data in **tables** (relations) of **rows** with typed **columns**. Tables are linked by **keys**:
 
@@ -58,6 +70,10 @@ CREATE TABLE Orders (
 
 ## Normalisation (and when to break it) {i}
 
+:::plain
+Store each fact in exactly one place, so it can't disagree with itself. Copy facts only on purpose, when reading them together is far more common than changing them.
+:::
+
 **Normalisation** removes redundancy so each fact is stored exactly once, which is the whole point: with one copy of a customer's name, changing it means one `UPDATE`. Without normalisation, the same fact duplicated across 500 order rows means an update anomaly waiting to happen — update 499 of them and miss one, and now the database contains a contradiction with no way to tell which copy is right.
 
 | Form | Rule (simplified) | Violation example |
@@ -73,6 +89,10 @@ An order line should store the **price at the time of purchase**, even though th
 :::
 
 ## SQL you must be able to write {b}
+
+:::plain
+A handful of statements cover most work: pick rows with WHERE, combine tables with JOIN, summarise with GROUP BY, and change rows with INSERT, UPDATE and DELETE.
+:::
 
 ```sql
 -- Filter, sort, page
@@ -113,6 +133,10 @@ Also know: `UNION` vs `UNION ALL` (the latter skips the duplicate-removal sort),
 
 ## Joins {b}
 
+:::plain
+A join lines up rows from two tables that share a value, such as an order and its customer. The join type decides what happens to rows that have no partner.
+:::
+
 | Join | Returns |
 |---|---|
 | `INNER JOIN` | Only rows with a match on both sides |
@@ -130,6 +154,10 @@ Id Name              Id CustomerId        Ana  #1                    Ana  #1
 ```
 
 ## Indexes: the single most important performance tool in this chapter {i}
+
+:::plain
+An index is a sorted copy of one or more columns with pointers back to the rows, like the index at the back of a book. It turns 'read every row' into 'jump to the right page', at the cost of slower writes.
+:::
 
 Here's the problem an index solves, stated plainly: without one, finding a matching row means a **table scan** — the database reading every single row, one by one, to check if it matches. On a table with a few hundred rows that's instant and nobody notices. On a table with fifty million rows, it's the difference between a 2-millisecond query and a 4-second one, and it's the single most common cause of "why is this endpoint slow" tickets in real production systems. An index is a sorted **B+tree** structure built specifically so the database can **seek** directly to matching rows in O(log n) time instead of scanning everything.
 
@@ -176,6 +204,10 @@ A clustered key should be **narrow, unique, static and ever-increasing** — and
 
 ## Execution plans: watching the database explain its own decisions {i}
 
+:::plain
+Before running a query, the database decides how: which index to use, which table to read first. The execution plan shows that decision, so you can see why a query is slow.
+:::
+
 The **query optimiser** decides *how* to execute a piece of SQL — which indexes to use, which join algorithm, in which order — based on **statistics** it keeps about how the data is actually distributed. When a query is slow, the execution plan is where you go to see exactly what it decided and why:
 
 | Operator | Meaning | Usually |
@@ -192,6 +224,10 @@ Tools: SSMS / Azure Data Studio "Include Actual Execution Plan", `SET STATISTICS
 **Parameter sniffing** is a subtler trap. SQL Server compiles and caches a query plan the *first* time it sees that query, built around whatever parameter values happened to be passed in on that first call. Say a query for "a customer's orders" first runs for a customer with exactly one order — the cached plan gets optimised for tiny result sets. That same plan is then reused, unchanged, the next time the query runs for a customer with a million orders, where it performs terribly. Mitigations: `OPTION (RECOMPILE)` for that specific query, `OPTIMIZE FOR`, better indexes, Query Store plan forcing, or Parameter Sensitive Plan optimisation (SQL Server 2022 / Azure SQL).
 
 ## Transactions and ACID: the unit the database actually guarantees {b}
+
+:::plain
+A transaction groups several changes so they all happen or none do, and other users never see them half done. The isolation level decides how much concurrent transactions can see of each other.
+:::
 
 A **transaction** groups several statements into one all-or-nothing unit — and the four letters of ACID are really four separate promises the database is making about that unit:
 
@@ -261,6 +297,10 @@ Prevention strategies, each one attacking a different part of how the cycle form
 
 ## Connection pooling: the cost hiding behind every Open() call {i}
 
+:::plain
+Opening a real database connection is slow, so .NET keeps a pool of open ones. Your Open() borrows one and Close() gives it back, so open late, close early, and never hold one while waiting on something else.
+:::
+
 Opening a physical database connection — a TCP handshake, TLS negotiation, authentication — is expensive, in exactly the same way opening a fresh HTTP connection per request was expensive in [Calling other services](ch:http-client#what-an-httpclient-actually-is-underneath). ADO.NET providers solve it the same way: a **pool** of already-open connections, kept per unique connection string, where `Open()` just borrows one and `Dispose()`/`Close()` returns it rather than actually tearing it down.
 
 - Default max pool size is **100** (SqlClient). Under load, if connections aren't returned quickly enough, you get *"Timeout expired. The timeout period elapsed prior to obtaining a connection from the pool"*.
@@ -268,11 +308,15 @@ Opening a physical database connection — a TCP handshake, TLS negotiation, aut
 - The operating discipline that avoids all of this: don't open connections early or hold them open across unrelated work. Open late, close early.
 
 ```text
-Server=tcp:shop.database.windows.net;Database=shop;Authentication=Active Directory Default;
-Encrypt=True;Max Pool Size=200;Connect Timeout=15;Application Name=shop-api
+Server=tcp:kettle.database.windows.net;Database=kettle;Authentication=Active Directory Default;
+Encrypt=True;Max Pool Size=200;Connect Timeout=15;Application Name=kettle-api
 ```
 
 ## SQL Server vs PostgreSQL in .NET shops {i}
+
+:::plain
+Both are excellent and fully supported by EF Core. The choice usually comes down to what your team and hosting already use, licensing cost, and a few features each does better.
+:::
 
 | | SQL Server / Azure SQL | PostgreSQL / Azure Database for PostgreSQL |
 |---|---|---|
@@ -320,6 +364,10 @@ Reusing open physical connections per connection string so Open is cheap. Exhaus
 :::qa What is parameter sniffing?
 SQL Server compiles and caches a plan using the first parameter values it sees. If those are unrepresentative, later executions reuse a suboptimal plan. Fixes include OPTION(RECOMPILE), OPTIMIZE FOR, better indexing, Query Store plan forcing, or PSP optimisation.
 :::
+
+## Next episode {b}
+
+One report needs hand-tuned SQL, and it must be safe from injection. [Episode 2 · Talking SQL directly →](ch:ado-dapper)
 
 ## Further reading
 

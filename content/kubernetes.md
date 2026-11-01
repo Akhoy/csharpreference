@@ -19,9 +19,21 @@ next: observability-aspire, performance-engineering
 - **Requests** reserve scheduling capacity; **limits** cap usage — exceed the memory limit and you get `OOMKilled`, exceed the CPU limit and you get throttled (latency spikes, not a crash).
 - Prefer **AKS Workload Identity** over storing secrets in the cluster: pods get federated Azure AD tokens, so `DefaultAzureCredential` reaches SQL, Key Vault and Service Bus with nothing secret sitting in etcd.
 
+## Previously at Kettle {b}
+
+Kettle deploys from a pipeline. Then, at 3 a.m., a server dies, and someone has to be woken up to restart things by hand.
+
+**The problem:** At 3 a.m. a server dies, and someone has to restart Kettle by hand.
+
+**This episode:** desired state, pods and services, probes, resources and autoscaling.
+
 ## What Kubernetes does {i}
 
-**Kubernetes (K8s)** is an open-source system for **running containerised applications across a cluster of machines**. You **declare the desired state** ("3 replicas of shop-api:1.4.2, each with 0.5 CPU, reachable at orders.shop.com") and Kubernetes **continuously reconciles** reality to match — the whole system is built around that single loop, running forever in the background:
+:::plain
+You tell Kubernetes what should be running, and it keeps making it so: placing containers, restarting failed ones and rolling out new versions.
+:::
+
+**Kubernetes (K8s)** is an open-source system for **running containerised applications across a cluster of machines**. You **declare the desired state** ("3 replicas of kettle-api:1.4.2, each with 0.5 CPU, reachable at orders.kettle.com") and Kubernetes **continuously reconciles** reality to match — the whole system is built around that single loop, running forever in the background:
 
 - **Scheduling**: places containers on nodes with enough resources.
 - **Self-healing**: restarts crashed containers, replaces pods on failed nodes, kills pods failing liveness probes.
@@ -37,6 +49,10 @@ It gives a **standard, portable platform** for running many services with consis
 
 ## Architecture {i}
 
+:::plain
+A control plane stores the desired state and runs controllers that act on it. Worker nodes run your containers.
+:::
+
 ```text
 ┌───────────────────────── Control plane (managed for you in AKS) ─────────────────────────┐
 │  kube-apiserver (the API: kubectl, CI, controllers talk to it)                             │
@@ -49,7 +65,7 @@ It gives a **standard, portable platform** for running many services with consis
 │ container runtime (containerd)        │   │ …                     │   │ …                     │
 │ kube-proxy / CNI (networking)         │   │                       │   │                       │
 │ ┌─Pod──────────┐ ┌─Pod──────────┐     │   │ ┌─Pod──────────┐      │   │ ┌─Pod──────────┐      │
-│ │ shop-api     │ │ shop-worker  │     │   │ │ shop-api     │      │   │ │ shop-api     │      │
+│ │ kettle-api     │ │ kettle-worker  │     │   │ │ kettle-api     │ │   │ │ kettle-api     │      │
 │ └──────────────┘ └──────────────┘     │   │ └──────────────┘      │   │ └──────────────┘      │
 └───────────────────────────────────────┘   └───────────────────────┘   └───────────────────────┘
 ```
@@ -58,12 +74,16 @@ Everything is an **API object** described in YAML (or JSON), submitted with `kub
 
 ## The core objects {i}
 
+:::plain
+Pods run containers, Deployments manage pods and their updates, Services give pods a stable address, and ConfigMaps and Secrets hold settings.
+:::
+
 | Object | What it is | .NET-app relevance |
 |---|---|---|
 | **Pod** | The smallest unit: one or more containers sharing network (localhost) and volumes; ephemeral, with its own IP | Usually one app container (+ optional sidecars) |
 | **ReplicaSet** | Keeps N identical pods running | Managed by Deployments; rarely used directly |
 | **Deployment** | Declares pods + replicas + **rolling update** strategy; manages ReplicaSets per version | **How you run a stateless API or worker** |
-| **Service** | Stable virtual IP + DNS name load-balancing to pods selected by **labels** (`ClusterIP`, `NodePort`, `LoadBalancer`) | `http://shop-api.shop.svc.cluster.local` for service-to-service calls |
+| **Service** | Stable virtual IP + DNS name load-balancing to pods selected by **labels** (`ClusterIP`, `NodePort`, `LoadBalancer`) | `http://kettle-api.kettle.svc.cluster.local` for service-to-service calls |
 | **Ingress** / **Gateway API** | HTTP(S) routing from outside to Services (hosts, paths, TLS) via an ingress controller (NGINX, Traefik, App Gateway for Containers) | Public entry for APIs |
 | **ConfigMap** | Non-secret configuration as key/values or files | Environment variables / mounted `appsettings.Production.json` |
 | **Secret** | Sensitive values (base64-encoded, **not encrypted** by default; enable etcd encryption, or use the Key Vault CSI driver) | Connection strings (better: workload identity) |
@@ -77,41 +97,45 @@ Everything is an **API object** described in YAML (or JSON), submitted with `kub
 
 ## A complete manifest for an ASP.NET Core API {i}
 
+:::plain
+One YAML file can describe a whole API deployment: how many copies, which image, how much CPU and memory, its health checks, and how to reach it.
+:::
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: shop-api
-  namespace: shop
-  labels: { app: shop-api }
+  name: kettle-api
+  namespace: kettle
+  labels: { app: kettle-api }
 spec:
   replicas: 3
   revisionHistoryLimit: 5
   selector:
-    matchLabels: { app: shop-api }
+    matchLabels: { app: kettle-api }
   strategy:
     type: RollingUpdate
     rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }         # zero-downtime: add one new before removing an old
   template:
     metadata:
       labels:
-        app: shop-api
+        app: kettle-api
         azure.workload.identity/use: "true"                     # AKS workload identity
     spec:
-      serviceAccountName: shop-api
+      serviceAccountName: kettle-api
       terminationGracePeriodSeconds: 45                         # > app's ShutdownTimeout
       securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: api
-          image: shopacr.azurecr.io/shop-api:3f1c2a9b7d10       # immutable tag (git SHA)
+          image: kettleacr.azurecr.io/kettle-api:3f1c2a9b7d10       # immutable tag (git SHA)
           ports: [{ containerPort: 8080, name: http }]
           env:
             - { name: ASPNETCORE_ENVIRONMENT, value: Production }
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability:4317" }
-            - name: ConnectionStrings__Shop
-              valueFrom: { secretKeyRef: { name: shop-api-secrets, key: sql } }
+            - name: ConnectionStrings__Kettle
+              valueFrom: { secretKeyRef: { name: kettle-api-secrets, key: sql } }
           envFrom:
-            - configMapRef: { name: shop-api-config }
+            - configMapRef: { name: kettle-api-config }
           resources:
             requests: { cpu: 250m, memory: 256Mi }              # used for scheduling (guaranteed)
             limits:   { memory: 512Mi }                         # exceed → OOMKilled. CPU limits often omitted to avoid throttling
@@ -129,35 +153,35 @@ spec:
           volumeMounts: [{ name: tmp, mountPath: /tmp }]
       volumes: [{ name: tmp, emptyDir: {} }]
       topologySpreadConstraints:                                # spread replicas across zones
-        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: shop-api } } }
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: kettle-api } } }
 ---
 apiVersion: v1
 kind: Service
-metadata: { name: shop-api, namespace: shop }
+metadata: { name: kettle-api, namespace: kettle }
 spec:
-  selector: { app: shop-api }
+  selector: { app: kettle-api }
   ports: [{ port: 80, targetPort: http }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: shop-api
-  namespace: shop
+  name: kettle-api
+  namespace: kettle
   annotations: { cert-manager.io/cluster-issuer: letsencrypt }
 spec:
   ingressClassName: nginx
-  tls: [{ hosts: [api.shop.com], secretName: api-shop-tls }]
+  tls: [{ hosts: [api.kettle.com], secretName: api-kettle-tls }]
   rules:
-    - host: api.shop.com
+    - host: api.kettle.com
       http:
-        paths: [{ path: /, pathType: Prefix, backend: { service: { name: shop-api, port: { number: 80 } } } }]
+        paths: [{ path: /, pathType: Prefix, backend: { service: { name: kettle-api, port: { number: 80 } } } }]
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget                                    # keep ≥2 pods during node drains/upgrades
-metadata: { name: shop-api, namespace: shop }
+metadata: { name: kettle-api, namespace: kettle }
 spec:
   minAvailable: 2
-  selector: { matchLabels: { app: shop-api } }
+  selector: { matchLabels: { app: kettle-api } }
 ```
 
 Notice `/health/live` and `/health/ready` go to *different* probes: `startupProbe`/`livenessProbe` use the liveness path, `readinessProbe` uses the readiness one. That split matters because of what [Resilience](ch:resilience#health-checks) built those two endpoints for: a dependency hiccup should trip readiness (removed from traffic, left to retry), not liveness (restarted — which would turn a blip into an outage).
@@ -194,14 +218,14 @@ Because endpoint removal is asynchronous, a pod can still receive new requests f
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
-metadata: { name: shop-worker, namespace: shop }
+metadata: { name: kettle-worker, namespace: kettle }
 spec:
-  scaleTargetRef: { name: shop-worker }
+  scaleTargetRef: { name: kettle-worker }
   minReplicaCount: 0
   maxReplicaCount: 30
   triggers:
     - type: azure-servicebus
-      metadata: { queueName: orders, namespace: sb-shop-prod, messageCount: "100" }
+      metadata: { queueName: orders, namespace: sb-kettle-prod, messageCount: "100" }
       authenticationRef: { name: servicebus-workload-identity }
 ```
 
@@ -212,25 +236,29 @@ spec:
 
 ## Packaging and delivery: Helm, Kustomize, GitOps {a}
 
-- **Helm**: the package manager for Kubernetes. **Charts** are templated manifests with `values.yaml` per environment; `helm upgrade --install shop-api ./chart -f values-prod.yaml`. Also used to install third-party software (ingress-nginx, cert-manager, KEDA, Prometheus).
+- **Helm**: the package manager for Kubernetes. **Charts** are templated manifests with `values.yaml` per environment; `helm upgrade --install kettle-api ./chart -f values-prod.yaml`. Also used to install third-party software (ingress-nginx, cert-manager, KEDA, Prometheus).
 - **Kustomize**: template-free overlays (base + patches per environment), built into `kubectl apply -k`.
 - **GitOps** with **Argo CD** or **Flux**: the desired cluster state lives in Git; an in-cluster agent pulls and reconciles, giving drift correction, audit history and easy rollback (revert the commit). CI only builds the image and bumps the tag in the config repo — a direct application of the "build once, deploy many" principle from [CI/CD & IaC](ch:cicd-iac#anatomy-of-a-net-pipeline), with Git itself as the record of which image is meant to be running where.
 - **Progressive delivery**: Argo Rollouts / Flagger for canaries with automated metric analysis.
 
 ## Day-to-day kubectl {i}
 
+:::plain
+kubectl is the command-line tool for inspecting and changing the cluster: list pods, read logs, describe failures and roll back.
+:::
+
 ```bash
-kubectl config use-context aks-shop-prod
-kubectl get pods -n shop -o wide                       # status, node, IP
-kubectl describe pod shop-api-7d9f… -n shop            # events: scheduling, probe failures, OOMKilled, image pull errors
-kubectl logs -f deploy/shop-api -n shop --since=10m    # stream logs (all pods of the deployment with --all-pods)
-kubectl exec -it shop-api-7d9f… -n shop -- sh          # (not possible with chiseled images: use ephemeral debug containers)
-kubectl debug -it shop-api-7d9f… --image=mcr.microsoft.com/dotnet/sdk:10.0 --target=api   # attach dotnet-trace/counters
-kubectl rollout status deploy/shop-api -n shop
-kubectl rollout undo deploy/shop-api -n shop           # roll back to the previous ReplicaSet
-kubectl scale deploy/shop-api --replicas=5 -n shop
-kubectl top pods -n shop                               # CPU/memory (metrics-server)
-kubectl port-forward svc/shop-api 8080:80 -n shop      # reach a ClusterIP service locally
+kubectl config use-context aks-kettle-prod
+kubectl get pods -n kettle -o wide                     # status, node, IP
+kubectl describe pod kettle-api-7d9f… -n kettle        # events: scheduling, probe failures, OOMKilled, image pull errors
+kubectl logs -f deploy/kettle-api -n kettle --since=10m # stream logs (all pods of the deployment with --all-pods)
+kubectl exec -it kettle-api-7d9f… -n kettle -- sh      # (not possible with chiseled images: use ephemeral debug containers)
+kubectl debug -it kettle-api-7d9f… --image=mcr.microsoft.com/dotnet/sdk:10.0 --target=api # attach dotnet-trace/counters
+kubectl rollout status deploy/kettle-api -n kettle
+kubectl rollout undo deploy/kettle-api -n kettle       # roll back to the previous ReplicaSet
+kubectl scale deploy/kettle-api --replicas=5 -n kettle
+kubectl top pods -n kettle                             # CPU/memory (metrics-server)
+kubectl port-forward svc/kettle-api 8080:80 -n kettle  # reach a ClusterIP service locally
 ```
 
 Common failure states: **`CrashLoopBackOff`** (the app exits on start: check the logs, config and missing env vars), **`ImagePullBackOff`** (wrong tag, or no registry access: grant `AcrPull`), **`OOMKilled`** (raise the memory limit or fix a leak), **`Pending`** (not enough capacity, or unsatisfiable affinity/taints), and readiness failing (dependency unreachable, probe path wrong).
@@ -281,6 +309,10 @@ With AKS Workload Identity: a Kubernetes ServiceAccount federated with a user-as
 :::qa What does CrashLoopBackOff mean?
 The container keeps exiting shortly after starting and Kubernetes restarts it with increasing backoff. Usually it's a startup exception (bad config, missing env var or secret, failing ValidateOnStart, unreachable dependency at startup) or a failing liveness probe. Check `kubectl logs --previous` and `describe pod` events.
 :::
+
+## Next episode {b}
+
+By the end of Part X, Kettle runs on infrastructure it doesn't have to babysit, and releases are a push to Git. Then the next Black Friday arrives, and the bottlenecks are inside Kettle's own process. That's Part XI. [Part XI · Kettle Under Load →](ch:performance-story)
 
 ## Further reading
 

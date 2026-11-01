@@ -19,6 +19,14 @@ next: routing, errors-logging, auth
 - **Short-circuiting** means a middleware doesn't call `next()` and answers the request itself (auth failures, rate limits, cache hits, static files).
 - Once the response has started sending, you can no longer change headers or the status code — use `Response.OnStarting` to set them just before that happens.
 
+## Previously at Kettle {b}
+
+Kettle's settings are safe now. But every endpoint repeats the same five lines of logging, error handling and header checks, and someone always forgets one.
+
+**The problem:** Every request needs logging, auth and error handling, and copying it into each endpoint won't scale.
+
+**This episode:** the request pipeline, how middleware wraps the rest, and why order matters.
+
 ## Every request walks through the same corridor of rooms {b}
 
 Picture a request arriving at your app. Before it reaches the code you actually wrote — the handler that looks up an order, say — it has to pass through a sequence of checkpoints: is this HTTPS? does it need CORS headers? who's making this request, and are they allowed to? None of that is *your* endpoint's job to check every single time; it would be absurd to repeat "is this HTTPS" logic inside every single handler in the app.
@@ -272,7 +280,7 @@ It's constructed exactly **once**, when the pipeline is built at startup, not on
 ### 2. Factory-based middleware: IMiddleware
 
 ```csharp
-public sealed class TenantMiddleware(ShopDb db, ITenantContext tenant) : IMiddleware   // scoped deps in ctor are fine
+public sealed class TenantMiddleware(KettleDb db, ITenantContext tenant) : IMiddleware // scoped deps in ctor are fine
 {
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
@@ -291,7 +299,7 @@ The difference that justifies the extra ceremony: `IMiddleware` instances are **
 
 ### 3. Inline with app.Use
 
-Best for a handful of lines you genuinely won't reuse anywhere else. Since .NET 6 there's an overload, `app.Use(async (context, next) => …)`, where `next` is a plain `RequestDelegate` rather than the older `Func<Task>` — worth knowing because it avoids an extra allocation per request compared with the older form.
+Best for a handful of lines you genuinely won't reuse anywhere else. Since .NET 6 there's an overload, `app.Use(async (context, next) => …)`, where `next` is the next middleware's `RequestDelegate` (you call `next(context)`) rather than the older `Func<Task>` (you call `next()`). The difference is an allocation. With the old form, `next()` takes no arguments, yet it still has to call the next middleware *with this request's context*. So for **every request** the framework built a small lambda that captured `context` (a closure plus a delegate, as in [Delegates](ch:delegates-events#closures-a-lambda-packs-a-backpack)). With the new form, `next` is the same delegate object for every request, built once when the pipeline was assembled, and you pass the context in yourself. Nothing is allocated per request.
 
 ## Short-circuiting and terminal middleware {i}
 
@@ -458,6 +466,10 @@ Call Request.EnableBuffering() so the stream can be rewound, read it (leaving th
 :::qa How does authorization middleware know which policy an endpoint needs?
 Routing runs first and attaches the selected endpoint to the HttpContext. Endpoint metadata (from [Authorize], RequireAuthorization, etc.) is available via context.GetEndpoint().Metadata, which the authorization middleware reads to evaluate the right policies.
 :::
+
+## Next episode {b}
+
+GET /orders/42 has to find exactly one handler. [Episode 5 · Which code handles this URL? →](ch:routing)
 
 ## Further reading
 
