@@ -32,6 +32,11 @@ next: advanced-csharp, building-apis
 | **`init` / `required`** | Settable only while the object is built / must be set while it's built. |
 | **extension method** | A static method you can call with a dot, as if the type had it. |
 
+:::note What you need first
+- **[Types: Copied or Shared? (Value vs Reference)](ch:type-system)**: value types are copied, reference types are shared through a reference; classes, structs and records differ in exactly that.
+- **[Classes: Objects That Guard Their Own Rules (OOP)](ch:oop)**: classes bundle data with the methods that guard it; interfaces are contracts that let you swap implementations.
+:::
+
 ## Previously, and the 3 a.m. page {b}
 
 In [Episode 8](ch:async-await) Kettle survived Black Friday. At 3 a.m. the pager goes off. Shipping-label generation is crashing:

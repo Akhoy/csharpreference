@@ -35,6 +35,10 @@ next: oop
 | **offset** | How far a local clock is ahead of or behind UTC at that moment, e.g. +01:00. |
 | **GUID / UUID** | A 128-bit identifier that can be generated anywhere without coordination. |
 
+:::note What you need first
+- **[Types: Copied or Shared? (Value vs Reference)](ch:type-system)**: value types are copied, reference types are shared through a reference; classes, structs and records differ in exactly that.
+:::
+
 ## Previously, and Kettle's first month {b}
 
 In [Episode 1](ch:type-system) Kettle learnt that some types are copied and some are shared. Then Kettle went live, and real data arrived. Within a month, the finance team found a penny missing from a report, a loyalty counter went negative, customers in New York saw the wrong opening hours, and two servers both created order 1042. None of these was a design flaw. Each was a fact about a built-in type that nobody had looked up. This chapter is that look-up, in one place.

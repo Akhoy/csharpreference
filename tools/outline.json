@@ -11,7 +11,7 @@
   ],
   "parts": [
     {"id": "p0", "num": "0", "title": "Orientation", "chapters": ["big-picture", "breadth-first"]},
-    {"id": "p1", "num": "I", "title": "The .NET Platform", "chapters": ["platform-story", "what-is-dotnet", "how-code-runs", "projects-sdk-nuget"]},
+    {"id": "p1", "num": "I", "title": "The .NET Platform", "chapters": ["platform-story", "what-is-dotnet", "first-app", "how-code-runs", "projects-sdk-nuget"]},
     {"id": "p2", "num": "II", "title": "The C# Language", "chapters": ["csharp-story", "type-system", "everyday-types", "operators-expressions", "oop", "generics", "delegates-events", "collections", "linq", "exceptions-disposal", "async-await", "files-streams-io", "modern-csharp", "advanced-csharp"]},
     {"id": "p3", "num": "III", "title": "ASP.NET Core", "chapters": ["aspnet-story", "aspnet-hosting", "dependency-injection", "configuration-options", "middleware", "routing", "building-apis", "serialization", "errors-logging", "auth", "http-client", "caching-ratelimit-cors", "background-work", "api-design", "app-models"]},
     {"id": "pui", "num": "IV", "title": "Web UI: MVC, Razor Pages and Blazor", "chapters": ["ui-story", "razor-mvc", "blazor-components", "blazor-render-modes", "blazor-advanced"]},
@@ -20,9 +20,11 @@
     {"id": "p6", "num": "VII", "title": "Testing", "chapters": ["testing-story", "unit-testing", "integration-testing"]},
     {"id": "p7", "num": "VIII", "title": "Distributed Systems", "chapters": ["distributed-story", "messaging-events", "resilience", "observability-aspire"]},
     {"id": "pms", "num": "IX", "title": "Microservices", "chapters": ["ms-story", "ms-boundaries", "ms-communication", "ms-data", "ms-operations"]},
-    {"id": "p8", "num": "X", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "docker", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
-    {"id": "p9", "num": "XI", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
-    {"id": "p10", "num": "XII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
-    {"id": "p11", "num": "XIII", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
+    {"id": "phost", "num": "X", "title": "Hosting in Production", "chapters": ["hosting-story", "request-journey", "reverse-proxy-nginx", "other-proxies", "linux-deploy", "docker", "containers-single-host", "prod-config"]},
+    {"id": "p8", "num": "XI", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
+    {"id": "p9", "num": "XII", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
+    {"id": "p10", "num": "XIII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
+    {"id": "pproj", "num": "XIV", "title": "Building Real Projects", "chapters": ["projects-story", "project-foundations", "delivering-work", "production-ownership", "staff-engineer", "capstone-wholesale"]},
+    {"id": "p11", "num": "XV", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
   ]
 }

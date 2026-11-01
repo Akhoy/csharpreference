@@ -117,7 +117,7 @@ Timing code with `Stopwatch` in a loop gives misleading numbers. Four things thr
 
 **BenchmarkDotNet** handles all four: it runs a separate process in Release mode, does warm-up and pilot runs, takes many iterations, and applies statistics — so the number you get back reflects your code, not noise.
 
-```csharp
+```csharp norun
 // dotnet new console; dotnet add package BenchmarkDotNet; run with: dotnet run -c Release
 [MemoryDiagnoser]                         // allocations per operation + GC counts
 [SimpleJob(RuntimeMoniker.Net80)]
@@ -320,7 +320,7 @@ Native AOT (or ReadyToRun), the slim builder, trimming, source generators instea
 
 ## Next episode {b}
 
-By the end of Part XI, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part XII. [Part XII · Kettle Gets Attacked →](ch:security-story)
+By the end of Part XII, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part XIII. [Part XIII · Kettle Gets Attacked →](ch:security-story)
 
 ## Further reading
 

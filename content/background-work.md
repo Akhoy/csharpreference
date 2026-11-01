@@ -18,6 +18,12 @@ next: messaging-events, azure-compute
 - For work that must survive a crash, retry automatically, or run once across several replicas, use a durable store: a job library (Hangfire, Quartz.NET) or a message broker.
 - A **Worker Service** is the same host with background services but no web server — good for deploying queue consumers and schedulers separately from the API.
 
+:::note What you need first
+- **[ASP.NET Core Architecture and Hosting](ch:aspnet-hosting)**: an ASP.NET Core app is a normal program that builds a host (config, logging, DI, Kestrel) in `Program.cs`, then runs it.
+- **[Dependency Injection in Depth](ch:dependency-injection)**: classes ask for what they need in their constructor, and the container supplies it with the right lifetime: singleton, scoped or transient.
+- **[Async and Await: Don't Hold a Thread While You Wait](ch:async-await)**: `await` waits for a `Task` without blocking a thread, so one server thread can serve many requests while they wait on I/O.
+:::
+
 ## Previously at Kettle {b}
 
 The API is fast and protected. Then marketing adds confirmation emails, and checkout gets three seconds slower.
@@ -27,6 +33,10 @@ The API is fast and protected. Then marketing adds confirmation emails, and chec
 **This episode:** hosted services, queues with Channels, and scheduled jobs that run once across replicas.
 
 ## Work that shouldn't make a request wait {b}
+
+:::plain
+Some work, like sending an email or resizing an image, doesn't need to finish before you answer the user. Do it in the background so the response is fast.
+:::
 
 A request should return quickly — that's a constraint, not a preference, because something's actually waiting on the other end of it. But not every piece of work an app needs to do fits inside that window, and some of it isn't triggered by a request at all:
 
@@ -40,9 +50,13 @@ The pattern for the first category is usually the same: the API responds **202 A
 
 ## IHostedService and BackgroundService: the host's slot for long-running code {b}
 
+:::plain
+A hosted service is code the host starts with the app and stops with it. `BackgroundService` makes it easy to write a loop that runs until the app shuts down.
+:::
+
 Recall from [ASP.NET Core architecture](ch:aspnet-hosting#the-generic-host-the-thing-that-owns-everything-else) that the host starts and stops a list of `IHostedService` instances alongside the web server itself — Kestrel is literally one of them. `IHostedService` is the plain contract behind that:
 
-```csharp
+```csharp norun
 public interface IHostedService
 {
     Task StartAsync(CancellationToken cancellationToken);   // called at startup
@@ -52,7 +66,7 @@ public interface IHostedService
 
 Implementing that interface directly is rare in practice, because almost every real background job has the same shape: start a loop, keep it running for the app's entire lifetime, stop cleanly when asked. **`BackgroundService`** is the abstract base class that captures exactly that shape, so you only have to write the loop itself:
 
-```csharp
+```csharp norun
 public sealed class ExchangeRateRefresher(IServiceScopeFactory scopes, ILogger<ExchangeRateRefresher> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -84,6 +98,10 @@ Notice the `scopes.CreateAsyncScope()` call right at the top of the loop body, n
 
 ## The lifecycle, and the pitfalls each fact in it quietly creates {i}
 
+:::plain
+Hosted services start before the app takes requests and stop when it shuts down. Blocking at startup delays the whole app, and ignoring the stop signal delays shutdown.
+:::
+
 | Fact | Consequence |
 |---|---|
 | Hosted services are **singletons** | Use `IServiceScopeFactory` for scoped services (DbContext); never inject them directly (captive dependency) |
@@ -95,7 +113,7 @@ Notice the `scopes.CreateAsyncScope()` call right at the top of the loop body, n
 
 The first row is the one mistake almost everyone makes once: a `BackgroundService` is built exactly once, at startup, and that same instance lives for the whole lifetime of the process — a singleton, in the same sense [Dependency injection](ch:dependency-injection#the-captive-dependency-the-single-most-common-di-bug) warned about. If you injected a scoped `DbContext` straight into its constructor, that one `DbContext` would be stuck there forever, slowly going stale and failing in ways that are hard to connect back to the real cause. The fix is to open a **new scope inside the loop**, once per iteration: each tick gets its own short-lived `DbContext`, used once and thrown away — the same lifetime a real HTTP request would give it.
 
-```csharp
+```csharp norun
 builder.Services.Configure<HostOptions>(o =>
 {
     o.ServicesStartConcurrently = true;          // .NET 8: start hosted services in parallel
@@ -108,9 +126,13 @@ builder.Services.Configure<HostOptions>(o =>
 
 ## Worker services: the same host, deliberately without a web server {b}
 
+:::plain
+A worker service is a .NET app with the same host, configuration, logging and DI as a web app, but no web server. It's for queue consumers, schedulers and other background processes.
+:::
+
 Everything above assumed a web app that *also* runs background work alongside its HTTP server. A **Worker Service** flips that: it's the same Generic Host, with background services, but **no web server at all** — the natural shape for queue consumers, schedulers, and integration processes you want to deploy and scale completely separately from the API:
 
-```csharp
+```csharp norun
 // dotnet new worker -n Kettle.Worker
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Kettle")));
@@ -127,9 +149,13 @@ A common deployable split: **Kettle.Api** (handles HTTP, writes to the DB and an
 
 ## In-memory queues with Channel<T>: handing work off within one process {i}
 
+:::plain
+A `Channel<T>` is a fast in-memory queue. A request can drop a job in it and return, while a background service takes jobs out and processes them.
+:::
+
 Sometimes the work doesn't need to leave the process at all — it just needs to leave the *request*. For that, `System.Threading.Channels` gives you a fast, async-native producer/consumer queue:
 
-```csharp
+```csharp norun
 public sealed record ThumbnailJob(Guid ImageId, string BlobPath);
 
 public sealed class ThumbnailQueue
@@ -177,6 +203,10 @@ Here's the fact this whole section has been building toward: a deploy, a crash, 
 
 ## Durable job systems: Hangfire and Quartz.NET {i}
 
+:::plain
+In-memory queues lose jobs when the app restarts. Hangfire and Quartz store jobs in a database, so they survive restarts and can be retried and scheduled.
+:::
+
 `Channel<T>` solves "hand work off within this process." It deliberately doesn't solve "survive this process dying," "retry automatically," "run exactly once across many replicas," or "run on a cron schedule" — for those, you want a job library backed by a real database:
 
 | | Hangfire | Quartz.NET |
@@ -187,7 +217,7 @@ Here's the fact this whole section has been building toward: a deploy, a crash, 
 | Distributed | Yes: workers on any instance pull jobs from storage | Yes: clustered mode with DB locks |
 | Retries | Automatic with backoff | Configurable |
 
-```csharp
+```csharp norun
 builder.Services.AddHangfire(c => c.UseSqlServerStorage(builder.Configuration.GetConnectionString("Jobs")));
 builder.Services.AddHangfireServer(o => o.WorkerCount = 10);
 
@@ -206,6 +236,10 @@ Jobs here should be **idempotent** — a retry after a partial failure must not 
 
 ## Choosing where background work runs {i}
 
+:::plain
+Small, losable work can run in-process. Work that must not be lost needs a durable queue or job system, and heavy work may belong in a separate worker service.
+:::
+
 ```text
 Can the work be lost on restart?      ── yes ──▶ Channel<T> + BackgroundService (same process)
         │ no
@@ -218,6 +252,10 @@ Simple periodic job, single instance?  ────────▶ BackgroundSer
 
 ## Running a job once across replicas {a}
 
+:::plain
+When several copies of the app run, each would run the same scheduled job. Use a lock, a job system or a single dedicated worker so it runs only once.
+:::
+
 The "every app instance runs its hosted services" row from the lifecycle table earlier has a direct consequence worth solving properly: with several replicas each independently running the same `BackgroundService`, a "nightly job" literally runs once per replica, not once total. The available fixes:
 
 1. **Distributed lock**: acquire a lease before running (SQL `sp_getapplock`, Redis `SET NX PX`, Azure Blob lease, the `DistributedLock` NuGet package); any instance that fails to acquire it simply skips this run.
@@ -226,7 +264,7 @@ The "every app instance runs its hosted services" row from the lifecycle table e
 4. **Platform scheduler**: Kubernetes CronJob, Container Apps jobs, Azure Functions timer trigger (singleton by default) — let the orchestrator guarantee the single run instead of building that guarantee yourself.
 5. **Competing consumers on a queue**: for continuous work rather than scheduled work, each message is delivered to only one instance anyway, so this category of problem doesn't even arise.
 
-```csharp
+```csharp norun
 await using var handle = await distributedLock.TryAcquireAsync("nightly-billing", TimeSpan.Zero, stoppingToken);
 if (handle is null) return;   // another instance is running it
 await billing.RunAsync(stoppingToken);
@@ -275,7 +313,7 @@ A mobile client retries POST /orders after a timeout. The customer is charged tw
 
 Run with `dotnet run` (plain console app, .NET 8/9, top-level statements — `System.Threading.Channels` ships in the shared framework, no extra package needed).
 
-```csharp
+```csharp norun
 using System.Threading.Channels;
 
 // Claim: a bounded Channel<T> gives real backpressure — once full, a write has to wait

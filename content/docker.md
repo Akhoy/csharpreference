@@ -3,11 +3,11 @@ id: docker
 title: Containers and Docker for .NET
 summary: Packaging .NET apps as containers. Containers vs VMs, images, layers and registries, writing a production-grade multi-stage Dockerfile, .NET's container images (SDK, ASP.NET, runtime-deps, chiseled, Alpine), building without a Dockerfile (dotnet publish), configuration and secrets, non-root users and port 8080, docker compose for local development, image size and security scanning.
 layer: infra
-where: Hosting & infrastructure › Packaging (containers)
+where: Hosting › Packaging (containers)
 fits: The container is the **unit of deployment** for layer 7. Every compute option ([Azure compute](ch:azure-compute), [Kubernetes](ch:kubernetes)) runs it, CI/CD ([CI/CD & IaC](ch:cicd-iac)) builds it, and Testcontainers ([Integration testing](ch:integration-testing)) uses it for tests. Inside the container, your app is the same ASP.NET Core host as always ([Hosting](ch:aspnet-hosting)).
 levels: b,i,a
-prereqs: projects-sdk-nuget, aspnet-hosting
-next: azure-compute, kubernetes, cicd-iac
+prereqs: projects-sdk-nuget, aspnet-hosting, linux-deploy
+next: containers-single-host, azure-compute, kubernetes
 ---
 
 ## TL;DR
@@ -34,9 +34,9 @@ Photocopy that stack and you get a letter you can hand out — that's a **contai
 
 ## Previously at Kettle {b}
 
-Kettle is moving to the cloud. The first deploy failed, because production had a different runtime and different libraries from the developers' laptops.
+Kettle runs on one hand-built Linux server. Then a deploy failed: staging had a different .NET patch version and a different system library from production, and neither matched the developers' laptops. Nobody could say exactly what was installed where.
 
-**The problem:** "It works on my machine." Production has a different runtime and libraries.
+**The problem:** "It works on my machine" (and on staging, but not in production). Each environment has a different runtime and libraries.
 
 **This episode:** images and layers, multi-stage Dockerfiles, and .NET in containers.
 
@@ -301,7 +301,7 @@ Docker sends SIGTERM to PID 1. With an exec-form ENTRYPOINT, that's dotnet, so t
 
 ## Next episode {b}
 
-VMs, Kubernetes, App Service, Functions… which one? [Episode 3 · Where Kettle runs →](ch:azure-compute)
+Kettle has an image. Now run the whole stack (proxy, API, worker, database) from images on the production server, with health checks, secrets and rollbacks. [Episode 6 · Containers on one host →](ch:containers-single-host)
 
 ## Further reading
 
@@ -316,7 +316,7 @@ VMs, Kubernetes, App Service, Functions… which one? [Episode 3 · Where Kettle
 
 Most of this chapter needs an actual Docker daemon or container runtime to exercise for real (building images, cgroup limits). What you *can* verify directly, with no Docker involved, is the exact SIGTERM mechanism that `docker stop` relies on. Run with `dotnet run` (plain console app, .NET 8/9, BCL only; Linux/macOS — it uses the `kill` command to send itself a real signal).
 
-```csharp
+```csharp norun
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 

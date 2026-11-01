@@ -19,6 +19,11 @@ next: oauth-oidc-identity, web-security
 - **Policies** name a reusable authorization rule once, instead of scattering role checks everywhere. **Resource-based authorization** handles rules that depend on which specific row ("your own orders only").
 - ASP.NET Core Identity is a user-storage library, not an OAuth server — for real single sign-on, use an identity provider like Entra ID.
 
+:::note What you need first
+- **[Middleware and the Request Pipeline](ch:middleware)**: every request passes through an ordered chain of middleware, each of which can act before and after the rest.
+- **[Routing and Endpoints](ch:routing)**: routing matches a request's URL and method to an endpoint and extracts values such as `{id}` from the URL.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle can see what happens now, and the logs show something alarming: requests deleting orders that weren't theirs.
@@ -28,6 +33,10 @@ Kettle can see what happens now, and the logs show something alarming: requests 
 **This episode:** authentication vs authorization, JWTs, policies and resource-based checks.
 
 ## Two questions that get conflated constantly, and shouldn't be {b}
+
+:::plain
+Authentication asks "who are you?". Authorization asks "are you allowed to do this?". They are separate steps, and a 401 means the first failed while a 403 means the second did.
+:::
 
 "The user isn't authorized" is one of those phrases that papers over two genuinely different failures. Before anything else in this chapter, pin these apart, because every bug and every design decision that follows traces back to keeping them separate:
 
@@ -51,6 +60,10 @@ Showing your **passport** at check-in is authentication: it proves who you are. 
 
 ## Claims, identities and principals: the vocabulary everything else builds on {b}
 
+:::plain
+A claim is one fact about the user, like their ID or role. An identity is a set of claims from one source, and the principal (`HttpContext.User`) is the user with all their identities.
+:::
+
 ASP.NET Core doesn't represent a logged-in user as a username string or a database row reference — it represents them as a bundle of **claims**: individual key/value statements about the user, each one issued by someone the app trusts.
 
 ```text
@@ -64,7 +77,7 @@ ClaimsPrincipal (HttpContext.User)                 ← the user
       └── Claim  tenant_id  = "acme"
 ```
 
-```csharp
+```csharp norun
 app.MapGet("/me", (ClaimsPrincipal user) => new
 {
     Id = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub"),
@@ -78,9 +91,13 @@ Here's why this indirection is worth the extra concept: a **role** is just a cla
 
 ## Authentication schemes and handlers: naming the thing that does the checking {i}
 
+:::plain
+A scheme is a named way of authenticating, such as cookies or JWT bearer tokens. Its handler reads the request and works out who the user is.
+:::
+
 A **scheme** is a named authentication handler plus its configuration. You register one or more, and declare which one is the default:
 
-```csharp
+```csharp norun
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)   // default scheme "Bearer"
     .AddJwtBearer(...)                                                        // APIs
     .AddCookie(...)                                                           // browser apps
@@ -100,6 +117,10 @@ Every handler, regardless of scheme, implements up to five distinct actions — 
 
 ## Cookies vs bearer tokens: the tradeoff behind "how do I stay logged in?" {b}
 
+:::plain
+Browsers send cookies automatically, which suits web apps on your own site. APIs called by other apps and services usually expect a token in the `Authorization` header instead.
+:::
+
 | | Cookie authentication | JWT bearer tokens |
 |---|---|---|
 | Typical client | Server-rendered web apps, BFF for SPAs | APIs called by SPAs, mobile apps, other services |
@@ -113,6 +134,10 @@ Every handler, regardless of scheme, implements up to five distinct actions — 
 Notice the two risk rows trade places: cookies are vulnerable to CSRF precisely *because* the browser sends them automatically — which is the same property that makes them convenient — while JWTs dodge CSRF but expose themselves to a different attacker if your app has an XSS hole anywhere, since JavaScript has to be able to read the token to attach it. Current guidance for **browser SPAs** sidesteps the dilemma rather than picking a side: the **BFF (Backend-for-Frontend)** pattern has a small server-side app handle the OIDC flow and keep tokens entirely server-side, so the browser only ever holds a secure `HttpOnly` `SameSite` cookie — getting the cookie's XSS resistance without reintroducing the JWT's revocation problem. See [OAuth & OIDC](ch:oauth-oidc-identity).
 
 ## JWT bearer authentication, traced claim by claim {i}
+
+:::plain
+A JWT is a signed token holding claims about the user. The API checks the signature, issuer, audience and expiry, and if all are right, trusts the claims inside.
+:::
 
 A **JWT** (JSON Web Token) is just three base64url-encoded parts joined with dots: `header.payload.signature`.
 
@@ -147,7 +172,7 @@ Here's the question worth sitting with: how does an API validate this token's au
 
 Follow what this buys you: steps 1 and 3 together mean the API never needs its own database of valid tokens — the cryptographic signature *is* the proof, which is exactly why this scales to millions of requests without a database round trip on each one.
 
-```csharp
+```csharp norun
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -178,7 +203,11 @@ Access tokens are deliberately short-lived (5–60 minutes), and the reason trac
 
 ## Cookie authentication {i}
 
-```csharp
+:::plain
+After the user signs in, the server puts an encrypted cookie in the browser. The browser sends it with each request, and the server decrypts it to know who the user is.
+:::
+
+```csharp norun
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(o =>
     {
@@ -207,9 +236,13 @@ The cookie's contents are encrypted and signed with the **Data Protection** API.
 
 ## ASP.NET Core Identity: a membership system, not an OAuth server {i}
 
+:::plain
+ASP.NET Core Identity stores users and passwords, handles sign-in, lockout and two-factor authentication. It doesn't issue tokens to other apps; that's a separate identity server's job.
+:::
+
 **ASP.NET Core Identity** handles the mechanics of *having* users at all: password hashing (PBKDF2), account lockout, two-factor authentication, email confirmation, external logins, roles — all persisted through EF Core. The distinction worth being precise about: it is **not** an OAuth/OIDC authorization server by itself; it manages your own user table, not tokens issued to third-party clients.
 
-```csharp
+```csharp norun
 builder.Services.AddDbContext<AppIdentityDb>(o => o.UseSqlServer(cs));
 builder.Services.AddIdentityApiEndpoints<AppUser>().AddEntityFrameworkStores<AppIdentityDb>();
 builder.Services.AddAuthorization();
@@ -225,7 +258,11 @@ app.MapIdentityApi<AppUser>();   // .NET 8: /register, /login, /refresh, /confir
 
 ## Authorization: the simple forms, before anything needs a policy {b}
 
-```csharp
+:::plain
+The simplest authorization is `[Authorize]` (must be signed in) or a required role. It's enough until rules get more specific.
+:::
+
+```csharp norun
 app.MapGet("/orders", List).RequireAuthorization();              // any authenticated user
 app.MapGet("/status", Status).AllowAnonymous();                  // explicitly public
 app.MapDelete("/orders/{id}", Delete).RequireAuthorization(p => p.RequireRole("admin"));
@@ -246,9 +283,13 @@ That last block is worth internalising as a default posture: it's much safer to 
 
 ## Policy-based authorization: centralising rules instead of scattering role strings {i}
 
+:::plain
+A policy is a named rule, such as "must be a manager in the UK", defined once and applied by name. Changing the rule then means changing one place.
+:::
+
 A **policy** is a named bundle of **requirements**, and a policy only passes if every one of its requirements does. The payoff for the extra indirection is real: once a rule is named `"CanRefund"`, you write it once, and every endpoint that needs it refers to the name — nobody has to remember or copy the actual logic.
 
-```csharp
+```csharp norun
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("CanReadOrders",  p => p.RequireClaim("scp", "orders.read", "orders.write"))   // any of these values
     .AddPolicy("CanRefund",      p => p.RequireRole("support").RequireClaim("refund_limit"))
@@ -262,7 +303,7 @@ orders.MapPost("/{id}/refund", Refund).RequireAuthorization("CanRefund");
 
 When the built-in requirement helpers (`RequireRole`, `RequireClaim`, `RequireAssertion`) can't express a rule, write your own:
 
-```csharp
+```csharp norun
 public sealed record MinimumAgeRequirement(int Age) : IAuthorizationRequirement;
 
 public sealed class MinimumAgeHandler(TimeProvider clock) : AuthorizationHandler<MinimumAgeRequirement>
@@ -282,9 +323,13 @@ The comment on `Succeed` matters: a requirement passes if **any** registered han
 
 ## Resource-based authorization: when the rule depends on which specific row {a}
 
+:::plain
+Some rules depend on the data itself: a user may edit *their own* orders but not anyone else's. Those checks run after you've loaded the record.
+:::
+
 Policies above answer yes/no questions that don't depend on *which* resource you're looking at. Plenty of real rules do: "a customer can view **their own** orders," "an editor can edit documents **in their department**." Since the rule can't be evaluated until you know which row is involved, the endpoint has to load the resource first, then ask the authorization service imperatively:
 
-```csharp
+```csharp norun
 public sealed class OrderOwnerHandler : AuthorizationHandler<OperationAuthorizationRequirement, Order>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext ctx, OperationAuthorizationRequirement op, Order order)
@@ -308,7 +353,11 @@ Look closely at that last line's comment: returning **404**, not 403, when autho
 
 ## API keys, client certificates and multiple schemes {a}
 
-```csharp
+:::plain
+Machines often authenticate differently from people: with an API key or a client certificate. An app can accept several schemes and choose by endpoint.
+:::
+
+```csharp norun
 public sealed class ApiKeyHandler(IOptionsMonitor<AuthenticationSchemeOptions> o, ILoggerFactory l, UrlEncoder e, IApiKeyStore keys)
     : AuthenticationHandler<AuthenticationSchemeOptions>(o, l, e)
 {
@@ -332,9 +381,13 @@ Notice that this custom handler slots into the exact same five-action model (Aut
 
 ## Claims transformation and permissions {a}
 
+:::plain
+After sign-in, you can add claims from your own database, such as the user's permissions, so authorization checks don't need to look them up every time.
+:::
+
 Tokens typically carry coarse-grained data — a user ID, maybe a couple of roles — because the identity provider that issued them has no idea about your app's fine-grained permission model. **Claims transformation** is the hook for enriching the principal, per request, with exactly that app-specific detail:
 
-```csharp
+```csharp norun
 public sealed class PermissionClaims(IPermissionStore store) : IClaimsTransformation
 {
     public async Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal p)
@@ -401,7 +454,7 @@ Under load, Kettle runs out of sockets calling the shipping API. [Episode 9 · C
 
 Run with `dotnet run` (plain console app, .NET 8/9, BCL only — no identity-provider or ASP.NET Core packages needed for these checks).
 
-```csharp
+```csharp norun
 using System.Security.Claims;
 using System.Text;
 

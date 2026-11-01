@@ -60,7 +60,7 @@
     key: 'Trace first, fix the biggest cost, watch p95 and p99.'
   });
 
-  // ---------- Part X ----------
+  // ---------- Part XI ----------
   S.scene({
     id: 'web-security', part: 'p10', title: 'Think like an attacker',
     hook: 'Change the number in /orders/41 and you can read a stranger\'s order.',
@@ -103,7 +103,7 @@
     key: 'Code + PKCE to sign in; validate every access token.'
   });
 
-  // ---------- Part XI ----------
+  // ---------- Part XII ----------
   S.scene({
     id: 'system-design', part: 'p11', title: 'Design Kettle on a whiteboard',
     hook: '"Design a checkout for 10 million users." 45 minutes. Go.',

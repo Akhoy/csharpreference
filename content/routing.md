@@ -19,6 +19,10 @@ next: building-apis, auth
 - When two routes could both match, the more specific one wins; a genuine tie throws `AmbiguousMatchException` at runtime.
 - Build links from a route's **name** (`LinkGenerator`), not a hand-built string, so they survive the template changing later.
 
+:::note What you need first
+- **[Middleware and the Request Pipeline](ch:middleware)**: every request passes through an ordered chain of middleware, each of which can act before and after the rest.
+:::
+
 ## Previously at Kettle {b}
 
 The pipeline handles the cross-cutting work once. Now the API has forty endpoints, and some of their URLs overlap.
@@ -28,6 +32,10 @@ The pipeline handles the cross-cutting work once. Now the API has forty endpoint
 **This episode:** endpoint routing, route templates and constraints, and how auth reads endpoint metadata.
 
 ## The question routing exists to answer {b}
+
+:::plain
+Routing decides which piece of your code should handle a request, by matching its URL and HTTP method against the routes you defined.
+:::
 
 A request arrives as nothing more than an HTTP method and a URL path — `GET /api/orders/42`. Somewhere, that has to turn into an actual decision: *which piece of your code runs, and what are its inputs?* That translation is routing's entire job: map the incoming request to an **endpoint** — a runnable unit of code (a `RequestDelegate`, underneath) bundled together with **metadata** describing it.
 
@@ -42,6 +50,10 @@ GET /api/orders/42      ──▶  endpoint "GET /api/orders/{id:int}"
 Notice that the result isn't just "call this method" — it's a whole bundle: the handler, a pile of metadata describing authorization and rate-limiting policies and documentation tags, and the actual route values (`id = 42`) extracted from the URL. That metadata turns out to matter more than it looks, as the next section explains.
 
 ## Why routing had to be split into two separate middleware {i}
+
+:::plain
+Routing chooses the endpoint early, and a separate step runs it at the end. Everything in between, such as authorization and CORS, can then see which endpoint was chosen.
+:::
 
 Since ASP.NET Core 3.0, routing isn't one step — it's deliberately **two** middleware, with a gap in between that the rest of the pipeline uses:
 
@@ -60,7 +72,11 @@ With `WebApplication`, you don't actually have to call `UseRouting` yourself —
 
 ## Route templates: the syntax that extracts values from a URL {b}
 
-```csharp
+:::plain
+A template like `/orders/{id:int}` matches URLs and pulls out values: here, a whole number called `id` that your handler receives as a parameter.
+:::
+
+```csharp norun
 app.MapGet("/products", GetAll);                               // literal
 app.MapGet("/products/{id}", GetById);                         // parameter
 app.MapGet("/products/{id:int}", GetById);                     // with constraint
@@ -92,9 +108,13 @@ Here's the subtlety worth getting right: a failed constraint doesn't mean "bad r
 
 ## Route groups: shared prefix, shared rules, written once {b}
 
+:::plain
+A route group gives several endpoints the same URL prefix and the same settings (auth, tags, filters), so you write them once.
+:::
+
 A route group lets many related endpoints share both a URL **prefix** and a set of **metadata**, which is what keeps a large minimal-API surface from turning into repetitive boilerplate:
 
-```csharp
+```csharp norun
 var api = app.MapGroup("/api")
     .RequireAuthorization()                    // every endpoint below requires an authenticated user
     .AddEndpointFilter<RequestLoggingFilter>();
@@ -117,9 +137,13 @@ Notice the `DeleteOrder` endpoint: it doesn't just inherit the group's `RequireA
 
 ## Routing for controllers: attributes instead of fluent calls {b}
 
+:::plain
+With controllers, routes are written as attributes on the class and its methods, such as `[Route("orders")]` and `[HttpGet("{id}")]`.
+:::
+
 Controllers reach the same destination through a different syntax — **attribute routing**, which is required for any API controller marked `[ApiController]`:
 
-```csharp
+```csharp norun
 [ApiController]
 [Route("api/[controller]")]                      // [controller] token → "orders"
 public class OrdersController : ControllerBase
@@ -145,11 +169,15 @@ app.MapControllers();   // registers all attribute-routed controller endpoints
 
 A different, older style — **conventional routing** — is still common for MVC web apps that render views rather than serving an API, because it defines the URL pattern **once**, centrally, instead of repeating an attribute on every action:
 
-```csharp
+```csharp norun
 app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}");
 ```
 
 ## Endpoint metadata: the vocabulary every cross-cutting concern reads from {i}
+
+:::plain
+Each endpoint carries extra information: whether it needs auth, its rate-limit policy, its OpenAPI description. Middleware reads this to decide what to do.
+:::
 
 Metadata is simply a list of arbitrary objects attached to an endpoint — and the table below is really a map of "who reads what," tying straight back to the pipeline diagram earlier in this chapter. Attributes on controllers and fluent calls on minimal APIs are just two different syntaxes for attaching the exact same underlying metadata:
 
@@ -168,6 +196,10 @@ Metadata is simply a list of arbitrary objects attached to an endpoint — and t
 
 ## When more than one route could match: precedence and ambiguity {a}
 
+:::plain
+If several routes could match a URL, the more specific one wins: a fixed segment beats a parameter, and a constrained parameter beats an unconstrained one. A true tie is an error at run time.
+:::
+
 Real route tables inevitably end up with templates that *could* both match the same URL — `/products/featured` and `/products/{id}` both look plausible for a request to `/products/featured`. Routing resolves this with a precedence order, most specific wins:
 
 1. Literal segments beat parameter segments: `/products/featured` beats `/products/{id}`.
@@ -181,9 +213,13 @@ Worth knowing if you're wondering whether this adds overhead as a route table gr
 
 ## Link generation: building URLs that survive a route changing {a}
 
+:::plain
+Instead of writing URLs as strings, you can ask routing to build them from an endpoint's name and values, so links keep working when a route's template changes.
+:::
+
 Build URLs from route **names** and values, not by concatenating strings, so that a route's template can change later without silently breaking every link that pointed at it:
 
-```csharp
+```csharp norun
 orders.MapPost("/", async (CreateOrder cmd, IOrderService svc, LinkGenerator links, HttpContext ctx) =>
 {
     var id = await svc.CreateAsync(cmd);
@@ -200,7 +236,11 @@ return CreatedAtAction(nameof(Get), new { id }, dto);                         //
 
 ## Reading route values back out of the request {i}
 
-```csharp
+:::plain
+Values captured by the route are bound to your handler's parameters automatically, and are also available on the request if you need them elsewhere.
+:::
+
+```csharp norun
 app.MapGet("/tenants/{tenant}/orders/{id:int}", (string tenant, int id, HttpContext ctx) =>
 {
     var raw = ctx.Request.RouteValues["tenant"];          // also available as a dictionary
@@ -249,7 +289,7 @@ POST /orders must accept JSON, reject bad input and say what it created. [Episod
 
 Run with `dotnet run` in a console project (`dotnet new web`, then `dotnet add package Microsoft.AspNetCore.TestHost`). It checks the 404-vs-400 behaviour of constraints, precedence between literal/parameter/constrained routes, the ambiguous-match failure, and link generation.
 
-```csharp
+```csharp norun
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;

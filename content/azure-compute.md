@@ -109,7 +109,7 @@ Functions run small pieces of code in response to events, such as a timer or a q
 
 Modern .NET functions run in the **isolated worker model**: your code runs in a **separate process** from the Functions host, so you control the .NET version and dependencies, and get **normal DI, middleware and configuration** like any .NET app. The older **in-process** model is being retired — check the [isolated worker guide](https://learn.microsoft.com/en-us/azure/azure-functions/dotnet-isolated-process-guide) in Further reading for the current end-of-support date before relying on it, since Microsoft's retirement schedules can shift.
 
-```csharp
+```csharp norun
 // Program.cs
 var builder = FunctionsApplication.CreateBuilder(args);
 builder.ConfigureFunctionsWebApplication();                 // ASP.NET Core integration for HTTP triggers
@@ -159,7 +159,7 @@ Service Bus triggers handle **message settlement** for you: complete on success;
 
 An extension for **stateful workflows** in code: **orchestrator** functions call **activity** functions, and every step's result is saved as a history of events rather than overwriting a single "current state" value — the same idea as **event sourcing** ([Messaging & events](ch:messaging-events#event-sourcing) covers it in depth later), just applied here to a *workflow's* progress instead of a domain object's state. That history is what lets an orchestration survive a restart: on recovery, it replays the saved events to rebuild exactly where it left off, which is also why it can sit paused waiting for something — a timer, a human approval — for days without holding any resources open.
 
-```csharp
+```csharp norun
 [Function(nameof(OrderWorkflow))]
 public static async Task<string> OrderWorkflow([OrchestrationTrigger] TaskOrchestrationContext ctx)
 {
@@ -279,7 +279,7 @@ With KEDA-based scale rules: HTTP concurrency, CPU/memory, or event sources like
 
 ## Next episode {b}
 
-Kettle needs a database, file storage, a cache and a message broker, without running any of them. [Episode 4 · Managed data and messaging →](ch:azure-data-messaging)
+Kettle needs a database, file storage, a cache and a message broker, without running any of them. [Episode 3 · Managed data and messaging →](ch:azure-data-messaging)
 
 ## Further reading
 

@@ -33,6 +33,10 @@ next: errors-logging, async-await, cqrs-mediator-result
 | **finalizer** | A last-resort cleanup the GC runs if someone forgot to dispose. Slow; rarely needed. |
 | **connection pool** | A fixed set of open database connections that requests borrow and must give back. |
 
+:::note What you need first
+- **[Classes: Objects That Guard Their Own Rules (OOP)](ch:oop)**: classes bundle data with the methods that guard it; interfaces are contracts that let you swap implementations.
+:::
+
 ## Previously, and the bug {b}
 
 In [Episode 6](ch:linq) Kettle got readable reports. Then the payment provider had a bad afternoon, and checkout looked like this:

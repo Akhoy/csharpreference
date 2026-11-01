@@ -31,6 +31,11 @@ next: modern-csharp
 | **atomic** | Happens completely or not at all; nobody can observe it half done. |
 | **path traversal** | Using `../` in a file name to escape the intended folder. |
 
+:::note What you need first
+- **[Async and Await: Don't Hold a Thread While You Wait](ch:async-await)**: `await` waits for a `Task` without blocking a thread, so one server thread can serve many requests while they wait on I/O.
+- **[Exceptions and Cleanup: Failing Safely (try/catch, using, IDisposable)](ch:exceptions-disposal)**: exceptions jump to the nearest matching `catch`; `using` guarantees `Dispose` runs to release files and connections.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's async code serves Black Friday without starving threads. Then the supplier changes their nightly feed: one 2 GB gzipped CSV instead of many small files. The import, which did `File.ReadAllText`, takes the server down with an out-of-memory error. The same week, the warehouse picks up a stock export while Kettle is still writing it, and ships half the orders.

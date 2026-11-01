@@ -29,6 +29,10 @@ next: errors-logging
 | **DOM** | Document object model: the JSON held as a tree you can walk and edit, without a C# class. |
 | **source generation** | Writing the serialization code at build time instead of discovering types with reflection at run time. |
 
+:::note What you need first
+- **[Building APIs: Minimal APIs, Controllers, Binding, Validation and Filters](ch:building-apis)**: endpoints bind request data to parameters and turn return values into HTTP responses, usually JSON.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's endpoints bind JSON bodies and return JSON results, and so far the defaults have been fine. Then the edges arrive. The mobile app expects camelCase, a partner sends order statuses as strings, the payments endpoint must accept three kinds of payment in one field, a nightly export is 400 MB of JSON, and the serverless price check spends its cold start reflecting over DTOs.
@@ -54,6 +58,10 @@ The phone reads that text and builds its own object. Methods, private fields and
 .NET's built-in serializer is **System.Text.Json** (STJ). It reads and writes UTF-8 directly, allocates little, and is what ASP.NET Core uses unless you configure something else.
 
 ## The defaults, and the Web defaults {b}
+
+:::plain
+System.Text.Json is strict by default: exact property names and no comments. ASP.NET Core uses the "web" defaults instead: camelCase names, case-insensitive reading, and numbers allowed as strings.
+:::
 
 :::walk Same object, two sets of defaults
 ```csharp
@@ -181,6 +189,10 @@ This is deliberately an **allow-list**. Older serializers could write the full .
 
 ## Custom converters {i}
 
+:::plain
+When a type needs a special JSON shape, a converter tells the serializer exactly how to write it and read it back.
+:::
+
 When attributes and options aren't enough, a **converter** takes full control of one type. Kettle's `Money` value should appear as `"GBP 13.00"`:
 
 ```csharp norun
@@ -204,6 +216,10 @@ public sealed class MoneyConverter : JsonConverter<Money>
 - Always parse and format with `CultureInfo.InvariantCulture` ([Everyday types](ch:everyday-types#rounding-and-conversions)).
 
 ## Working without a class: JsonNode and JsonDocument {i}
+
+:::plain
+Sometimes you don't have, or want, a class for the JSON. `JsonNode` lets you read and edit it like a tree; `JsonDocument` reads it very quickly but read-only.
+:::
 
 Sometimes you don't have, or want, a C# type: a webhook with a changing shape, or a document you only need one value from.
 
@@ -237,6 +253,10 @@ Change a value and add a property, like editing a dictionary.
 
 ## Big payloads: stream instead of buffer {a}
 
+:::plain
+For large JSON, read and write it as a stream so it never all sits in memory at once.
+:::
+
 `JsonSerializer.Serialize(obj)` builds the whole string in memory. For a 400 MB export, that's 400 MB of string, plus the objects it came from, much of it on the Large Object Heap ([Memory & GC](ch:memory-gc)). Stream it instead:
 
 ```csharp norun
@@ -251,6 +271,10 @@ await foreach (var order in JsonSerializer.DeserializeAsyncEnumerable<Order>(str
 In ASP.NET Core, returning an `IAsyncEnumerable<T>` from an endpoint streams the JSON array as items are produced, so a large export starts arriving immediately and never sits in memory whole ([EF Core querying](ch:efcore-querying)).
 
 ## Speed: cached options and source generation {a}
+
+:::plain
+Create your serializer options once and reuse them. Source generation writes the serialization code at build time, which is faster at startup and works with Native AOT.
+:::
 
 **Cache your options.** A `JsonSerializerOptions` instance builds and caches metadata about every type it serializes. Creating a new one per call throws that cache away, and makes every call rediscover the type with reflection. Create options **once** (a `static readonly` field, or the ones ASP.NET Core configures), and the analyzer warning CA1869 catches the mistake.
 
@@ -270,12 +294,20 @@ The generator writes the code that reads and writes each listed type, so start-u
 
 ## Safety limits {a}
 
+:::plain
+JSON from outside can be hostile. Limits on nesting depth and size stop a malicious payload from using up your memory or CPU.
+:::
+
 - **Depth.** By default STJ refuses JSON nested more than 64 levels deep (`MaxDepth`), which stops deliberately deep payloads exhausting the stack.
 - **Size.** STJ doesn't limit document size; your server does. Keep Kestrel's request body limit, and stream rather than buffer large inputs ([Web security](ch:web-security#resource-consumption-and-dos-protection)).
 - **Cycles.** An object graph that refers back to itself (an order whose customer lists their orders) throws by default. `ReferenceHandler.IgnoreCycles` writes `null` at the loop; `ReferenceHandler.Preserve` writes `$id`/`$ref` markers. Better: serialize **DTOs**, which have no cycles, rather than EF entities.
 - **No type names from input.** Polymorphism works only through the allow-list above.
 
 ## System.Text.Json vs Newtonsoft.Json {i}
+
+:::plain
+Newtonsoft.Json is the older, very flexible library many existing apps use. System.Text.Json is built in, faster and the default. New code should use System.Text.Json unless it needs a feature only Newtonsoft has.
+:::
 
 Many older codebases use **Newtonsoft.Json** (Json.NET). It's mature and very flexible, but slower and reflection-heavy. The differences that bite during migration:
 

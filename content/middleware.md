@@ -19,6 +19,12 @@ next: routing, errors-logging, auth
 - **Short-circuiting** means a middleware doesn't call `next()` and answers the request itself (auth failures, rate limits, cache hits, static files).
 - Once the response has started sending, you can no longer change headers or the status code — use `Response.OnStarting` to set them just before that happens.
 
+:::note What you need first
+- **[ASP.NET Core Architecture and Hosting](ch:aspnet-hosting)**: an ASP.NET Core app is a normal program that builds a host (config, logging, DI, Kestrel) in `Program.cs`, then runs it.
+- **[Delegates: Passing Behaviour Around (Lambdas, Closures, Events)](ch:delegates-events)**: a delegate is a variable that holds a method, and a lambda (`x => x * 2`) is the short way to write one.
+- **[Dependency Injection in Depth](ch:dependency-injection)**: classes ask for what they need in their constructor, and the container supplies it with the right lifetime: singleton, scoped or transient.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's settings are safe now. But every endpoint repeats the same five lines of logging, error handling and header checks, and someone always forgets one.
@@ -28,6 +34,10 @@ Kettle's settings are safe now. But every endpoint repeats the same five lines o
 **This episode:** the request pipeline, how middleware wraps the rest, and why order matters.
 
 ## Every request walks through the same corridor of rooms {b}
+
+:::plain
+Each request passes through a chain of small components in order: error handling, HTTPS, routing, authentication and so on, until one of them produces a response, which then travels back through the same chain.
+:::
 
 Picture a request arriving at your app. Before it reaches the code you actually wrote — the handler that looks up an order, say — it has to pass through a sequence of checkpoints: is this HTTPS? does it need CORS headers? who's making this request, and are they allowed to? None of that is *your* endpoint's job to check every single time; it would be absurd to repeat "is this HTTPS" logic inside every single handler in the app.
 
@@ -55,7 +65,11 @@ Error handling, HTTPS enforcement, CORS, authentication, compression, logging, c
 
 ## Seeing it work before seeing how it's built {b}
 
-```csharp
+:::plain
+A middleware can run code before passing the request on, and again after the rest of the chain has finished. That's how timing, logging and error handling wrap everything after them.
+:::
+
+```csharp norun
 var app = builder.Build();
 
 app.Use(async (context, next) =>
@@ -94,6 +108,10 @@ Notice the shape: the first middleware's "before" line prints first, then contro
 
 ## Use, Run, Map, MapWhen, UseWhen {b}
 
+:::plain
+`Use` adds a step that passes the request on, `Run` adds a final step that doesn't, and `Map`/`MapWhen`/`UseWhen` send only some requests down a branch.
+:::
+
 | Method | What it does |
 |---|---|
 | `app.Use(middleware)` | Adds middleware that **can** call `next` |
@@ -103,7 +121,7 @@ Notice the shape: the first middleware's "before" line prints first, then contro
 | `app.UseWhen(predicate, branch => …)` | Conditionally runs extra middleware, then **rejoins** the main pipeline |
 | `app.UseMiddleware<T>()` / `app.UseXyz()` | Adds a middleware class (`UseXyz` are extension methods wrapping this) |
 
-```csharp
+```csharp norun
 app.Map("/legacy", legacy =>
 {
     legacy.Run(ctx => ctx.Response.WriteAsync("Legacy endpoint"));   // only /legacy/* goes here
@@ -121,23 +139,27 @@ app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/api"), api =>
 
 ## Now here's the aha: a middleware is just a function wrapping a function {i}
 
+:::plain
+Under the hood each middleware is a function that receives the *next* function and returns a new one wrapped around it. The whole pipeline is functions nested inside functions.
+:::
+
 Go back to that worked example above and ask the question it was quietly setting up: how does `await next(context)` actually know what "the rest of the pipeline" even is? There's no global list being walked at request time — the real mechanism is simpler than that, and once you see it, middleware stops feeling like magic.
 
 The core type is one plain delegate:
 
-```csharp
+```csharp norun
 public delegate Task RequestDelegate(HttpContext context);
 ```
 
 A middleware, stripped down to its essence, is a function that **takes one `RequestDelegate` (the rest of the pipeline) and returns a new `RequestDelegate` that wraps it**:
 
-```csharp
+```csharp norun
 Func<RequestDelegate, RequestDelegate> middleware
 ```
 
 Every call to `app.Use(...)` just appends one of these wrapping functions to a list — nothing executes yet. The actual composition happens once, when the host calls `Build()`, and it happens **in reverse**:
 
-```csharp
+```csharp norun
 // Simplified version of ApplicationBuilder.Build()
 RequestDelegate app = context => { context.Response.StatusCode = 404; return Task.CompletedTask; }; // the end
 
@@ -153,7 +175,7 @@ Walk through what this does with three middleware, `Use(A); Use(B); Use(C);`, an
 
 Follow the request's path through that nesting and the reversal in the worked example stops being surprising. Calling `A`'s `next` invokes `B`'s whole delegate. `B` calling its `next` invokes `C`'s. `C` calling `next` finally reaches the endpoint. Each of those calls is still *running* — sitting on the call stack — waiting for the one it invoked to return. So the endpoint finishes and returns up to `C`. `C`'s code after `await next()` runs and returns up to `B`. That code runs and returns up to `A`. You get exactly the reverse order the pipeline diagram at the top of this chapter showed. It isn't a special rule the framework enforces; it's just how nested function calls unwind — the same way any `await` in [Async and await](ch:async-await) resumes its caller only once the thing it awaited is done.
 
-```csharp
+```csharp norun
 // Exactly equivalent to app.Use(async (ctx, next) => ...)
 app.Use(next => async context =>
 {
@@ -163,11 +185,57 @@ app.Use(next => async context =>
 });
 ```
 
+:::walk A pipeline built from nothing but functions
+```csharp
+var components = new List<Func<RequestDelegate, RequestDelegate>>();
+
+components.Add(next => async ctx => { ctx.Log.Add("timer: start"); await next(ctx); ctx.Log.Add("timer: end"); });
+components.Add(next => async ctx => { if (ctx.User is null) { ctx.Status = 401; return; } await next(ctx); });
+components.Add(next => ctx => { ctx.Status = 200; ctx.Log.Add("endpoint ran"); return Task.CompletedTask; });
+
+RequestDelegate app = ctx => { ctx.Status = 404; return Task.CompletedTask; };
+for (int i = components.Count - 1; i >= 0; i--) app = components[i](app);
+
+var anonymous = new Ctx(null);
+await app(anonymous);
+Console.WriteLine($"anonymous: {anonymous.Status} [{string.Join(", ", anonymous.Log)}]");
+
+var ada = new Ctx("ada");
+await app(ada);
+Console.WriteLine($"ada: {ada.Status} [{string.Join(", ", ada.Log)}]");
+
+delegate Task RequestDelegate(Ctx ctx);
+class Ctx(string? user) { public string? User => user; public int Status; public List<string> Log = []; }
+```
+@18-19 | -
+A `RequestDelegate` is any function that takes a request context and returns a `Task`. `Ctx` is a tiny stand-in for `HttpContext`.
+@3 | -
+Each middleware is a function that receives `next` (the rest of the pipeline) and returns a new function that wraps it. This one records something, calls `next`, then records something else after the rest has finished.
+@4 | -
+This one **short-circuits**: with no user it sets 401 and returns without calling `next`, so nothing after it runs.
+@5 | -
+The endpoint: it never calls `next`. It's the end of the line.
+@7-8 | app = → timer(auth(endpoint(404)))
+Build the pipeline backwards: start with a 404 fallback, then wrap it in each component from last to first. This is what `app.Build()` does with your `app.Use(...)` calls, and why **registration order is execution order**.
+@11 | anonymous.Status = 401
+Run a request with no user: timer starts, auth stops it, the endpoint never runs, and control comes back out through the timer.
+@12 | | > anonymous: 401 [timer: start, timer: end]
+The timer still saw the request end, because it wraps everything after it.
+@15 | ada.Status = 200
+With a user, auth calls `next` and the request reaches the endpoint.
+@16 | | > ada: 200 [timer: start, endpoint ran, timer: end]
+In, through, and back out in reverse order. Move the auth line above the timer and anonymous requests wouldn't be timed at all; move it below the endpoint and nobody would ever be checked.
+:::
+
 ## The correct order, and precisely what breaks when you get it wrong {b}
+
+:::plain
+Order matters, because each step only sees requests that the steps before it let through. Put authentication after the endpoint and nobody is ever checked.
+:::
 
 Since each middleware only ever sees what the ones *before* it have already done, and only wraps what comes *after* it, the order you register things in isn't a style choice — it's the actual behaviour. Here's Microsoft's recommended order for a typical API or web app:
 
-```csharp
+```csharp norun
 var app = builder.Build();
 
 app.UseForwardedHeaders();          // 0. Behind a proxy: fix scheme/IP FIRST so everything after sees the real values
@@ -209,6 +277,10 @@ Each row below is a real-world bug report with the same root cause: a middleware
 
 ## The built-in middleware catalogue {i}
 
+:::plain
+ASP.NET Core ships middleware for most common jobs: exception handling, HTTPS redirection, static files, routing, CORS, authentication, authorization, rate limiting, caching and compression.
+:::
+
 | Middleware | Add with | Purpose | Short-circuits? |
 |---|---|---|---|
 | Forwarded headers | `UseForwardedHeaders` | Apply `X-Forwarded-*` from a trusted proxy | No |
@@ -237,11 +309,15 @@ Each row below is a real-world bug report with the same root cause: a middleware
 
 ## Writing your own middleware: three styles, one real tradeoff {i}
 
+:::plain
+You can write middleware as an inline lambda, a class with an `InvokeAsync` method, or a class implementing `IMiddleware`. The difference is mainly how they get their dependencies.
+:::
+
 Inline lambdas like the ones above are fine for a handful of lines you won't reuse. For anything reusable, write a class — and there are three ways to do that, each trading off a little speed for a little safety.
 
 ### 1. Convention-based middleware (the common case)
 
-```csharp
+```csharp norun
 public sealed class CorrelationIdMiddleware(RequestDelegate next, ILogger<CorrelationIdMiddleware> logger)
 {
     private const string Header = "X-Correlation-Id";
@@ -279,7 +355,7 @@ It's constructed exactly **once**, when the pipeline is built at startup, not on
 
 ### 2. Factory-based middleware: IMiddleware
 
-```csharp
+```csharp norun
 public sealed class TenantMiddleware(KettleDb db, ITenantContext tenant) : IMiddleware // scoped deps in ctor are fine
 {
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
@@ -303,6 +379,10 @@ Best for a handful of lines you genuinely won't reuse anywhere else. Since .NET 
 
 ## Short-circuiting and terminal middleware {i}
 
+:::plain
+A middleware can answer the request itself and not call the next one. That ends the chain early, which is how static files and health checks avoid running the whole app.
+:::
+
 Short-circuiting — the "security guard at the door" move from the opening analogy — just means deliberately **not calling `next`**. The places you'll see it on purpose:
 
 - Authorization failure: 401/403.
@@ -311,7 +391,7 @@ Short-circuiting — the "security guard at the door" move from the opening anal
 - Static file found: stream it.
 - Health or ping endpoints that should skip everything.
 
-```csharp
+```csharp norun
 // .NET 8: endpoints that skip the remaining middleware entirely
 app.MapGet("/ping", () => "pong").ShortCircuit();
 app.MapShortCircuit(404, "robots.txt", "favicon.ico");   // fast 404s for noise requests
@@ -319,9 +399,13 @@ app.MapShortCircuit(404, "robots.txt", "favicon.ico");   // fast 404s for noise 
 
 ## Working with the response: the "has started" trap {a}
 
+:::plain
+Once the first bytes of a response have been sent, you can no longer change its status code or headers. Middleware that tries to will throw.
+:::
+
 Once the response's **headers have been sent** — the moment the body starts being written, or the first explicit flush — you can no longer touch the status code or headers. Try anyway, and you get a precise, unforgiving exception: `InvalidOperationException: Headers are read-only, response has already started.`
 
-```csharp
+```csharp norun
 app.Use(async (ctx, next) =>
 {
     await next(ctx);
@@ -345,7 +429,7 @@ Why does the first version only *sometimes* throw? Because "has the body started
 
 The request body arrives as a forward-only stream — read it once, and it's gone. If a middleware reads it early (for logging, or to verify a signature), the endpoint downstream finds nothing left, unless you explicitly enable rewinding first:
 
-```csharp
+```csharp norun
 app.Use(async (ctx, next) =>
 {
     ctx.Request.EnableBuffering();                    // allow rewinding (buffers to memory, then disk)
@@ -362,6 +446,10 @@ To transform a response on the way out, swap `Response.Body` for a `MemoryStream
 
 ## Middleware vs filters vs endpoint filters {i}
 
+:::plain
+Middleware sees every request. Filters and endpoint filters run only around the endpoint that was chosen, and can see its arguments and results. Use the narrowest one that does the job.
+:::
+
 | | Middleware | MVC filters (controllers) | Endpoint filters (minimal APIs) |
 |---|---|---|---|
 | Runs for | **Every** request through that pipeline position | Only MVC actions | Only the endpoints they're attached to |
@@ -371,7 +459,7 @@ To transform a response on the way out, swap `Response.Body` for a `MemoryStream
 
 The distinction that actually matters here is what each one is allowed to *see*. Middleware only ever sees the raw HTTP context — headers, the body as a stream, the path — because it runs before (or around) the model-binding machinery that turns a JSON body into a typed C# object. A filter runs *after* binding, so it can inspect the already-typed, already-bound argument directly:
 
-```csharp
+```csharp norun
 // Endpoint filter: sees the typed arguments, which middleware can't
 public sealed class ValidationFilter<T>(IValidator<T> validator) : IEndpointFilter
 {
@@ -392,9 +480,13 @@ The rule of thumb that falls out of this: **if it needs to know about the reques
 
 ## Middleware that reads endpoint metadata {a}
 
+:::plain
+After routing has picked an endpoint, later middleware can read the attributes on it, such as `[Authorize]`, and act on them. That's how authorization knows what each endpoint requires.
+:::
+
 Here's something that looks like it contradicts the rule just given, but doesn't: after `UseRouting` has run, middleware placed *later* in the pipeline **can** see the selected endpoint and whatever metadata it carries — attributes, `.WithMetadata(...)`, `.RequireAuthorization()`. That's precisely how authorization, CORS, rate limiting and output caching each know what to do for a given endpoint without being filters themselves. You can use the exact same trick in your own middleware:
 
-```csharp
+```csharp norun
 public sealed record AuditAttribute(string Action);
 
 app.Use(async (ctx, next) =>
@@ -410,7 +502,11 @@ orders.MapPost("/{id}/refund", Refund).WithMetadata(new AuditAttribute("order.re
 
 ## Testing middleware {a}
 
-```csharp
+:::plain
+You can test middleware by running it in an in-memory test server and sending it requests, without a real network or the rest of the app.
+:::
+
+```csharp norun
 [Fact]
 public async Task Adds_correlation_header()
 {
@@ -482,7 +578,7 @@ GET /orders/42 has to find exactly one handler. [Episode 5 · Which code handles
 
 Run with `dotnet run` in a console project (`dotnet new web`, then `dotnet add package Microsoft.AspNetCore.TestHost`). It checks the before/after ordering, short-circuiting, that conventional middleware is built once, and that `UseWhen` rejoins the main pipeline.
 
-```csharp
+```csharp norun
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;

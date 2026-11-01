@@ -6,8 +6,8 @@ layer: infra
 where: Hosting & infrastructure › Cloud fundamentals
 fits: This opens layer 7: the land your application is built on. Every later chapter in this part picks one area of the map below: [Docker](ch:docker), [compute](ch:azure-compute), [data & messaging](ch:azure-data-messaging), [identity & secrets](ch:azure-identity-secrets), [CI/CD & IaC](ch:cicd-iac), [Kubernetes](ch:kubernetes). Cloud-native design choices also reach back into layer 3 (stateless apps, configuration, graceful shutdown).
 levels: b,i,a
-prereqs: aspnet-hosting
-next: docker, azure-compute, azure-data-messaging
+prereqs: aspnet-hosting, prod-config
+next: azure-compute, azure-data-messaging
 ---
 
 ## TL;DR
@@ -22,9 +22,9 @@ next: docker, azure-compute, azure-data-messaging
 
 ## Previously at Kettle {b}
 
-All of Kettle's services run on one server in a cupboard. The holiday rush is coming, and a disk failure would take the business down.
+Kettle is properly hosted now: containers, a reverse proxy, HTTPS, zero-downtime deploys and backups, all on one rented server (Part X). But the holiday rush is coming, one machine can't scale out, and a disk failure would take the business down until a new server is built.
 
-**The problem:** Kettle's single server in a cupboard can't handle the holiday rush.
+**The problem:** Kettle's single server can't handle the holiday rush, or survive losing a disk.
 
 **This episode:** service models, regions and zones, scaling out, twelve-factor apps and the Azure map.
 
@@ -271,7 +271,7 @@ Recovery Time Objective: the maximum acceptable downtime after a disaster. Recov
 
 ## Next episode {b}
 
-"It works on my machine." Production has a different runtime and libraries. [Episode 2 · Ship the whole box →](ch:docker)
+VMs, Kubernetes, App Service, Functions… which one? [Episode 2 · Where Kettle runs →](ch:azure-compute)
 
 ## Further reading
 

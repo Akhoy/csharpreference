@@ -33,7 +33,7 @@ EF Core does the busywork. Then the order list page goes slow, and the SQL log s
 A LINQ query against a DbSet is only a description until you enumerate it, for example with ToListAsync. At that moment EF Core turns it into SQL and runs it.
 :::
 
-```csharp
+```csharp norun
 var recent = await db.Orders
     .Where(o => o.CustomerId == customerId && o.CreatedAt >= since)
     .OrderByDescending(o => o.CreatedAt)
@@ -62,7 +62,7 @@ Here's the detail worth holding onto for the rest of this chapter: nothing above
 Before tuning a slow query, look at the SQL EF Core actually generated. Logging or ToQueryString shows it.
 :::
 
-```csharp
+```csharp norun
 // 1. Log SQL (development)
 builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(cs)
     .LogTo(Console.WriteLine, LogLevel.Information)
@@ -95,7 +95,7 @@ Recall from [EF Core fundamentals](ch:efcore-fundamentals#change-tracking-and-sa
 | Speed / memory | Slower | **Fastest** | In between |
 | Use for | Load-modify-save | **Read-only queries** | Read-only with repeated related entities |
 
-```csharp
+```csharp norun
 var products = await db.Products.AsNoTracking().Where(p => p.IsActive).ToListAsync(ct);
 ```
 
@@ -107,7 +107,7 @@ You can flip the default for an entire context instead of annotating every query
 Select only the fields a screen needs into a small DTO. The database then sends fewer columns, and EF Core skips building and tracking full entities.
 :::
 
-```csharp
+```csharp norun
 // ✘ Loads EVERY column of Orders, Customer AND Lines, tracks them all, then the API maps to a DTO
 var orders = await db.Orders.Include(o => o.Customer).Include(o => o.Lines).ToListAsync(ct);
 var dtos = orders.Select(o => new OrderSummary(o.Id, o.Customer.Name, o.Lines.Count));
@@ -133,7 +133,7 @@ Related data can be loaded with Include, with a projection, separately on demand
 | **Explicit** | `await db.Entry(order).Collection(o => o.Lines).LoadAsync()` | A separate query, on demand | Conditionally loading for an already-loaded entity |
 | **Lazy** | Virtual navigations + proxies (`UseLazyLoadingProxies()`) | A query **when the property is first accessed** | Rarely; hides N+1 |
 
-```csharp
+```csharp norun
 // Filtered include (EF 5+)
 var customer = await db.Customers
     .Include(c => c.Orders.Where(o => o.Status == OrderStatus.Open).OrderByDescending(o => o.CreatedAt).Take(5))
@@ -150,7 +150,7 @@ Loading a list with one query and then running one more query per item means N+1
 
 The shape of this bug: **1 query** loads a list, then **N more queries** — one per item in that list — load each item's related data:
 
-```csharp
+```csharp norun
 // Lazy loading enabled:
 var orders = await db.Orders.Where(o => o.CreatedAt >= today).ToListAsync(ct);   // 1 query → 200 orders
 foreach (var o in orders)
@@ -161,7 +161,7 @@ foreach (var o in orders)
 
 That's 201 round trips instead of 1. Each one might take only 1–2 ms on its own, which is exactly why this bug slips past code review — it looks harmless in isolation. But 201 of them back-to-back adds up to hundreds of milliseconds, and it only gets worse as the order count grows. It also happens **without lazy loading enabled at all**, any time you call the database inside a loop:
 
-```csharp
+```csharp norun
 foreach (var id in productIds)
     prices[id] = await db.Products.Where(p => p.Id == id).Select(p => p.Price).SingleAsync(ct);   // ✘ N queries
 
@@ -175,14 +175,14 @@ var prices2 = await db.Products.Where(p => productIds.Contains(p.Id))           
 
 A related but distinct trap: including **multiple collection navigations** in a single query doesn't add rows, it **multiplies** them, because a SQL join flattens nested collections into one wide, repeated result set:
 
-```csharp
+```csharp norun
 var blogs = await db.Blogs.Include(b => b.Posts).Include(b => b.Contributors).ToListAsync();
 // 1 blog × 100 posts × 20 contributors = 2,000 rows returned, with blog columns duplicated in every row
 ```
 
 Here's why: SQL must emit one row for every post-contributor pair, repeating the blog's own columns in each row. 100 posts × 20 contributors = 2,000 rows, each one carrying a full, duplicate copy of the blog's data — a lot of redundant bytes for what's conceptually one blog with two separate lists attached to it.
 
-```csharp
+```csharp norun
 var blogs2 = await db.Blogs.Include(b => b.Posts).Include(b => b.Contributors)
     .AsSplitQuery()                // 3 separate SQL queries: blogs, posts, contributors
     .ToListAsync();
@@ -199,7 +199,7 @@ Some C# can't be turned into SQL. EF Core then throws instead of quietly loading
 
 EF Core can only translate what it actually understands into SQL: the standard LINQ operators, many `string`/`Math`/`DateTime` members, `EF.Functions.Like`, provider-specific functions, and any functions you've explicitly mapped yourself.
 
-```csharp
+```csharp norun
 var q = db.Products.Where(p => IsBargain(p));        // ✘ InvalidOperationException: could not be translated
 static bool IsBargain(Product p) => p.Price < p.ListPrice * 0.5m;
 
@@ -217,7 +217,7 @@ var q2 = db.Products.Where(p => p.Price < p.ListPrice * 0.5m);   // ✔ inline t
 Always page large lists, use Any instead of Count when you only need to know whether something exists, and prefer keyset paging over Skip for deep pages.
 :::
 
-```csharp
+```csharp norun
 // Offset paging: always ORDER BY a unique key for deterministic pages
 var page = await db.Products.OrderBy(p => p.Name).ThenBy(p => p.Id)
     .Skip((pageNo - 1) * size).Take(size)
@@ -237,7 +237,7 @@ Both paging styles here map directly onto the offset-vs-cursor tradeoff from [AP
 When LINQ can't express a query well, you can write SQL yourself and still get entities or DTOs back. Interpolated values are sent as parameters, so it stays safe.
 :::
 
-```csharp
+```csharp norun
 // Entities from SQL (composable: you can add LINQ on top)
 var top = await db.Products
     .FromSql($"SELECT * FROM Products WITH (INDEX(IX_Products_Category)) WHERE CategoryId = {categoryId}")
@@ -279,7 +279,7 @@ Use the async operators (`ToListAsync`, `SaveChangesAsync`…) in web apps and p
 | **Connection resiliency** | `EnableRetryOnFailure` for transient Azure SQL errors |
 | **Caching** | For hot, rarely changing reads ([Caching](ch:caching-ratelimit-cors)) |
 
-```csharp
+```csharp norun
 private static readonly Func<KettleDb, int, CancellationToken, Task<ProductDto?>> GetProductById =
     EF.CompileAsyncQuery((KettleDb db, int id, CancellationToken ct) =>
         db.Products.Where(p => p.Id == id).Select(p => new ProductDto(p.Id, p.Name, p.Price)).FirstOrDefault());
@@ -354,7 +354,7 @@ Two staff members edit the same order. The second save silently wins. [Episode 5
 
 The claims below that are pure C#/EF Core behavior are checked by running real queries against an in-memory SQLite database. Save as a console app (`dotnet new console`, `dotnet add package Microsoft.EntityFrameworkCore.Sqlite`), then `dotnet run`.
 
-```csharp
+```csharp norun
 using Microsoft.EntityFrameworkCore;
 
 // SQLite's in-memory mode needs one open connection kept alive for the whole run.

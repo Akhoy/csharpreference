@@ -31,6 +31,11 @@ next: delegates-events, collections
 | **reified** | The filled-in types still exist while the app runs, so `typeof(T)` works. |
 | **variance** | Whether a "something of Cat" may be used as a "something of Animal". |
 
+:::note What you need first
+- **[Types: Copied or Shared? (Value vs Reference)](ch:type-system)**: value types are copied, reference types are shared through a reference; classes, structs and records differ in exactly that.
+- **[Classes: Objects That Guard Their Own Rules (OOP)](ch:oop)**: classes bundle data with the methods that guard it; interfaces are contracts that let you swap implementations.
+:::
+
 ## Previously, and the problem {b}
 
 In [Episode 2](ch:oop) Kettle's objects learned to guard their own rules. Pages got slow, so you added a cache for orders:

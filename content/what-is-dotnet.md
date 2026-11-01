@@ -28,6 +28,10 @@ Two developers want to build Kettle, an online tea shop. They need one platform 
 
 ## .NET is a platform, not a language {b}
 
+:::plain
+C# is the language you write. .NET is everything around it: the runtime that runs your code, a huge library of ready-made code, and the tools that build it. F# and Visual Basic run on the same platform.
+:::
+
 .NET is a **software platform**: everything needed to build and run applications. C# is the most popular language for it, but F# and Visual Basic compile to the same format and run on the same platform.
 
 The platform has four parts:
@@ -54,6 +58,10 @@ You'll see three runtime downloads:
 Docker images mirror this: `mcr.microsoft.com/dotnet/sdk` (build), `.../aspnet` (run web apps), `.../runtime` (run console apps), `.../runtime-deps` (only native dependencies, for self-contained apps).
 
 ## The history that explains the names {b}
+
+:::plain
+The old Windows-only version is ".NET Framework". The modern, cross-platform one is just ".NET" (it was called ".NET Core" until version 5). New work uses modern .NET.
+:::
 
 Most confusion about .NET comes from its renaming. Here is the timeline:
 
@@ -86,6 +94,10 @@ Most confusion about .NET comes from its renaming. Here is the timeline:
 
 ## Versions, support and release cadence {i}
 
+:::plain
+A new .NET version comes out every November. Even-numbered versions (8, 10) are supported for three years; odd-numbered ones for two. Production apps usually stay on a supported version and upgrade once a year or so.
+:::
+
 A new major version ships **every November**.
 
 | Type | Versions | Support length |
@@ -115,6 +127,10 @@ You can multi-target a library with `<TargetFrameworks>net8.0;netstandard2.0</Ta
 
 ## .NET Standard: a contract, not a runtime {i}
 
+:::plain
+.NET Standard is a list of APIs that several .NET versions all promised to have. A library built for it runs on all of them. Today you only need it for libraries that must still support the old .NET Framework.
+:::
+
 During the transition years there were three runtimes (Framework, Core, Mono/Xamarin) with different API sets. **.NET Standard** was a **specification**: a list of APIs that every compliant runtime promises to implement. A library targeting `netstandard2.0` runs on all of them.
 
 - **.NET Standard 2.0** is the useful one: supported by Framework 4.6.1+, .NET Core 2.0+, all modern .NET, Mono, Unity.
@@ -124,6 +140,10 @@ During the transition years there were three runtimes (Framework, Core, Mono/Xam
 **When to target it today:** only for libraries that must also be consumed by .NET Framework apps. Otherwise target `net8.0`/`net10.0` to get modern APIs (`Span<T>` overloads, newer collections, etc.).
 
 ## Cross-platform, open source, and who builds it {b}
+
+:::plain
+Modern .NET runs on Windows, Linux and macOS, on Intel and ARM chips. Its source code is public on GitHub, and Microsoft builds it together with outside contributors.
+:::
 
 - **Runs on** Windows, Linux, macOS; x64, x86, Arm64 (including Apple Silicon, AWS Graviton, Azure Cobalt). Linux containers are the dominant production deployment.
 - **Open source** under the MIT licence, developed on GitHub (`dotnet/runtime`, `dotnet/aspnetcore`, `dotnet/efcore`, `dotnet/roslyn`), stewarded by the **.NET Foundation**.
@@ -146,6 +166,10 @@ This book focuses on **backend**: web APIs, workers, data and cloud.
 
 ## Framework-dependent vs self-contained deployment {i}
 
+:::plain
+You can ship just your app and rely on .NET being installed on the server, or ship your app with its own copy of .NET inside. The first is smaller; the second runs anywhere with nothing installed.
+:::
+
 When you `dotnet publish`, you choose how the app ships:
 
 | Mode | What's in the output | Pros | Cons |
@@ -159,6 +183,10 @@ When you `dotnet publish`, you choose how the app ships:
 The **RID** (runtime identifier) such as `linux-x64`, `linux-musl-arm64` (Alpine), `win-x64`, `osx-arm64` says which platform a self-contained/native build targets.
 
 ## The BCL: a tour of what you get for free {b}
+
+:::plain
+The base class library is the code that comes with .NET: collections, files, networking, JSON, dates, text, threads, cryptography and much more. Check it before writing something yourself or adding a package.
+:::
 
 Knowing what is already in the box saves you writing (or installing) it. Highlights by namespace:
 
@@ -208,7 +236,7 @@ System.Text.Json for JSON, HttpClient + IHttpClientFactory for HTTP, Channel&lt;
 
 ## Next episode {b}
 
-The CPU cannot read C#. Something has to translate it. [Episode 2 · From C# to machine code →](ch:how-code-runs)
+Kettle has chosen its platform. Before any theory, the founders need the everyday loop: create a project, run it, debug it, test it, publish it. [Episode 2 · Your first .NET app →](ch:first-app)
 
 ## Further reading
 

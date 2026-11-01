@@ -19,6 +19,11 @@ next: dependency-injection, configuration-options, middleware
 - Shutdown is graceful: Kestrel stops accepting new requests, finishes in-flight ones, then hosted services get a chance to stop — all within a time budget.
 - `HttpContext` carries everything about one request, including `RequestServices` (that request's DI scope). It's not thread-safe and dies with the request.
 
+:::note What you need first
+- **[Delegates: Passing Behaviour Around (Lambdas, Closures, Events)](ch:delegates-events)**: a delegate is a variable that holds a method, and a lambda (`x => x * 2`) is the short way to write one.
+- **[Async and Await: Don't Hold a Thread While You Wait](ch:async-await)**: `await` waits for a `Task` without blocking a thread, so one server thread can serve many requests while they wait on I/O.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's C# from Part II runs as a console program the team starts by hand. The website and the mobile app need it answering HTTP requests all day, and every deploy currently drops whatever was in flight.
@@ -28,6 +33,10 @@ Kettle's C# from Part II runs as a console program the team starts by hand. The 
 **This episode:** the host, Kestrel and the two phases of Program.cs, and how a graceful shutdown drains requests.
 
 ## A surprising fact to start from {b}
+
+:::plain
+An ASP.NET Core app isn't loaded into a web server. It is a normal program that contains its own web server. You start it like any console app, and it listens for requests itself.
+:::
 
 Here's something worth sitting with before anything else in this chapter: **ASP.NET Core isn't a server you deploy your code into.** There's no separate "IIS" or "Apache" process hosting your app from the outside, the way classic ASP.NET or PHP worked. **ASP.NET Core is a set of libraries** — the `Microsoft.AspNetCore.App` shared framework — that your code references, and your app is, underneath it all, an ordinary console program. One that happens to contain its own complete web server, listening on a socket, running inside the exact same process as your business logic.
 
@@ -52,6 +61,10 @@ That single fact explains a lot of what follows in this chapter: why `Program.cs
 
 ## The Generic Host: the thing that owns everything else {i}
 
+:::plain
+The host is the object that owns your app's long-lived pieces: configuration, logging, dependency injection, the web server and background services. It starts them in order and stops them cleanly.
+:::
+
 Before there's a web server, routing, or anything web-specific at all, there's a **host** — an object whose entire job is owning an app's shared resources and its lifetime:
 
 - the **DI container** (`IServiceProvider`),
@@ -63,7 +76,7 @@ Before there's a web server, routing, or anything web-specific at all, there's a
 
 This "Generic Host" (`Microsoft.Extensions.Hosting`) isn't actually web-specific at all — it's the same host a **Worker Service** uses, with no HTTP involved anywhere:
 
-```csharp
+```csharp norun
 // A worker service: same host, same DI/config/logging, no HTTP
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<QueueProcessor>();
@@ -81,7 +94,11 @@ When you read older code, `ConfigureServices` = phase 1 and `Configure` = phase 
 
 ## The two phases of Program.cs, and why the split matters {b}
 
-```csharp
+:::plain
+`Program.cs` has two halves. Before `builder.Build()` you register services (what the app *has*). After it, you set up the request pipeline (what happens to each request). Mixing them up is a common source of errors.
+:::
+
+```csharp norun
 var builder = WebApplication.CreateBuilder(args);
 
 // ═════════ PHASE 1: describe services and configuration (nothing runs yet) ═════════
@@ -149,6 +166,10 @@ Two variants exist for when you want fewer of these defaults: `WebApplication.Cr
 
 ## Kestrel: the web server that's actually inside your process {b}
 
+:::plain
+Kestrel is the web server built into every ASP.NET Core app. It accepts connections, reads HTTP requests and hands them to your code. It's fast, cross-platform and runs inside your own process.
+:::
+
 **Kestrel** is the cross-platform HTTP server mentioned at the very start of this chapter — the thing that makes "your app is a console program containing its own web server" literally true. It:
 
 - listens on sockets (TCP; QUIC for HTTP/3),
@@ -157,7 +178,7 @@ Two variants exist for when you want fewer of these defaults: `WebApplication.Cr
 - builds an `HttpContext` for each request and passes it to your middleware pipeline,
 - is built on `System.IO.Pipelines` — the same pooled-buffer I/O abstraction mentioned in [Advanced C#](ch:advanced-csharp#act-2-01-40-the-chunks-borrow-dont-buy) — for high throughput with minimal per-request allocation.
 
-```csharp
+```csharp norun
 builder.WebHost.ConfigureKestrel(k =>
 {
     k.Limits.MaxRequestBodySize = 10 * 1024 * 1024;     // 10 MB
@@ -180,6 +201,10 @@ The listening URL itself can come from several different places, in practice usu
 
 ## Why production traffic rarely hits Kestrel directly {i}
 
+:::plain
+In production, another server (a reverse proxy or a cloud load balancer) usually sits in front of Kestrel to handle HTTPS certificates, protect it from bad traffic and spread load. Part X covers it in depth.
+:::
+
 Given that Kestrel is a genuinely capable, hardened web server on its own, why does nearly every production deployment still put something in front of it?
 
 ```text
@@ -192,7 +217,7 @@ The proxy isn't compensating for a Kestrel weakness — it's **centralising** co
 
 Putting something in front of Kestrel does have one real consequence. As far as the TCP connection is concerned, the proxy *is* the client — so every request now appears to come from the **proxy's** IP address and scheme, not the real visitor's. The proxy compensates by adding `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` headers carrying the *real* client's information. But your app has to explicitly **opt in** to trusting those headers. Skip that, and `HttpContext.Connection.RemoteIpAddress`, HTTPS redirection, and any URL your app generates will all be subtly wrong — reflecting the proxy's identity instead of the real client's:
 
-```csharp
+```csharp norun
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -207,6 +232,10 @@ That `KnownProxies` line matters more than it looks. Without it, any client coul
 
 ## IIS hosting on Windows {i}
 
+:::plain
+On Windows Server, IIS can host ASP.NET Core apps. A small module starts your app and passes requests to it, usually inside IIS's own process.
+:::
+
 On Windows servers specifically, IIS can still host ASP.NET Core, via the **ASP.NET Core Module (ANCM)**, in one of two genuinely different shapes:
 
 | Model | How | Notes |
@@ -218,6 +247,10 @@ A `web.config` is generated at publish time, but only to configure IIS itself �
 
 ## Environments: the one variable that's meant to change configuration, never code paths {b}
 
+:::plain
+One setting, the environment (Development, Staging or Production), tells the app where it's running. It should change *settings* like connection strings and log levels, not which code runs.
+:::
+
 The environment name comes from **`ASPNETCORE_ENVIRONMENT`** (or `DOTNET_ENVIRONMENT`), and if nobody sets it, it defaults to `Production` — a deliberate, safe default: an unconfigured deployment fails toward hiding implementation details, not toward leaking them.
 
 | Name | Typical behaviour |
@@ -226,7 +259,7 @@ The environment name comes from **`ASPNETCORE_ENVIRONMENT`** (or `DOTNET_ENVIRON
 | `Staging` | Production-like settings, test data/services |
 | `Production` | Generic error responses, HSTS, real secrets from Key Vault, minimal logging noise |
 
-```csharp
+```csharp norun
 if (app.Environment.IsDevelopment()) { app.MapOpenApi(); app.MapScalarApiReference(); }
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 if (app.Environment.IsEnvironment("Local")) { /* custom names work too */ }
@@ -235,6 +268,10 @@ if (app.Environment.IsEnvironment("Local")) { /* custom names work too */ }
 Per-environment *settings* belong in `appsettings.{Environment}.json` (see [Configuration](ch:configuration-options)). There's a discipline worth holding onto here, easy to drift away from under deadline pressure: the environment should change **configuration values**, never **which code path runs**. `if (app.Environment.IsProduction())` sprinkled through business logic means you're no longer testing the same code in staging that will actually run in production — exactly the "it works on my machine" problem the whole container-based deployment model in [Docker](ch:docker) exists to eliminate.
 
 ## Application lifetime and graceful shutdown: what actually happens, in order {i}
+
+:::plain
+When the app is told to stop, it stops accepting new requests, lets the ones in progress finish, tells background work to stop, and only then exits. You can hook into each of these moments.
+:::
 
 `app.Run()` isn't just "start listening" — it drives the entire lifecycle of the process, start to finish, in a specific, predictable sequence:
 
@@ -245,7 +282,7 @@ Per-environment *settings* belong in `appsettings.{Environment}.json` (see [Conf
 5. On **SIGTERM** — `docker stop`, a Kubernetes pod being terminated, an App Service restart — or Ctrl+C, shutdown begins. `ApplicationStopping` fires. Kestrel **stops accepting** new connections but lets in-flight requests finish. Hosted services get `StopAsync` called, with their `stoppingToken` cancelled. All of this has to happen within **`ShutdownTimeout`** (30 s by default).
 6. `ApplicationStopped` fires; the container is disposed (disposing singletons).
 
-```csharp
+```csharp norun
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(45));
 
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
@@ -257,6 +294,10 @@ In Kubernetes or Container Apps, instances get replaced routinely — on every d
 :::
 
 ## HttpContext: the one object your entire pipeline shares {b}
+
+:::plain
+Every request gets one `HttpContext` object holding everything about it: the request, the response you're building, the logged-in user and per-request services. Every piece of the pipeline reads and writes it.
+:::
 
 Every single request gets exactly one **`HttpContext`** — the object essentially every chapter in the rest of Part III assumes you already know the shape of:
 
@@ -278,6 +319,10 @@ Every single request gets exactly one **`HttpContext`** — the object essential
 Two rules worth holding firmly: `HttpContext` is **not thread-safe**, and it's **only valid for the duration of the request it belongs to**. To reach it from a service rather than directly in a handler, inject `IHttpContextAccessor` — sparingly, since it's usually a sign you could instead just pass what you actually need explicitly — and never, under any circumstance, capture an `HttpContext` reference inside background work that might still be running after the request has already finished; by the time that background code runs, the context it captured may already be invalid.
 
 ## Hosting models summary {a}
+
+:::plain
+The same app can run on Kestrel directly, behind a reverse proxy, inside IIS, in a container, or as a Windows or Linux service. The code barely changes; only the hosting setup does.
+:::
 
 | Host | Server | Typical use |
 |---|---|---|
@@ -336,7 +381,7 @@ Every class news up its own dependencies. Swapping the payment provider means ed
 
 Run with `dotnet run` in a console project (`dotnet new web`, then `dotnet add package Microsoft.AspNetCore.TestHost`). It checks the environment default, the shutdown-timeout default, the order of host lifecycle events, and that `RequestServices` really is one scope per request.
 
-```csharp
+```csharp norun
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;

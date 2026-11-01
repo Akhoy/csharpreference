@@ -1,10 +1,10 @@
 ---
 id: security-story
-title: "Part XII as One Story: Kettle Gets Attacked"
-summary: "Read this first. A security researcher emails Kettle: by changing a number in a URL, they can read any customer's order. Part XII looks at Kettle the way an attacker would, then replaces Kettle's home-made login with a proper identity provider. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part XIII as One Story: Kettle Gets Attacked"
+summary: "Read this first. A security researcher emails Kettle: by changing a number in a URL, they can read any customer's order. Part XIII looks at Kettle the way an attacker would, then replaces Kettle's home-made login with a proper identity provider. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: cross
-where: Security › Start of Part XII
-fits: "The doorway into Part XII, Security. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Security › Start of Part XIII
+fits: "The doorway into Part XIII, Security. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
 prereqs: performance-engineering
 next: web-security
@@ -12,15 +12,15 @@ next: web-security
 
 ## The 30-second version
 
-- Part XII looks at Kettle the way an attacker would, then replaces Kettle's home-made login with a proper identity provider.
+- Part XIII looks at Kettle the way an attacker would, then replaces Kettle's home-made login with a proper identity provider.
 - 2 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-A security researcher emails Kettle: by changing a number in a URL, they can read any customer's order. Part XII looks at Kettle the way an attacker would, then replaces Kettle's home-made login with a proper identity provider.
+A security researcher emails Kettle: by changing a number in a URL, they can read any customer's order. Part XIII looks at Kettle the way an attacker would, then replaces Kettle's home-made login with a proper identity provider.
 
-## The road through Part XII {b}
+## The road through Part XIII {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
@@ -42,6 +42,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part XII, Kettle has been built, scaled, operated and secured. Part XIII is about telling that story well in an interview.
+By the end of Part XIII, Kettle has been built, scaled, operated and secured. Part XIV starts a new product and builds it right from day one; Part XV turns it all into interview performance.
 
 [Start: Episode 1 · Think like an attacker →](ch:web-security)

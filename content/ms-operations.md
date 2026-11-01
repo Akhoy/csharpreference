@@ -185,7 +185,7 @@ Libraries such as OpenTelemetry, Polly and MassTransit live in your code and are
 
 ## Next episode {b}
 
-Kettle is now a set of independently deployable services, observable end to end and secure between themselves. But they all still run on one server in a cupboard, and the holiday rush is coming. [Part X · Kettle Moves to the Cloud →](ch:cloud-story)
+Kettle is now a set of independently deployable services, observable end to end and secure between themselves. But they all still run on one server in a cupboard, with no reverse proxy, no real certificate and deploys done by hand. Launch is in a month. [Part X · Hosting in Production →](ch:hosting-story)
 
 ## Further reading
 

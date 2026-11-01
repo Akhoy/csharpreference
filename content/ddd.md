@@ -96,7 +96,7 @@ An entity is something with an identity that stays the same while its details ch
 
 An **entity** has an **identity that persists over time** and through changes. Two entities are the same if their IDs are equal, even if every other field differs — this is the single defining trait that separates an entity from the value objects covered next.
 
-```csharp
+```csharp norun
 public abstract class Entity<TId> where TId : notnull
 {
     public TId Id { get; protected init; } = default!;
@@ -115,7 +115,7 @@ A value object has no identity: two £5 amounts are interchangeable. Make value 
 
 A **value object** is the mirror image of an entity: it's defined **entirely by its values**, has **no identity** of its own, and is **immutable**. Two value objects holding the same values are completely interchangeable — there's no sense in which one is "the same instance" as another, because that question doesn't apply. Examples: `Money`, `Address`, `EmailAddress`, `DateRange`, `Quantity`, `Percentage`, `GeoCoordinate`.
 
-```csharp
+```csharp norun
 public sealed record Money
 {
     public decimal Amount { get; }
@@ -171,7 +171,7 @@ CustomerId, ProductId → references to OTHER aggregates by ID only
 
 Rule 3 fights your relational instincts the most. In a plain EF Core model you'd naturally add a navigation property from `Order` straight to a full `Customer` entity. DDD says don't: if code can follow that navigation and change the customer while it's inside an order-handling transaction, the clean boundary rule 4 relies on is gone. Keep the reference as a plain ID instead.
 
-```csharp
+```csharp norun
 public sealed class Order : AggregateRoot<OrderId>
 {
     private readonly List<OrderLine> _lines = [];
@@ -226,7 +226,7 @@ Notice that `AddLine`, `Place` and `Cancel` are the **only** way to change this 
 
 A **domain event** records **something meaningful that happened in the domain**, named in the past tense, in the ubiquitous language: `OrderPlaced`, `PaymentReceived`, `StockDepleted` — exactly the naming discipline [Design patterns](ch:design-patterns#command) drew the line on, distinguishing an event (already happened, can't be rejected) from a command (a request, might be refused).
 
-```csharp
+```csharp norun
 public interface IDomainEvent { DateTimeOffset OccurredAt { get; } }
 public sealed record OrderPlaced(OrderId OrderId, CustomerId CustomerId, Money Total, DateTimeOffset OccurredAt) : IDomainEvent;
 
@@ -336,7 +336,7 @@ Two `Money` values with the same amount and currency are equal: a value object h
 In a rich model, objects enforce their own rules through methods. In an anemic model they're just data, and the rules are scattered across services.
 :::
 
-```csharp
+```csharp norun
 // ✘ Anemic: a bag of data; rules live in services and get duplicated and bypassed
 public class Order { public int Id { get; set; } public string Status { get; set; } = ""; public List<OrderLine> Lines { get; set; } = []; }
 public class OrderService
@@ -358,7 +358,7 @@ Look at the anemic version again: because `Status` has a public setter, nothing 
 
 EF Core can map rich models without polluting them — none of the mapping configuration below needs to leak back into the `Order` class itself:
 
-```csharp
+```csharp norun
 public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
     public void Configure(EntityTypeBuilder<Order> b)

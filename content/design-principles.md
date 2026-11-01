@@ -50,7 +50,7 @@ A class should have one reason to change. If tax rules and email wording both fo
 
 > A class should have **one reason to change**, meaning it is responsible to **one actor** (one stakeholder or source of requirements).
 
-```csharp
+```csharp norun
 // ✘ Three reasons to change: pricing rules (sales), persistence (DBA/infra), notification wording (marketing)
 public class OrderService
 {
@@ -92,7 +92,7 @@ Add new behaviour by adding new code, such as a new payment class, rather than b
 
 > Software entities should be **open for extension** but **closed for modification**. Add behaviour by adding new code, not by editing working, tested code.
 
-```csharp
+```csharp norun
 // ✘ Every new carrier means editing this method (and risking existing carriers)
 public decimal ShippingCost(Parcel p, string carrier) => carrier switch
 {
@@ -125,7 +125,7 @@ A subclass must work anywhere its base class is expected, without surprising the
 
 Subtypes must honour the base type's **contract**: no stronger preconditions, no weaker postconditions, no new exceptions callers don't expect, and invariants preserved.
 
-```csharp
+```csharp norun
 // The classic: Square "is a" Rectangle mathematically, but not behaviourally
 public class Rectangle { public virtual int Width { get; set; } public virtual int Height { get; set; } public int Area => Width * Height; }
 public class Square : Rectangle
@@ -141,7 +141,7 @@ Trace through why `Resize` fails: it was written against `Rectangle`'s contract,
 
 Backend-flavoured violations:
 
-```csharp
+```csharp norun
 public class ReadOnlyOrderRepository : IOrderRepository
 {
     public void Add(Order o) => throw new NotSupportedException();      // ✘ callers of IOrderRepository will blow up
@@ -162,7 +162,7 @@ Prefer several small interfaces to one big one, so each class depends only on th
 
 > Clients should not be forced to depend on methods they don't use. Prefer several small, role-specific interfaces over one large one.
 
-```csharp
+```csharp norun
 // ✘ Fat interface: the reporting job depends on write methods it never calls; the mock needs 12 methods
 public interface IUserService
 {
@@ -201,7 +201,7 @@ With DIP:      OrderService ──depends on──▶ IOrderRepository ◀──
 
 Look closely at what actually flipped: `OrderService` still ends up calling SQL Server at runtime, exactly as before — the *behaviour* hasn't changed. What changed is that `OrderService`'s source code no longer mentions `SqlOrderRepository` at all; it only mentions `IOrderRepository`, an interface the business side itself defines. That's the whole trick, and it's why swapping SQL Server for a different store later only ever touches the infrastructure project.
 
-```csharp
+```csharp norun
 // Domain/Application layer owns the abstraction, phrased in business terms
 public interface IOrderRepository { Task<Order?> GetAsync(OrderId id, CancellationToken ct); void Add(Order o); }
 public interface IPaymentGateway { Task<PaymentResult> ChargeAsync(Money amount, PaymentMethod method, CancellationToken ct); }

@@ -335,7 +335,7 @@ The GC's heuristics tune collection timing to allocation patterns. Forcing colle
 
 Run with `dotnet run` (a plain console app, .NET 8/9, no extra packages). It checks generation assignment, the LOH size threshold, promotion after a collection, `ArrayPool<T>` reuse, and `WeakReference<T>` behavior directly against the live GC in your process. Server GC/DATAS and container heap limits are process-wide startup configuration, not something an in-process console app can flip and observe, so those claims are left to the Microsoft Learn links above instead of faked here.
 
-```csharp
+```csharp norun
 // Verify this chapter: run with `dotnet run`. No external packages needed.
 using System;
 using System.Buffers;

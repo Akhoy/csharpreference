@@ -37,7 +37,7 @@ Here's the concrete failure this section exists to prevent: two users both load 
 
 **Optimistic concurrency** is built on a bet that pays off most of the time: conflicts like this are rare, so don't pay the cost of locking on every read — instead, **detect** a conflict only at the moment of writing, using a version column that changes on every update.
 
-```csharp
+```csharp norun
 public class Order
 {
     public int Id { get; set; }
@@ -57,7 +57,7 @@ WHERE Id = @p1 AND RowVersion = @p2;      -- 0 rows affected ⇒ someone else ch
 
 Trace through what that `WHERE` clause actually buys you: if Bob's update runs after Alice's already committed, the row's `RowVersion` has already moved past what Bob loaded, so his `UPDATE` matches **zero rows** — not because the `Id` is wrong, but because the version he's asserting against no longer exists. EF Core throws **`DbUpdateConcurrencyException`** on exactly that outcome:
 
-```csharp
+```csharp norun
 try
 {
     await db.SaveChangesAsync(ct);
@@ -93,7 +93,7 @@ SaveChanges already wraps its changes in one transaction. You need an explicit t
 - you share a transaction with Dapper/ADO.NET on the same connection,
 - you need a specific isolation level.
 
-```csharp
+```csharp norun
 await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
 try
 {
@@ -117,7 +117,7 @@ catch { await tx.RollbackAsync(ct); throw; }
 
 `UseSqlServer(cs, o => o.EnableRetryOnFailure())` retries **transient** failures automatically — Azure SQL failovers, throttling, deadlock victims from exactly the deadlock-detection mechanism [Relational fundamentals](ch:relational-fundamentals#locking-blocking-and-deadlocks) described. There's a catch: a retry has to redo the *whole* unit of work, not just the failed statement. So if you open a transaction manually, wrap it in an execution strategy too — otherwise a retry won't cover the `BEGIN TRANSACTION` itself:
 
-```csharp
+```csharp norun
 var strategy = db.Database.CreateExecutionStrategy();
 await strategy.ExecuteAsync(async () =>
 {
@@ -140,7 +140,7 @@ ExecuteUpdate and ExecuteDelete send one UPDATE or DELETE statement to the datab
 
 EF 7+ offers a second way to write to the database that deliberately skips the tracking machinery altogether, running a set-based SQL statement **without loading any entities into memory first**:
 
-```csharp
+```csharp norun
 // UPDATE Products SET Price = Price * 1.1 WHERE CategoryId = 3
 var updated = await db.Products.Where(p => p.CategoryId == 3)
     .ExecuteUpdateAsync(s => s
@@ -171,7 +171,7 @@ Interceptors hook into specific points in EF Core's own pipeline, letting you ad
 | `DbTransactionInterceptor` | Transaction events | Diagnostics |
 | `IMaterializationInterceptor` | Entity materialised | Injecting services into entities, decryption |
 
-```csharp
+```csharp norun
 public interface IAuditable { DateTimeOffset CreatedAt { get; set; } string? CreatedBy { get; set; } DateTimeOffset? UpdatedAt { get; set; } string? UpdatedBy { get; set; } }
 
 public sealed class AuditInterceptor(TimeProvider clock, ICurrentUser user) : SaveChangesInterceptor
@@ -198,7 +198,7 @@ This interceptor is never called explicitly anywhere. Every `IAuditable` entity 
 
 A filter defined once in the model gets automatically appended to **every** query against that entity type, with no need to repeat it anywhere it's queried:
 
-```csharp
+```csharp norun
 public sealed class KettleDb(DbContextOptions<KettleDb> o, ITenantContext tenant) : DbContext(o)
 {
     protected override void OnModelCreating(ModelBuilder b)
@@ -216,7 +216,7 @@ The multi-tenancy line deserves a second look: because the filter closes over `t
 
 Soft delete itself usually pairs this filter with an interceptor that intercepts the *delete* and turns it into an update instead:
 
-```csharp
+```csharp norun
 public sealed class SoftDeleteInterceptor : SaveChangesInterceptor
 {
     public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData e, InterceptionResult<int> r, CancellationToken ct = default)
@@ -240,7 +240,7 @@ Here's a subtle interaction worth watching for: if `Order` has a *required* navi
 
 Aggregates raise **domain events** ([DDD](ch:ddd)) as things happen inside them; the question this section answers is how those events reliably get out of the aggregate and into something that can actually publish them:
 
-```csharp
+```csharp norun
 public abstract class Entity
 {
     private readonly List<IDomainEvent> _events = [];
@@ -386,7 +386,7 @@ Shopping carts change constantly and are read by one key. A relational table is 
 
 The checks below exercise optimistic concurrency, `ExecuteUpdate`, global query filters and a `SaveChangesInterceptor` against a real (if tiny) SQLite database. Save as a console app (`dotnet new console`, `dotnet add package Microsoft.EntityFrameworkCore.Sqlite`), then `dotnet run`.
 
-```csharp
+```csharp norun
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 

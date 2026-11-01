@@ -40,6 +40,6 @@ Every chapter in this part follows the same beats:
 
 ## Where this part ends {b}
 
-By the end of Part IX, Kettle runs as a handful of services that deploy independently, talk through contracts that evolve safely, own their data, and can be traced and secured end to end. They still run on one server in a cupboard, though. That's Part X.
+By the end of Part IX, Kettle runs as a handful of services that deploy independently, talk through contracts that evolve safely, own their data, and can be traced and secured end to end. They still run on one server in a cupboard, though, with no proper front door. Part X hosts them properly: proxies, HTTPS, deployments and production settings.
 
 [Start: Episode 1 · Service boundaries →](ch:ms-boundaries)

@@ -105,7 +105,7 @@ Follow steps 2 and 7 together, because that's where PKCE's actual protection liv
 - **`nonce`** (OIDC) prevents ID token replay.
 - **Exact redirect URI matching** at the server prevents tokens being sent to an attacker's URL.
 
-```csharp
+```csharp norun
 // ASP.NET Core web app (confidential client) signing users in with OIDC + cookies
 builder.Services.AddAuthentication(o =>
     {
@@ -150,7 +150,7 @@ grant_type=client_credentials&client_id=…&client_secret=…   (or client_asser
 
 The token carries the **client's identity** and **application permissions** (`roles` claim, e.g. `Inventory.Read`), with no `scp` and no user. In Azure, prefer **managed identity** (no secret at all) or a **certificate/federated credential** over client secrets — the exact same preference order [Identity & secrets](ch:azure-identity-secrets#the-problem-secrets-everywhere) laid out generally, here specifically for the OAuth grant type that would otherwise need a secret.
 
-```csharp
+```csharp norun
 var credential = new ManagedIdentityCredential();     // or ClientSecretCredential/ClientCertificateCredential outside Azure
 var token = await credential.GetTokenAsync(new TokenRequestContext(["api://inventory-api/.default"]), ct);
 // Typically wrapped in a DelegatingHandler that caches tokens until shortly before expiry (see HttpClient chapter)
@@ -216,7 +216,7 @@ OIDC standardises:
 
 The **effective permission** for delegated access is the **intersection** of what the app was granted (scopes) and what the user is allowed to do (roles or your own data rules). An API must check **both** the token's scopes or roles **and** resource-level authorization ("is this the user's order?"). Scopes alone don't prevent IDOR — a token scoped to `orders.read` proves the client is allowed to read *some* orders, not that this particular user is allowed to read *this specific* order, exactly the gap [Web security](ch:web-security#broken-access-control-and-idor) warned against closing with scope checks alone.
 
-```csharp
+```csharp norun
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("orders:read", p => p.RequireAssertion(ctx =>
         ctx.User.FindFirst("scp")?.Value.Split(' ').Contains("orders.read") == true   // delegated: user via client
@@ -325,7 +325,7 @@ A middle-tier API that received a user's access token exchanges it at the author
 
 ## Next episode {b}
 
-By the end of Part XII, Kettle has been built, scaled, operated and secured. Part XIII is about telling that story well in an interview. [Part XIII · Telling Kettle's Story →](ch:interview-story)
+By the end of Part XIII, Kettle has been built, scaled, operated and secured. But it got there the hard way. Part XIV starts a new product and does it right from the first commit. [Part XIV · Kettle Wholesale, Done Right →](ch:projects-story)
 
 ## Further reading
 
@@ -339,7 +339,7 @@ By the end of Part XII, Kettle has been built, scaled, operated and secured. Par
 
 Run with `dotnet run` (a plain console app, .NET 8/9, only base-class-library crypto/JSON — no extra packages, no network call to a real identity provider). It verifies the actual protocol mechanics: PKCE's hash check, a hand-built HS256 JWT's signature validation (and that tampering breaks it), audience/expiry validation, scope-vs-role authorization, and exact redirect-URI matching. The full login round trip against a real authorization server needs a browser and a real IdP, so that part is left to the Further reading links instead of faked here.
 
-```csharp
+```csharp norun
 // Verify this chapter: run with `dotnet run`. No external packages needed
 // (plain System.Security.Cryptography + System.Text.Json) and no network
 // call to a real identity provider -- this verifies the PROTOCOL MECHANICS

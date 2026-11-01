@@ -18,6 +18,11 @@ next: nosql-redis, background-work, web-security
 - Rate limiting (fixed window, sliding window, token bucket) caps requests per client; like `IMemoryCache`, the built-in limiter's counters are **per instance**, so a "100/minute" limit becomes "100 × instance count" across a fleet unless you use a shared store.
 - CORS protects **browsers**, not your API — non-browser clients (curl, server-to-server calls) ignore it completely. Your API's real protection is authentication/authorization.
 
+:::note What you need first
+- **[Middleware and the Request Pipeline](ch:middleware)**: every request passes through an ordered chain of middleware, each of which can act before and after the rest.
+- **[Routing and Endpoints](ch:routing)**: routing matches a request's URL and method to an endpoint and extracts values such as `{id}` from the URL.
+:::
+
 ## Previously at Kettle {b}
 
 Calls to partners are reliable. Now success is the problem: the catalogue is read thousands of times a minute, bots hammer the search, and the new web front end on another domain is blocked by the browser.
@@ -27,6 +32,10 @@ Calls to partners are reliable. Now success is the problem: the catalogue is rea
 **This episode:** caching layers and stampedes, rate limiting, and what CORS really does.
 
 ## Why cache at all {b}
+
+:::plain
+Caching keeps a copy of something expensive to get (a database result, an API response) so the next request can use the copy and skip the work.
+:::
 
 Most backend reads are **repetitive**, in a specific, exploitable way: the same product page, the same exchange rates, the same permission lookup, asked for thousands of times while the underlying data barely changes. Every one of those identical requests still costs a full database round trip or an external API call unless something intervenes. A cache is that intervention — a copy of the answer, kept close by, so the thousandth identical request doesn't repeat the work the first one already did.
 
@@ -42,6 +51,10 @@ Every cache ultimately answers one question: **how stale may this data be?** A p
 :::
 
 ## The caching layers, from the browser down to the database {b}
+
+:::plain
+Data can be cached in several places: the browser, a CDN, the server's response cache, the app's memory, a shared cache like Redis, and the database's own cache. Each closer layer is faster but harder to keep fresh.
+:::
 
 A single request can pass through several independent caching layers before it ever touches a database, each one answering the "how stale" question for a different audience:
 
@@ -61,7 +74,11 @@ Browser cache ─▶ CDN / reverse proxy ─▶ Output cache (whole response) �
 
 ## IMemoryCache: the simplest layer, and its one serious limitation {b}
 
-```csharp
+:::plain
+`IMemoryCache` keeps values in the app's own memory. It's very fast, but each server has its own copy, and it's lost on restart.
+:::
+
+```csharp norun
 builder.Services.AddMemoryCache(o => o.SizeLimit = 10_000);    // optional size budget (each entry must then set Size)
 
 public sealed class CountryService(IMemoryCache cache, KettleDb db)
@@ -89,7 +106,11 @@ Here's the limitation that catches people as soon as an app scales past one inst
 
 ## IDistributedCache and Redis: trading a memory lookup for a network hop {i}
 
-```csharp
+:::plain
+A distributed cache like Redis is shared by all servers and survives app restarts. Every read is a network call, so it's slower than memory but consistent across servers.
+:::
+
+```csharp norun
 builder.Services.AddStackExchangeRedisCache(o =>
 {
     o.Configuration = builder.Configuration.GetConnectionString("Redis");
@@ -113,9 +134,13 @@ Notice what `IDistributedCache` deliberately *doesn't* do for you: it stores raw
 
 ## HybridCache: closing the gap between the two previous sections {i}
 
+:::plain
+HybridCache uses a fast in-memory cache in front of a shared one, and makes sure that when many requests miss at once, only one of them does the expensive work.
+:::
+
 Look back at the last two sections and the tension should be obvious: `IMemoryCache` is fast but inconsistent across instances; `IDistributedCache` is consistent but pays a network hop on *every single access*, even for data that was just read a moment ago on the very same instance. `HybridCache` (`Microsoft.Extensions.Caching.Hybrid`, .NET 9+) exists specifically to get both: a fast **L1** in-memory cache in front of an optional **L2** distributed cache, with serialization handled for you, plus two capabilities neither older API gives you on its own — **stampede protection** and **tag-based invalidation**, both covered in the next section.
 
-```csharp
+```csharp norun
 builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisCs);   // becomes L2 automatically
 builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions
 {
@@ -145,6 +170,10 @@ Notice the deliberate asymmetry in the two expirations above: `LocalCacheExpirat
 
 ## Caching strategies and invalidation: the part that's actually hard {i}
 
+:::plain
+The hard part of caching is knowing when a cached value is out of date. You choose between expiring it after a time, removing it when the data changes, or a mix.
+:::
+
 | Strategy | How | Trade-off |
 |---|---|---|
 | **Cache-aside** (lazy loading) | Read: check cache → on miss load from DB and store. Write: update DB, then **remove** the cache entry | Most common; first read after a change is a miss |
@@ -170,9 +199,13 @@ Good candidates share a trait: reference data, product catalogues, computed aggr
 
 ## Output caching: caching the whole HTTP response, server-side {i}
 
+:::plain
+Output caching stores whole responses on the server and serves them again for matching requests, without running your endpoint.
+:::
+
 Where the layers above cache *data*, output caching caches **entire responses**, keyed by path and query string (and optionally headers or route values), with tag-based eviction built in:
 
-```csharp
+```csharp norun
 builder.Services.AddOutputCache(o =>
 {
     o.AddBasePolicy(b => b.Expire(TimeSpan.FromSeconds(30)));
@@ -194,13 +227,17 @@ A safe default is baked in here, worth knowing explicitly: output caching **only
 
 **Response caching** (`UseResponseCaching`) is an older, different middleware that strictly follows HTTP `Cache-Control` semantics rather than giving you server-side policy control. Output caching gives you more control for server-side caching; use **HTTP headers** for the separate job of letting browsers and CDNs cache on the client side:
 
-```csharp
+```csharp norun
 app.MapGet("/assets/config", () => cfg).WithMetadata(new ResponseCacheAttribute { Duration = 3600, Location = ResponseCacheLocation.Any });
 // or set headers directly: ctx.Response.Headers.CacheControl = "public,max-age=3600";
 // ETags + If-None-Match → 304 Not Modified saves bandwidth for unchanged resources
 ```
 
 ## Rate limiting: protecting the API from its own popularity {i}
+
+:::plain
+Rate limiting caps how many requests a client can make in a period, so one busy or abusive client can't slow things down for everyone else. Extra requests get a 429.
+:::
 
 Rate limiting caps how many requests a given client can make in a given window — protecting the API from abuse, from a runaway client retrying too aggressively, from scraping, and from accidentally denial-of-servicing yourself, while also letting you enforce fair-use or pricing-tier limits. It's been built into the framework since .NET 7 (`Microsoft.AspNetCore.RateLimiting`).
 
@@ -213,7 +250,7 @@ Rate limiting caps how many requests a given client can make in a given window �
 
 Worth noticing in that table: fixed window is the easiest to reason about but has a real weakness — a client can send 100 requests in the last second of one window and another 100 in the first second of the next, getting 200 requests in effectively two seconds. Sliding window and token bucket both exist specifically to smooth that edge case out.
 
-```csharp
+```csharp norun
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -252,6 +289,10 @@ This is the same scaling trap `IMemoryCache` fell into earlier in this chapter, 
 
 ## CORS: a rule browsers enforce on your behalf, for your users' protection {b}
 
+:::plain
+Browsers block a web page from calling an API on a different site unless that API says it's allowed. CORS is how your API says which sites may call it.
+:::
+
 Browsers enforce the **same-origin policy**: JavaScript running on `https://kettle.com` cannot read a response from `https://api.kettle.com` — a different origin, since origin means scheme + host + port together — **unless the API explicitly says it's allowed to**, through a set of CORS response headers.
 
 Here's the detail that trips people up the first time they debug a "CORS error": **CORS protects users' browsers, not your API.** curl, Postman, and any server-to-server call ignore CORS completely — there's no browser involved to enforce it. Your API's actual protection against unauthorized access is authentication and authorization, covered in [Auth](ch:auth); CORS is purely about which *websites* a *browser* will let read your responses on a user's behalf.
@@ -274,7 +315,7 @@ Access-Control-Allow-Headers: authorization, content-type
 Access-Control-Max-Age: 600
 ```
 
-```csharp
+```csharp norun
 builder.Services.AddCors(o =>
 {
     o.AddPolicy("web", p => p
@@ -297,7 +338,11 @@ app.MapGroup("/api").RequireCors("web");
 
 ## Response compression and request timeouts {i}
 
-```csharp
+:::plain
+Compression makes responses smaller over the network. Request timeouts cancel requests that run too long, so they don't tie up the server.
+:::
+
+```csharp norun
 builder.Services.AddResponseCompression(o =>
 {
     o.EnableForHttps = true;                    // consider BREACH risk for responses that mix secrets with user input

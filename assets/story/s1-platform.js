@@ -49,6 +49,30 @@
   });
 
   S.scene({
+    id: 'first-app', part: 'p1', title: 'Your first .NET app',
+    hook: 'Nobody on the team has created, debugged or published a .NET project.',
+    a: [
+      ['code', 'pg', 160, 120, '// Program.cs\nvar teas = new[] { "Assam" };\nConsole.WriteLine(teas[0]);'],
+      ['pill', 'c0', 450, 50, 'dotnet new console', { w: 190 }],
+      ['pill', 'c1', 450, 100, 'dotnet run / dotnet watch', { w: 230 }],
+      ['pill', 'c2', 450, 150, 'F9 breakpoint · F5 debug', { w: 230 }],
+      ['pill', 'c3', 450, 200, 'dotnet test', { w: 190 }],
+      ['pill', 'c4', 450, 250, 'dotnet publish -c Release', { w: 230 }],
+      ['dot', 'd', 300, 50, '', { o: 0 }],
+      ['txt', 'out', 160, 215, '> Assam', { mono: true, o: 0 }],
+      ['box', 'pub', 450, 320, 'out/: run it like a server', { w: 230, o: 0, c: 'ok' }]
+    ],
+    b: [
+      { say: '`dotnet new` creates a project: a `.csproj` file and a `Program.cs` whose top lines are where the program starts.', go: [['d', 'c0']], acc: ['c0'] },
+      { say: '`dotnet run` builds and runs it. `dotnet watch` reruns or hot-reloads it every time you save.', go: [['d', 'c1']], show: ['out'], acc: ['c1'] },
+      { say: 'A **breakpoint** pauses the running app on a line, so you can see every variable at that moment.', go: [['d', 'c2']], pg: { hl: 2 }, acc: ['c2'] },
+      { say: 'Tests live in their own project. `dotnet test` runs them all.', go: [['d', 'c3']], ok: ['c3'] },
+      { pro: true, say: '`dotnet publish -c Release` makes the folder you deploy. It runs with no SDK and no source code.', go: [['d', 'c4']], show: ['pub'], ok: ['c4'] }
+    ],
+    key: 'Create, run, debug, test, publish: the loop every chapter assumes.'
+  });
+
+  S.scene({
     id: 'how-code-runs', part: 'p1', title: 'From C# to machine code',
     hook: 'The CPU cannot read C#. Something has to translate it.',
     a: [

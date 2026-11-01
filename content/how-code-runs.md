@@ -6,7 +6,7 @@ layer: runtime
 where: Runtime & platform › Execution engine (CLR)
 fits: This is the bottom of layer 2, directly under the language. Everything in C# eventually becomes IL that this machinery executes. The GC ([Memory & GC](ch:memory-gc)) and the thread pool ([Threading](ch:threading-concurrency)) are other services of the same runtime.
 levels: b,i,a
-prereqs: what-is-dotnet
+prereqs: first-app
 next: projects-sdk-nuget, csharp-story, memory-gc
 ---
 
@@ -20,7 +20,7 @@ next: projects-sdk-nuget, csharp-story, memory-gc
 
 ## Previously at Kettle {b}
 
-Kettle will be written in C# on .NET. But a CPU can't read C#, and the team wants to know what really happens between pressing Run and the first order being saved.
+Kettle's first projects build, run and publish ([last episode](ch:first-app)). But a CPU can't read C#, and the team wants to know what really happens between `dotnet run` and the first order being saved.
 
 **The problem:** The CPU cannot read C#. Something has to translate it.
 
@@ -28,9 +28,13 @@ Kettle will be written in C# on .NET. But a CPU can't read C#, and the team want
 
 ## Let's follow one line of code, start to finish {b}
 
+:::plain
+Your C# is translated twice: once when you build, into a portable in-between language called IL, and again while the app runs, from IL into the machine code your CPU actually executes.
+:::
+
 Here's the smallest program you can write:
 
-```csharp
+```csharp norun
 public static int Add(int a, int b) => a + b;
 ```
 
@@ -45,6 +49,10 @@ You've written this. You know what it does. But what actually *happens* to it be
 Notice something odd there: step 2 and step 5 are *both* "compiling". Same word, two completely different jobs, done by two completely different pieces of software, at two completely different times. Why would .NET deliberately do that twice instead of once? That question is the whole chapter.
 
 ## So why split it into two steps at all? {b}
+
+:::plain
+Building to IL means one compiled file runs on any OS and CPU. Translating to machine code at the last moment means it can be tuned for the exact machine it's running on, and even for how the app is actually being used.
+:::
 
 Here's a fair challenge: C++ doesn't do this. It compiles straight to machine code, once, at build time, and never touches the result again. Why does .NET add this extra step?
 
@@ -63,6 +71,10 @@ Once you accept that the translation happens *later*, on the real machine, a few
 One more payoff, and it has nothing to do with CPUs at all: IL is **verifiable**, and it comes bundled with rich **metadata** — a structured description of every type and method in your code, sitting right there in the file alongside the IL itself. That one detail is what makes garbage collection, reflection and serialization possible, and it's worth slowing down for, which is exactly what the next section does.
 
 ## What build time actually hands you {b}
+
+:::plain
+Building produces an assembly, a `.dll` file. Inside is your code as IL, plus metadata: a full description of every type, method and reference, which the runtime and tools read.
+:::
 
 ```text
   build time                                       run time
@@ -87,7 +99,7 @@ That metadata row deserves more than a passing glance, because it quietly explai
 
 Back to our one-line method. Here's exactly what the compiler writes down for it:
 
-```csharp
+```csharp norun
 public static int Add(int a, int b) => a + b;
 ```
 
@@ -128,6 +140,10 @@ These three sound like they should line up one-to-one, and they just don't. One 
 
 ## What run time actually does with all this {b}
 
+:::plain
+When the app starts, the runtime (the CLR) loads your assemblies, and the first time each method is called, the JIT compiler turns its IL into machine code. After that, the method runs at full speed.
+:::
+
 So build time is done. You're sitting on a `.dll` full of IL and metadata that, remember, no CPU can run yet. Run time is where that finally changes.
 
 When you start the app, the **CLR** (Common Language Runtime — the engine underneath everything .NET does while it's actually running) loads your assembly into memory. Here's the part that surprises people: it does **not** translate every method the moment it loads. It's lazier than that, on purpose. Watch:
@@ -141,6 +157,10 @@ When you start the app, the **CLR** (Common Language Runtime — the engine unde
 So the translation cost is paid exactly **once per method**, the first time — and only the first time — it's called. Not once per call. That distinction matters a lot for everything that follows, because almost this entire chapter from here is about what happens around that one moment in step 3, plus one clever alternative that skips it entirely.
 
 ## Meanwhile, the CLR is doing a lot more than just this {b}
+
+:::plain
+While your code runs, the CLR also manages memory, enforces type safety, handles exceptions and runs your threads. That's why .NET is called a managed runtime.
+:::
 
 Loading assemblies and running the JIT is only one of the CLR's jobs — it's just the one this chapter cares about most. The whole time your process is alive, it's quietly doing several other things underneath your code, continuously:
 
@@ -160,6 +180,10 @@ Keep this table in your back pocket — it's basically a preview of the rest of 
 Here's a definition worth having precisely: code the CLR is doing all of this for is called **managed code**. Anything outside its control — a native C/C++ library, a raw OS file handle, a socket — is **unmanaged code**, and here's the catch: nothing cleans that up for you automatically. Nobody's watching it. That single fact is the entire reason `IDisposable` exists in C#: it's the language's way of flagging "this object is holding onto something the CLR genuinely cannot manage on your behalf — you, personally, have to let it go."
 
 ## Now, zoom into the JIT: why does it translate a method *twice*? {i}
+
+:::plain
+The JIT compiles a method quickly at first so the app starts fast. If the method turns out to be called a lot, it compiles it again, more carefully, using what it learned while the app was running.
+:::
 
 You already know, from the run-time walkthrough above, that the JIT translates a method's IL the first time it's called. What that walkthrough didn't mention is this: for most methods, it actually does that translation **twice** — a quick, rough pass first, and then, sometimes, a second, much better pass later. Let's figure out why anyone would want that.
 
@@ -228,6 +252,10 @@ Lay it out this way and the usual list of "fixes" for slow cold starts stops bei
 
 ## What if you skipped the JIT completely? {i}
 
+:::plain
+Native AOT compiles everything to machine code at build time. Startup is very fast and memory use is lower, but some features that create or inspect code at run time (heavy reflection, for example) stop working.
+:::
+
 Here's a thought worth having explicitly: everything described so far happens *as the app runs*, method by method, the first time each one is called. What if, instead, you translated absolutely everything, for every single method, before the app ever even starts — so that by the time it's running, there's no translation left to do, ever?
 
 That's exactly what the next two options do, each taking it further than the last.
@@ -252,6 +280,10 @@ So who actually wants Native AOT? It's a genuinely strong fit for serverless and
 
 ## Two more services, coming up properly in their own chapters {b}
 
+:::plain
+Two more parts of the runtime matter every day: the garbage collector, which frees memory you've stopped using, and the thread pool, which runs your code. Each gets its own chapter later.
+:::
+
 Two more things the CLR is doing, the whole time, deserve a full chapter each rather than a rushed paragraph here — but you should at least know they exist, and that they're part of the exact same machinery this chapter has been describing:
 
 - **The GC** (garbage collector): generational, with a "Server GC" mode on by default in ASP.NET Core, responsible for freeing memory your code no longer needs. See [Memory & GC](ch:memory-gc).
@@ -259,12 +291,20 @@ Two more things the CLR is doing, the whole time, deserve a full chapter each ra
 
 ## The type system across languages: CTS and CLS {a}
 
+:::plain
+All .NET languages share one set of rules for what a type is, so a class written in F# can be used from C#. A smaller set of rules (CLS) lists what every language is guaranteed to understand.
+:::
+
 Earlier in this chapter, you saw the claim that C#, F# and VB all compile down to the same IL, and can therefore call each other directly with zero friction. It's a nice claim, but *why* is it actually true? It's only possible because all three languages secretly agree, underneath their very different-looking syntax, on exactly what a "type" fundamentally is.
 
 - **CTS (Common Type System):** the runtime's shared rulebook for types — classes, structs, interfaces, enums, delegates, and the value-vs-reference distinction you'll meet properly in [Type system](ch:type-system). Every .NET language maps its own type keywords onto this one shared system underneath. That's the real reason `int` in C# and `Integer` in VB turn out to be, underneath, literally the exact same thing: `System.Int32`. Not "similar" — the same.
 - **CLS (Common Language Specification):** a smaller, stricter subset of rules that applies specifically to anything you expose *publicly*, chosen so that *every* .NET language — even one with narrower type support than C# has — can still consume it safely. A public `uint`, for example, actually breaks CLS compliance, because some .NET languages simply don't have unsigned integers at all. If you want the compiler to warn you whenever you've accidentally broken that promise, mark a library with `[assembly: CLSCompliant(true)]`.
 
 ## Assembly loading and versioning {a}
+
+:::plain
+When your app needs a `.dll`, the runtime finds and loads it, and checks it's a compatible version. Most of the time this just works; when two packages need different versions of the same library, you need to know how it decides.
+:::
 
 One last practical layer: a running .NET app isn't really just "the assembly" on its own — it's a small set of files that, together, tell the CLR exactly which assembly, and which *version* of it, to actually load.
 
@@ -314,7 +354,7 @@ An assembly is a compiled deployment unit — one physical .dll file. A namespac
 
 ## Next episode {b}
 
-Kettle needs other people's libraries, and a repeatable build. [Episode 3 · Projects and packages →](ch:projects-sdk-nuget)
+Kettle needs other people's libraries, and a repeatable build. [Episode 4 · Projects and packages →](ch:projects-sdk-nuget)
 
 ## Further reading
 
@@ -329,7 +369,7 @@ Kettle needs other people's libraries, and a repeatable build. [Episode 3 · Pro
 
 The JIT's internal tiering decisions, Dynamic PGO's counters, and exact ReadyToRun/Native AOT startup numbers aren't something a plain program can observe about itself from the inside — trust [Further reading](#further-reading) and tools like SharpLab/dotnet-trace for those. What the program below *can* check: that a method's IL really only gets translated once per process (not once per call, by timing a "cold" vs "warm" call), that `sealed` genuinely changes what the runtime can prove about a type, and that reflection really can see metadata the compiler didn't hard-code. Run with `dotnet run` (plain console app, .NET 8/9, no extra packages).
 
-```csharp
+```csharp norun
 using System.Diagnostics;
 using System.Reflection;
 

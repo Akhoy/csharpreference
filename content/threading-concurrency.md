@@ -59,7 +59,7 @@ So .NET doesn't create a fresh thread for every piece of work. Instead, the **th
 - Every `await` continuation — the "resume here later" code you saw in the async/await chapter — since ASP.NET Core has no `SynchronizationContext` to route continuations elsewhere
 - `Task.Run`, `Parallel`, and timer callbacks
 
-```csharp
+```csharp norun
 var t = new Thread(() => DoWork()) { IsBackground = true, Name = "legacy-worker" };   // dedicated thread: rare today
 t.Start();
 
@@ -79,7 +79,7 @@ When two threads change shared data at the same time, the result can depend on w
 
 Here's a piece of code that looks completely harmless:
 
-```csharp
+```csharp norun
 private int _count;
 public void Increment() => _count++;
 ```
@@ -118,7 +118,7 @@ Interlocked turns a read-change-write on one variable into a single step no othe
 
 The simplest tool in that toolbox handles exactly the counter problem from above, when all you need to protect is a single variable:
 
-```csharp
+```csharp norun
 private long _requests;
 public void OnRequest() => Interlocked.Increment(ref _requests);           // atomic ++
 public long Snapshot() => Interlocked.Read(ref _requests);
@@ -142,7 +142,7 @@ A lock lets only one thread at a time run a block of code, so several related ch
 
 ### lock / Lock / Monitor
 
-```csharp
+```csharp norun
 private readonly Lock _gate = new();                // C# 13 / .NET 9: dedicated Lock type (faster); use a private readonly object before that
 private readonly Dictionary<string, Price> _prices = new();
 
@@ -167,7 +167,7 @@ Here's the "why" behind that compiler rule, because it's one of those facts that
 
 When you genuinely need mutual exclusion *and* the ability to `await` inside the protected section, reach for `SemaphoreSlim` instead:
 
-```csharp
+```csharp norun
 private readonly SemaphoreSlim _refreshGate = new(1, 1);       // mutual exclusion usable with await
 
 public async Task<string> GetTokenAsync(CancellationToken ct)
@@ -207,7 +207,7 @@ Two threads each hold a lock the other needs, so both wait forever. Always takin
 
 Locks solve the race-condition problem — but used carelessly, they create a different one, and this one doesn't just lose an update, it freezes your app solid. Here's the simplest possible version:
 
-```csharp
+```csharp norun
 // Thread 1: lock(A) { … lock(B) { } }
 // Thread 2: lock(B) { … lock(A) { } }      → each holds one and waits forever for the other
 ```
@@ -228,7 +228,7 @@ There's a subtler category of concurrency bug that has nothing to do with locks 
 
 Compilers, the JIT, and CPUs are all permitted to **reorder** reads and writes, and to **cache** values in registers instead of main memory, *as long as the single thread running that code can't tell the difference*. That last clause is the key: the guarantee is only ever about what one thread observes about itself. Nobody promised anything about what a *different* thread, watching from outside, will see — and that gap is exactly where this bug lives.
 
-```csharp
+```csharp norun
 private bool _stop;
 public void Run() { while (!_stop) { /* work */ } }   // the JIT may hoist _stop into a register → loops forever
 public void Stop() => _stop = true;
@@ -258,7 +258,7 @@ Everything so far has been about protecting *your own* state with locks or atomi
 
 The immutable-snapshot pattern deserves its own look, because it's a genuinely elegant way to sidestep locking entirely for data that's read constantly but written rarely:
 
-```csharp
+```csharp norun
 // Copy-on-write snapshot: readers are lock-free, writers swap a new immutable instance atomically
 private ImmutableDictionary<string, FeatureFlag> _flags = ImmutableDictionary<string, FeatureFlag>.Empty;
 public bool IsOn(string name) => _flags.TryGetValue(name, out var f) && f.Enabled;           // no lock
@@ -275,7 +275,7 @@ A Channel is an async queue between code that produces work and code that proces
 
 `Channel<T>` is the async-aware queue that connects a producer doing one job to one or more consumers doing another, with built-in backpressure:
 
-```csharp
+```csharp norun
 var channel = Channel.CreateBounded<ImportRow>(new BoundedChannelOptions(1_000)
 {
     FullMode = BoundedChannelFullMode.Wait,        // producer awaits when full: backpressure
@@ -310,7 +310,7 @@ Parallel loops split CPU-heavy work across all cores. They don't help with I/O, 
 
 Everything above this point has mostly been about *correctness* under concurrency. This last tool is about *speed*: deliberately spreading genuinely CPU-bound work — not I/O waiting, actual computation — across multiple cores at once.
 
-```csharp
+```csharp norun
 // Synchronous CPU work across cores
 Parallel.For(0, images.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i =>
     thumbnails[i] = Resize(images[i]));          // each index written by one iteration: no shared mutable state
@@ -390,7 +390,7 @@ Someone rewrote a loop with Span. The page is still slow. [Episode 3 · Measure,
 
 Run with `dotnet run` (a plain console app, .NET 8/9; `System.Collections.Concurrent` and `System.Threading.Channels` are part of the BCL, no extra packages). It reproduces the race condition, then shows `Interlocked`, `lock` and `ConcurrentDictionary` all fixing it exactly; verifies `SemaphoreSlim(n)` genuinely caps concurrency at `n`; verifies a bounded `Channel<T>` applies real backpressure while still delivering every item; and verifies consistent lock ordering avoids a deadlock that a real two-lock deadlock would otherwise hang on. Deliberately reproducing a `volatile`-missing infinite loop or an actual deadlock on demand is timing/JIT-dependent and not something it's safe to force in a short script, so those are described rather than triggered — see Further reading.
 
-```csharp
+```csharp norun
 // Verify this chapter: run with `dotnet run`. No external packages needed
 // (System.Threading, System.Collections.Concurrent and System.Threading.Channels
 // are all part of the BCL).

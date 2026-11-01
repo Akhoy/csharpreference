@@ -85,29 +85,6 @@
     key: 'Prefer managed services; build stateless so you can scale out.'
   });
 
-  S.scene({
-    id: 'docker', part: 'p8', title: 'Ship the whole box',
-    hook: '"It works on my machine." Production has a different runtime and libraries.',
-    a: [
-      ['pill', 'l0', 150, 280, 'Base OS (chiseled)', { w: 200 }],
-      ['pill', 'l1', 150, 240, 'ASP.NET runtime', { w: 200 }],
-      ['pill', 'l2', 150, 200, 'Your published app', { w: 200 }],
-      ['pill', 'w', 150, 160, 'writable layer', { w: 200, o: 0, c: 'warn' }],
-      ['txt', 'img', 150, 320, 'image = read-only layers', { mono: true }],
-      ['box', 'sdk', 470, 80, 'Build stage', { sub: 'sdk image, ~800 MB', w: 190 }],
-      ['box', 'rt', 470, 210, 'Final image', { sub: 'runtime only, small', w: 190, c: 'ok' }],
-      ['arr', 'cp', 'sdk', 'rt', 'COPY --from=build', { o: 0 }],
-      ['pill', 'sig', 470, 315, 'ENTRYPOINT ["dotnet", "Kettle.dll"]', { o: 0, c: 'why' }]
-    ],
-    b: [
-      { say: 'An **image** packs the app with its runtime and OS libraries, as stacked read-only layers.', pulse: ['l0', 'l1', 'l2'] },
-      { say: 'A **container** is a running image plus one thin writable layer. Same image on a laptop and in production.', show: ['w'] },
-      { say: 'A **multi-stage** build compiles with the big SDK image and ships only the output.', show: ['cp'] },
-      { pro: true, say: 'Use the JSON form of `ENTRYPOINT` so `dotnet` is process 1 and receives `SIGTERM` for a graceful shutdown. .NET reads the container\'s CPU and memory limits.', show: ['sig'], pulse: ['sig'] }
-    ],
-    key: 'Build once, small and non-root; the same image runs everywhere.'
-  });
-
   const comp = [['VMs', 'full control'], ['AKS', 'Kubernetes'], ['Container Apps', 'containers'], ['App Service', 'web apps'], ['Functions', 'event code']];
   S.scene({
     id: 'azure-compute', part: 'p8', title: 'Where Kettle runs',

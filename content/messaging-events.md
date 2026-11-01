@@ -125,7 +125,7 @@ Duplicates aren't a quality-of-implementation problem — they're unavoidable. A
 
 ## The dual-write problem and the transactional outbox {a}
 
-```csharp
+```csharp norun
 // ✘ Two separate writes: no transaction spans the database AND the broker
 db.Orders.Add(order);
 await db.SaveChangesAsync(ct);                       // 1. committed
@@ -147,7 +147,7 @@ This is the **dual-write problem**. Swapping the order of the two writes doesn't
 
 Follow exactly how this closes the gap the naive code left open: the `Orders` insert and the `OutboxMessages` insert are now part of **one** atomic transaction, so there is no longer a window where the order exists but the event doesn't, or vice versa. The relay's own publish can still fail and retry — but that's fine, because it's now publishing from durable, already-committed data, and retrying a publish that already succeeded is just another instance of the at-least-once guarantee this chapter already accepted as the baseline.
 
-```csharp
+```csharp norun
 public sealed class OutboxRelay(IServiceScopeFactory scopes, IMessagePublisher publisher, ILogger<OutboxRelay> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -189,7 +189,7 @@ Make processing the same message twice harmless — not by preventing duplicates
 | **Version checks** | Apply an update only if the entity is still at the expected version |
 | **Broker duplicate detection** | Service Bus duplicate detection by `MessageId` within a time window (helps with producer retries, not consumer crashes) |
 
-```csharp
+```csharp norun
 public sealed class ChargeOnOrderPlaced(KettleDb db, IPaymentGateway payments) : IConsumer<OrderPlaced>
 {
     public async Task Consume(ConsumeContext<OrderPlaced> ctx)
@@ -257,7 +257,7 @@ A message that keeps failing is retried a few times, then moved to a dead-letter
 - **Dead-letter queue (DLQ)**: after N failed attempts, move the message aside so it doesn't block the queue or burn resources (a **poison message**). Alert on DLQ depth; inspect, fix, then **resubmit**.
 - Distinguish **transient** errors (retry) from **permanent** ones (validation failure or unknown entity: dead-letter immediately, no point retrying).
 
-```csharp
+```csharp norun
 // MassTransit retry/redelivery configuration
 cfg.ReceiveEndpoint("billing-order-placed", e =>
 {
@@ -302,7 +302,7 @@ Orchestrated order saga (state machine):
   Timeout after 15 min in any state → compensate → [Cancelled]
 ```
 
-```csharp
+```csharp norun
 // MassTransit state machine saga (persisted with EF Core)
 public sealed class OrderSaga : MassTransitStateMachine<OrderState>
 {
@@ -352,7 +352,7 @@ Using the raw broker SDKs (`Azure.Messaging.ServiceBus`, `RabbitMQ.Client`, `Con
 | **Rebus**, **Brighter** | Open-source alternatives |
 | **Dapr pub/sub** | A sidecar abstraction over many brokers |
 
-```csharp
+```csharp norun
 // Raw Service Bus SDK (minimal)
 await using var client = new ServiceBusClient("kettle.servicebus.windows.net", new DefaultAzureCredential());
 await using var sender = client.CreateSender("orders");

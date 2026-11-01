@@ -19,6 +19,10 @@ next: app-models, resilience, microservices
 - POST isn't idempotent by default; fix that for payments/writes with an **idempotency key**. Fix "last write wins" conflicts with **ETags** (optimistic concurrency).
 - Version only when a change would break an existing client's assumptions; additive, optional changes usually don't need a new version.
 
+:::note What you need first
+- **[Building APIs: Minimal APIs, Controllers, Binding, Validation and Filters](ch:building-apis)**: endpoints bind request data to parameters and turn return values into HTTP responses, usually JSON.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle's API works for the web team. The mobile team isn't happy: retries create duplicate orders, there's no paging, and every endpoint names things differently.
@@ -28,6 +32,10 @@ Kettle's API works for the web team. The mobile team isn't happy: retries create
 **This episode:** HTTP semantics, idempotency keys, pagination, versioning and ETags.
 
 ## REST in one page {b}
+
+:::plain
+REST means modelling your API as resources (orders, teas) at URLs, and using standard HTTP methods and status codes on them, so clients can understand it without reading your code.
+:::
 
 **REST** (Representational State Transfer) is an architectural style for HTTP APIs, built around a small set of ideas:
 
@@ -42,6 +50,10 @@ The **Richardson Maturity Model** gives a way to measure how far along this spec
 
 ## HTTP methods: the promises hiding behind "safe" and "idempotent" {b}
 
+:::plain
+GET reads and changes nothing. PUT and DELETE can be repeated safely with the same result. POST creates or does something, and repeating it might do it twice.
+:::
+
 | Method | Purpose | Request body | Safe | Idempotent | Typical success |
 |---|---|---|---|---|---|
 | **GET** | Read a resource/collection | No | ✔ | ✔ | 200 |
@@ -55,6 +67,10 @@ The **Richardson Maturity Model** gives a way to measure how far along this spec
 Two columns in that table carry more weight than they look. **Safe** means the method doesn't change server state at all — which is exactly why browsers, crawlers, and CDN prefetchers feel free to call GET requests speculatively, without asking: nothing bad can happen if GET runs twice, or zero times, or in a different order than you expected. **Idempotent** is a related but distinct promise: making the same request *N* times has the same effect on the server as making it once — though the *response itself* may legitimately differ, since a second `DELETE` on an already-deleted resource might reasonably return 404 instead of 204. Here's why this distinction earns its own row in the table rather than being a footnote: idempotency is exactly what makes **retries safe**. A client, a proxy, or a resilience policy can automatically retry an idempotent request after a timeout without worrying about double effects — which is precisely why `POST`, being neither safe nor idempotent by default, needs the special handling covered later in this chapter under idempotency keys.
 
 ## Status codes you must know {b}
+
+:::plain
+The status code tells the client what happened: 2xx it worked, 4xx the client did something wrong, 5xx the server failed. A handful cover almost every case.
+:::
 
 | Code | Name | When |
 |---|---|---|
@@ -81,6 +97,10 @@ Return errors as **ProblemDetails** ([Errors & logging](ch:errors-logging)). Whi
 
 ## Resource and URL design {b}
 
+:::plain
+URLs name things, not actions: `/orders/42`, not `/getOrder?id=42`. Use plural nouns, nest only for real ownership, and keep them stable.
+:::
+
 ```text
 ✔ GET    /orders                      list (filter/sort/page with query params)
 ✔ GET    /orders/42                   one order
@@ -100,7 +120,11 @@ The last two "wrong" examples share a root cause worth naming: both are reaching
 
 ## Pagination, filtering and sorting: never return an unbounded list {i}
 
-```csharp
+:::plain
+Never return every row. Return a page at a time, with a way to get the next page, and let clients filter and sort on the server.
+:::
+
+```csharp norun
 public sealed record PageRequest(int Page = 1, int PageSize = 20)
 {
     public int Size => Math.Clamp(PageSize, 1, 100);       // cap the page size server-side
@@ -124,7 +148,7 @@ There are two genuinely different strategies for paging through a collection, an
 
 Trace through why offset pagination degrades: `OFFSET 40` doesn't mean "jump straight to row 41" — the database still has to walk through and discard the first 40 rows before it can start returning anything, so page 1,000 of a million-row table does real, scanning work for every single request, no matter how good the index is. Keyset pagination sidesteps this entirely by asking a different question — "give me rows after this specific key" — which the index answers directly, in roughly constant time regardless of how deep you are.
 
-```csharp
+```csharp norun
 app.MapGet("/products", async ([AsParameters] ProductQuery q, KettleDb db, CancellationToken ct) =>
 {
     var query = db.Products.AsNoTracking();
@@ -149,6 +173,10 @@ Building an `OrderBy` clause directly from an arbitrary field name a client sent
 
 ## Updates: PUT vs PATCH {i}
 
+:::plain
+PUT replaces the whole resource with what you send. PATCH changes only the fields you send.
+:::
+
 - **PUT** replaces the whole representation. Omitted fields are reset, so clients must send everything — which is exactly what makes it idempotent: sending the same full representation twice leaves the resource in the same state both times.
 - **PATCH** changes only what's sent, and comes in two standard shapes:
   - **JSON Merge Patch** (RFC 7396, `application/merge-patch+json`): send a partial object, `null` means remove. Simple and common.
@@ -158,6 +186,10 @@ Many APIs sidestep generic PATCH for business operations entirely, preferring **
 
 ## Idempotency keys for POST: making the one unsafe-by-default method safe to retry {a}
 
+:::plain
+If a client retries a POST because it never got the answer, the order could be placed twice. An idempotency key lets the server recognise the retry and return the first result.
+:::
+
 POST isn't idempotent, and that has a sharp real-world consequence: a client that sends a payment request, times out waiting for a response, and retries — reasonably, since it has no way to know whether the first attempt succeeded — may end up **charging the customer twice**. The standard fix, used by Stripe and most serious payment APIs, is an **idempotency key**: a client-generated identifier that makes the *second* identical request a no-op rather than a second charge.
 
 ```http
@@ -165,7 +197,7 @@ POST /payments
 Idempotency-Key: 4f9d2c1e-8b6a-4c51-9a77-1c2e3d4f5a6b
 ```
 
-```csharp
+```csharp norun
 app.MapPost("/payments", async ([FromHeader(Name = "Idempotency-Key")] Guid key, PaymentRequest req, IIdempotencyStore store, IPayments payments, CancellationToken ct) =>
 {
     if (await store.TryGetAsync(key, ct) is { } previous)
@@ -184,6 +216,10 @@ Three details in that code are each guarding against a specific failure mode: st
 
 ## Optimistic concurrency with ETags {a}
 
+:::plain
+An ETag is a version stamp on a resource. A client sends it back when updating, and if someone else changed the resource in the meantime, the update is refused instead of silently overwriting their change.
+:::
+
 A different concurrency problem: two *different* clients editing the same resource, where whichever one saves last silently overwrites the other's changes — a **lost update**. ETags solve this by making "has this changed since I last read it?" a question the server can answer cheaply:
 
 ```text
@@ -195,6 +231,10 @@ PUT /orders/42  If-Match: "v7"   → 412 Precondition Failed   (someone saved v8
 Walk through what's actually happening: the client's `GET` captured the resource's version at that moment. Its later `PUT` says, in effect, "apply this change, but only if the version is still what I last saw" — and if someone else saved in between, the version has moved on to `v8`, the precondition fails, and the server refuses the write rather than silently clobbering the intervening change. This maps directly onto EF Core's `rowversion` concurrency token, covered in [EF Core advanced](ch:efcore-advanced) — the ETag is really just that token, surfaced over HTTP. As a bonus, the same mechanism works for reads too: a `GET` with `If-None-Match: "v8"` returns a bodyless **304 Not Modified** when nothing has changed, saving bandwidth on every request where the client's cached copy is still current.
 
 ## Long-running operations {a}
+
+:::plain
+When work takes too long for one request, accept it with 202, return a URL where the client can check progress, and let it fetch the result later.
+:::
 
 Work that genuinely takes longer than a reasonable HTTP request — more than a few seconds — shouldn't hold the connection open waiting. The pattern mirrors the "defer and poll" idea from [Background work](ch:background-work#work-that-shouldnt-make-a-request-wait):
 
@@ -210,6 +250,10 @@ Where polling itself is too chatty or too slow to notice completion, the alterna
 
 ## Versioning: deciding what counts as a promise you can't break {i}
 
+:::plain
+Once clients depend on your API, changes must not break them. Add things freely; when you must break something, publish a new version alongside the old one.
+:::
+
 The question to ask before anything else here: does this change break an existing client's reasonable assumptions? Removing or renaming a field or endpoint does. Changing a field's type or meaning does. Making a previously optional input required does. Changing an error code a client might be branching on does. **Adding** a new optional field or a new endpoint does **not** break anything — provided clients are built to ignore fields they don't recognise, which is worth stating explicitly in your API's own documentation so clients actually do it.
 
 | Strategy | Example | Pros | Cons |
@@ -219,7 +263,7 @@ The question to ask before anything else here: does this change break an existin
 | Header | `Api-Version: 2` | Clean URLs | Less discoverable; harder to test in a browser |
 | Media type | `Accept: application/vnd.kettle.v2+json` | Most "RESTful" | Complex for clients |
 
-```csharp
+```csharp norun
 builder.Services.AddApiVersioning(o =>
 {
     o.DefaultApiVersion = new ApiVersion(1, 0);
@@ -239,9 +283,13 @@ Whichever breaking change eventually forces a new version, have a **deprecation 
 
 ## OpenAPI documentation {b}
 
+:::plain
+OpenAPI is a standard description of your API: its URLs, inputs and outputs. ASP.NET Core can generate it, and tools turn it into documentation, test UIs and client code.
+:::
+
 **OpenAPI** (formerly Swagger) is a machine-readable description of your API — endpoints, parameters, schemas, responses, and auth requirements, all in one document. Once that description exists, a surprising amount becomes possible almost for free: interactive docs, client SDK generation (Kiota, NSwag), contract testing, gateway import (Azure API Management), and automated breaking-change detection in CI by diffing one version's spec against the next.
 
-```csharp
+```csharp norun
 builder.Services.AddOpenApi(o =>                       // Microsoft.AspNetCore.OpenApi (.NET 9+), built in
 {
     o.AddDocumentTransformer((doc, ctx, ct) => { doc.Info.Title = "Kettle API"; return Task.CompletedTask; });
@@ -313,7 +361,7 @@ Kettle needs an admin site, live order tracking and fast internal calls. [Episod
 
 Run with `dotnet run` (plain console app, .NET 8/9, no packages). It checks the claims that are actually checkable in isolated code: idempotency-key replay, offset-vs-keyset pagination cost shape, and ETag-style optimistic concurrency. Claims about HTTP method semantics, status codes and versioning are protocol conventions, not something a console program can "run" — see Further reading above for the specs they come from.
 
-```csharp
+```csharp norun
 using System.Collections.Concurrent;
 
 // --- Idempotency key: second request with the same key replays the first response, doesn't recharge ---

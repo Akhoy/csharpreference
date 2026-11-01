@@ -53,6 +53,12 @@ Every act has the same three layers. A **plain-words** box says the idea in two 
 | **DLR** | The Dynamic Language Runtime, which decides what a `dynamic` call means while the program runs. |
 | **SIMD** | "Single instruction, multiple data": one CPU instruction that works on 4, 8 or 16 numbers at once. |
 
+:::note What you need first
+- **[Types: Copied or Shared? (Value vs Reference)](ch:type-system)**: value types are copied, reference types are shared through a reference; classes, structs and records differ in exactly that.
+- **[Generics: Write It Once, for Any Type](ch:generics)**: `List<T>` and friends work for any type `T` while staying type-checked, and constraints say what `T` must support.
+- **[Async and Await: Don't Hold a Thread While You Wait](ch:async-await)**: `await` waits for a `Task` without blocking a thread, so one server thread can serve many requests while they wait on I/O.
+:::
+
 ## Previously, and the night ahead {b}
 
 In [Episode 9](ch:modern-csharp) Kettle's code got safer and shorter. Kettle is a real business now: a warehouse, a nightly supplier feed, an admin team and a finance department. Over one night and the following day, seven things go wrong. Each one hits a limit of the "normal" C# from Episodes 1–9, and each one has an advanced tool built for exactly that limit.

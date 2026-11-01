@@ -19,6 +19,12 @@ next: errors-logging, api-design, app-architectures
 - **Filters** run inside endpoint execution and see the bound, typed arguments — middleware never does, because it runs before model binding happens.
 - Never bind a request body directly to an EF Core entity ("over-posting") and never return one either — always go through a DTO you control.
 
+:::note What you need first
+- **[Routing and Endpoints](ch:routing)**: routing matches a request's URL and method to an endpoint and extracts values such as `{id}` from the URL.
+- **[Dependency Injection in Depth](ch:dependency-injection)**: classes ask for what they need in their constructor, and the container supplies it with the right lifetime: singleton, scoped or transient.
+- **[Modern C#: Let the Compiler Catch It (Nullability, Patterns, Records)](ch:modern-csharp)**: records, nullable reference types, pattern matching and primary constructors are the everyday syntax of current C#.
+:::
+
 ## Previously at Kettle {b}
 
 Requests reach the right handler. The handlers themselves are a mess: they parse JSON by hand, validate nothing and return 200 for everything.
@@ -29,18 +35,22 @@ Requests reach the right handler. The handlers themselves are a mess: they parse
 
 ## Two syntaxes, the same machinery underneath {b}
 
+:::plain
+You can write endpoints as minimal APIs (a `MapGet` call with a function) or as controllers (classes with action methods). Both use the same routing, binding and JSON underneath.
+:::
+
 Everything in the previous two chapters — the pipeline, the routing match — ends at exactly the same place: your code, deciding what to actually do with a request. ASP.NET Core gives you two different *syntaxes* for writing that code, and it's worth being clear up front that they are genuinely just syntax: both run on the same routing, the same DI container, the same authentication and the same middleware pipeline.
 
 **Minimal APIs** (since .NET 6) map routes directly to functions:
 
-```csharp
+```csharp norun
 app.MapGet("/products/{id:int}", async (int id, KettleDb db, CancellationToken ct) =>
     await db.Products.FindAsync([id], ct) is { } p ? Results.Ok(p) : Results.NotFound());
 ```
 
 **Controllers** (MVC) are classes with action methods and attributes:
 
-```csharp
+```csharp norun
 [ApiController]
 [Route("products")]
 public class ProductsController(KettleDb db) : ControllerBase
@@ -71,11 +81,15 @@ The difference between them isn't capability — it's how much ceremony you acce
 
 ## Minimal APIs in depth {b}
 
+:::plain
+A minimal API endpoint is a URL, an HTTP method and a function. The function's parameters are filled from the request, and whatever it returns becomes the response.
+:::
+
 ### Handler shapes
 
 A minimal-API handler can be as small as a one-liner or a reference to a plain static method — the framework infers a response from whatever you return:
 
-```csharp
+```csharp norun
 app.MapGet("/", () => "Hello");                                    // returns string → text/plain 200
 app.MapGet("/now", () => new { Utc = DateTime.UtcNow });           // returns object → JSON 200
 app.MapGet("/r", () => Results.Redirect("/"));                     // returns IResult → full control
@@ -87,7 +101,7 @@ app.MapMethods("/ping", ["GET", "HEAD"], () => "pong");
 
 The lambda style above is great for a demo and genuinely bad for a real app with eighty endpoints crammed into one file. The fix is the same one [Routing](ch:routing#route-groups-shared-prefix-shared-rules-written-once) already introduced: group endpoints by feature, behind an extension method, so `Program.cs` reads as a table of contents rather than a wall of lambdas:
 
-```csharp
+```csharp norun
 public static class OrderEndpoints
 {
     public static IEndpointRouteBuilder MapOrderEndpoints(this IEndpointRouteBuilder app)
@@ -129,6 +143,10 @@ Some teams reach for libraries such as **Carter** or **FastEndpoints** to push t
 
 ## Returning results: what each return type actually produces {b}
 
+:::plain
+Return an object and it becomes JSON with status 200. Return a `Results.*` value (or `TypedResults`) to choose the status code, such as 201 Created or 404 Not Found.
+:::
+
 | Return | Status | Notes |
 |---|---|---|
 | `string` | 200 text/plain | |
@@ -140,7 +158,7 @@ Some teams reach for libraries such as **Carter** or **FastEndpoints** to push t
 
 The reason to prefer **`TypedResults`** over plain `Results` isn't style — it's that the handler's *return type* becomes a literal, checked-by-the-compiler contract. Look back at `GetById` above: its signature, `Task<Results<Ok<OrderDto>, NotFound>>`, states in the type system itself that this endpoint produces exactly one of two shapes, nothing else. OpenAPI documentation generation reads that type and produces accurate response docs with zero extra annotation, and unit tests get a concrete type to assert against instead of inspecting an opaque `IResult`:
 
-```csharp
+```csharp norun
 // Unit testing a handler is trivial because it's just a static method returning typed results
 var result = await OrderEndpoints.GetById(42, fakeQueries, CancellationToken.None);
 var ok = Assert.IsType<Ok<OrderDto>>(result.Result);
@@ -148,6 +166,10 @@ Assert.Equal(42, ok.Value!.Id);
 ```
 
 ## Parameter binding: how request data becomes a C# argument {b}
+
+:::plain
+Each handler parameter is filled from somewhere in the request: the route, the query string, headers, the JSON body, or the DI container. ASP.NET Core decides by the parameter's type and attributes.
+:::
 
 Binding is the step that turns pieces of the raw HTTP request into the actual values your handler's parameters receive. The framework infers *where* to look for each parameter based on its type and name, and you can always override the inference with an explicit attribute:
 
@@ -163,7 +185,7 @@ Binding is the step that turns pieces of the raw HTTP request into the actual va
 | Special types | `HttpContext`, `HttpRequest`, `HttpResponse`, `ClaimsPrincipal`, `CancellationToken`, `Stream`, `PipeReader` | via `HttpContext` / parameters |
 | Group many | `[AsParameters] MyQuery q` | complex type with `[FromQuery]` |
 
-```csharp
+```csharp norun
 public record OrderQuery(
     [FromQuery] int Page = 1,
     [FromQuery] int PageSize = 20,
@@ -187,11 +209,15 @@ Here's the trap, concretely: bind the request body directly to your **EF Core en
 
 ## Validation: catching bad input before it reaches business logic {i}
 
+:::plain
+Check incoming data at the edge and reply with a clear 400 error listing what's wrong, so your business code only ever sees valid input.
+:::
+
 The goal here is simple to state: validate input **at the edge**, before anything downstream has to deal with it, and when it fails, respond with a **400** carrying `ValidationProblemDetails` — an RFC 9457 JSON body listing which fields were wrong and why.
 
 ### Option 1: Data annotations
 
-```csharp
+```csharp norun
 public sealed record CreateProductRequest(
     [property: Required, StringLength(100, MinimumLength = 2)] string Name,
     [property: Range(0.01, 1_000_000)] decimal Price,
@@ -205,7 +231,7 @@ public sealed record CreateProductRequest(
 
 Data annotations are fine for simple per-field rules. But they genuinely can't express "this order needs at least one line" or "look up this SKU in the catalog and confirm it exists" — rules that need to see the whole object, or need a dependency like a database lookup. FluentValidation is the common answer:
 
-```csharp
+```csharp norun
 public sealed class CreateOrderValidator : AbstractValidator<CreateOrderRequest>
 {
     public CreateOrderValidator(IProductCatalog catalog)
@@ -235,11 +261,15 @@ Both matter, and the line between them is where they *live*, not just what statu
 
 ## Filters: seeing the handler's actual typed arguments {i}
 
+:::plain
+An endpoint filter runs around one handler and sees its real arguments and result, which makes it a good place for validation or logging that's specific to some endpoints.
+:::
+
 Here's the capability middleware fundamentally can't give you — and the reason filters exist as a separate mechanism. Filters run **inside** endpoint execution, wrapped directly around your handler, after model binding has already happened. So they can see the bound, typed arguments and the handler's result. Middleware, sitting outside all of this, only ever sees raw HTTP.
 
 ### Endpoint filters (minimal APIs)
 
-```csharp
+```csharp norun
 public sealed class ValidationFilter<T>(IValidator<T> validator) : IEndpointFilter where T : class
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext ctx, EndpointFilterDelegate next)
@@ -283,7 +313,7 @@ Request ─▶ [Authorization filters] ─▶ [Resource filters (before)] ─▶
 | Exception | `IExceptionFilter` | Translate exceptions from actions (prefer `IExceptionHandler` globally) |
 | Result | `IResultFilter` | Modify or wrap results, add headers |
 
-```csharp
+```csharp norun
 public sealed class TransactionFilter(KettleDb db) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)
@@ -302,9 +332,13 @@ Filters can be attached at three scopes — global, controller, and action — a
 
 ## JSON with System.Text.Json: the defaults and how to bend them {i}
 
+:::plain
+ASP.NET Core reads and writes JSON with System.Text.Json, using camelCase names by default. You can change naming, enum handling, nulls and more in one place.
+:::
+
 ASP.NET Core serializes with **System.Text.Json** by default, chosen specifically for being fast, low-allocation, and UTF-8 based rather than working through an intermediate string encoding. Its web-specific defaults: **camelCase** property names, case-insensitive reading on the way in, and numbers accepted even when they arrive as JSON strings.
 
-```csharp
+```csharp norun
 builder.Services.ConfigureHttpJsonOptions(o =>          // minimal APIs
 {
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());     // enums as "Paid" not 2
@@ -334,6 +368,10 @@ Return an EF Core entity with its navigation properties intact — `Order.Custom
 :::
 
 ## Content negotiation, formats and streaming {a}
+
+:::plain
+Clients can ask for different formats, and you can stream large or never-ending results (`IAsyncEnumerable`) instead of building the whole response in memory first.
+:::
 
 - Controllers honour the `Accept` header through output formatters (`AddXmlSerializerFormatters()`); minimal APIs always return JSON unless you explicitly return a different `IResult`.
 - Return files with `Results.File(bytes, "application/pdf", "invoice.pdf")` or `Results.Stream(stream, …)`; use `PhysicalFile` for files on disk, which adds HTTP range support for free.
@@ -374,9 +412,13 @@ Rules that keep mapping honest:
 
 ## Putting it together: a handler that stays genuinely thin {i}
 
+:::plain
+A good handler only translates: it takes the bound input, calls one piece of application code, and maps the result to an HTTP response. The real logic lives elsewhere and is easy to test.
+:::
+
 Pull the threads of this chapter together into one realistic endpoint, and notice what it deliberately does *not* do:
 
-```csharp
+```csharp norun
 // Endpoint (presentation): HTTP concerns only
 static async Task<Results<Created<OrderDto>, ValidationProblem, Conflict<ProblemDetails>>> PlaceOrder(
     PlaceOrderRequest req, IValidator<PlaceOrderRequest> validator, IPlaceOrderHandler handler, ClaimsPrincipal user, CancellationToken ct)
@@ -454,7 +496,7 @@ A customer sees a stack trace, and the logs are unsearchable text. [Episode 7 ·
 
 Run with `dotnet run` in a console project (`dotnet new web`, then `dotnet add package Microsoft.AspNetCore.TestHost`). It checks response content types, `TypedResults` status codes, parameter binding, an endpoint filter short-circuiting on the typed argument, and the over-posting problem itself.
 
-```csharp
+```csharp norun
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;

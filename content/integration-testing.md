@@ -79,7 +79,7 @@ WebApplicationFactory starts your real Program.cs inside the test process, with 
 
 `Microsoft.AspNetCore.Mvc.Testing` boots your **real `Program.cs`** in memory on a **TestServer** (no network ports) and gives you an `HttpClient` wired straight into the pipeline.
 
-```csharp
+```csharp norun
 // Make Program visible to the test project (top-level statements generate an internal Program class)
 public partial class Program;     // at the bottom of Program.cs
 
@@ -103,7 +103,7 @@ The reason this test is worth more than it looks: everything runs **for real** â
 Tests can swap out only what they must, such as a payment provider or the clock, while keeping your own code and database real.
 :::
 
-```csharp
+```csharp norun
 public sealed class KettleApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly MsSqlContainer _sql = new MsSqlBuilder().WithImage("mcr.microsoft.com/mssql/server:2022-latest").Build();
@@ -140,7 +140,7 @@ The rule here: **only replace things that are external, slow, non-deterministic 
 
 ### Fake authentication
 
-```csharp
+```csharp norun
 public sealed class TestAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> o, ILoggerFactory l, UrlEncoder e)
     : AuthenticationHandler<AuthenticationSchemeOptions>(o, l, e)
 {
@@ -173,7 +173,7 @@ Testcontainers starts a real database in a throwaway Docker container for the te
 
 **Testcontainers for .NET** starts throwaway **Docker containers** (lightweight, isolated environments that run a piece of software â€” see [Docker](ch:docker) for the full picture) from tests: SQL Server, PostgreSQL, Redis, RabbitMQ, Azurite (Azure Storage), the Service Bus emulator, Cosmos DB emulator, Kafka, LocalStack.
 
-```csharp
+```csharp norun
 private readonly PostgreSqlContainer _pg = new PostgreSqlBuilder().WithImage("postgres:17-alpine").Build();
 private readonly RedisContainer _redis = new RedisBuilder().Build();
 ```
@@ -187,7 +187,7 @@ Starting a container takes seconds, which is long enough that doing it per-test 
 | Unique data per test | Each test creates its own customer/tenant IDs | No reset needed; tests can run in parallel |
 | DB snapshot/restore or a fresh DB per class | Clone a template database | Isolation at a cost |
 
-```csharp
+```csharp norun
 [CollectionDefinition(nameof(ApiCollection))]
 public sealed class ApiCollection : ICollectionFixture<KettleApiFactory>; // one factory + container for all API tests
 
@@ -255,7 +255,7 @@ For third-party APIs, use a fake HTTP server or the vendor's sandbox, and check 
 | Cosmos DB | Cosmos DB emulator (Linux container) |
 | Identity provider | Fake auth handler, or a test token issuer |
 
-```csharp
+```csharp norun
 // MassTransit test harness: assert the endpoint published an event
 var harness = app.Services.GetTestHarness();
 await client.PostAsJsonAsync("/api/orders", request);
@@ -338,7 +338,7 @@ By the end of Part VII, Kettle's releases are boring, which is how releases shou
 
 The checks below build a real in-memory ASP.NET Core pipeline with `TestServer` (the same mechanism `WebApplicationFactory` boots underneath) and confirm middleware runs in order and a faked identity is still subject to a real authorization decision. No Docker needed. Save as a console app (`dotnet new console`, `dotnet add package Microsoft.AspNetCore.TestHost`), then `dotnet run`.
 
-```csharp
+```csharp norun
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;

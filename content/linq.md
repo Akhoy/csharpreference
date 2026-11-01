@@ -32,6 +32,11 @@ next: efcore-querying, async-await
 | **provider** | The thing that does that translation, such as EF Core. |
 | **expression tree** | A lambda stored as data, so a provider can read it. |
 
+:::note What you need first
+- **[Delegates: Passing Behaviour Around (Lambdas, Closures, Events)](ch:delegates-events)**: a delegate is a variable that holds a method, and a lambda (`x => x * 2`) is the short way to write one.
+- **[Collections: Pick the Container That Fits the Question](ch:collections)**: `List<T>` for ordered items, `Dictionary<TKey,TValue>` for lookup by key, and `IEnumerable<T>` for anything you can loop over.
+:::
+
 ## Previously, and the problem {b}
 
 In [Episode 5](ch:collections) Kettle got fast lookups. Now the owner wants a report: *the top 3 customers by money spent on paid orders*. Here's the loop version:

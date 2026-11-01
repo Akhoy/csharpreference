@@ -35,6 +35,10 @@ next: generics, design-principles, dependency-injection
 | **inheritance** | One class building on another and reusing its code (`class GiftCard : PaymentMethod`). |
 | **polymorphism** | One method call that runs different code depending on the object's real type. |
 
+:::note What you need first
+- **[Types: Copied or Shared? (Value vs Reference)](ch:type-system)**: value types are copied, reference types are shared through a reference; classes, structs and records differ in exactly that.
+:::
+
 ## Previously, and the bug {b}
 
 In [Episode 1](ch:type-system) Kettle's baskets started copying properly. Now orders are being placed, and the database has two that should be impossible. One has a quantity of **−3**: the refund job saw a negative order and paid the "customer" £15. The other is marked *Shipped* but was never paid for, so a parcel of tea left the warehouse for free.
@@ -748,6 +752,53 @@ Both see 3. On a web server with a thousand shoppers, every header shows the tot
 :::qa What does sealed do, and why seal classes by default?
 `sealed` prevents inheritance. Sealing by default says the class wasn't designed for extension, which stops others depending on internals you may change. It also lets the JIT devirtualise and inline calls.
 :::
+
+## Attributes: labels that frameworks read {b}
+
+:::plain
+An attribute is a label in square brackets that you attach to a class, method or property. It does nothing by itself; a framework, the compiler or a tool looks for it and changes what it does.
+:::
+
+You'll meet attributes everywhere in .NET: `[Fact]` marks a test, `[HttpGet("/teas")]` maps a controller action to a URL, `[Required]` makes a property mandatory in validation, `[JsonPropertyName("id")]` renames a property in JSON, `[Obsolete]` makes the compiler warn anyone who still calls something.
+
+:::walk Making an attribute, and reading it back
+```csharp
+using System.Reflection;
+
+var tea = typeof(Tea).GetCustomAttribute<OnSaleAttribute>();
+Console.WriteLine(tea is null ? "Tea: full price" : $"Tea: {tea.PercentOff}% off");
+
+var coffee = typeof(Coffee).GetCustomAttribute<OnSaleAttribute>();
+Console.WriteLine(coffee is null ? "Coffee: full price" : $"Coffee: {coffee.PercentOff}% off");
+
+[OnSale(PercentOff = 10)]
+class Tea { }
+
+class Coffee { }
+
+[AttributeUsage(AttributeTargets.Class)]
+class OnSaleAttribute : Attribute
+{
+    public int PercentOff { get; init; }
+}
+```
+@14-18 | -
+An attribute is just a class that inherits from `Attribute`. By convention its name ends in `Attribute`, which you can leave off when using it. `AttributeUsage` (itself an attribute) says it may only go on classes.
+@9-10 | -
+Put the label on `Tea`. The compiler stores it in the assembly's **metadata**, next to the type. No code runs, and `Tea` itself doesn't change.
+@3 | tea = → OnSaleAttribute { PercentOff = 10 }
+At run time, **reflection** asks the type for its attributes. This is what frameworks do: xUnit looks for `[Fact]`, ASP.NET Core looks for `[HttpGet]`.
+@4 | | > Tea: 10% off
+The code behaves differently because of the label it found.
+@6 | coffee = null
+`Coffee` has no label, so there's nothing to find.
+@7 | | > Coffee: full price
+Same code, different metadata, different result.
+:::
+
+- **Attribute arguments must be constants** (numbers, strings, `typeof(...)`, enums), because they're stored in metadata at compile time. You can't pass a `DateTime.Now` or an object.
+- **Reading attributes uses reflection**, which is slow compared with ordinary code. Frameworks read them once at startup and cache the result. Source generators can read them at **compile time** instead, with no runtime cost, which is how `System.Text.Json`'s source generator and many modern libraries work ([Advanced C#: reflection](ch:advanced-csharp)).
+- **Some attributes are for the compiler only**: `[Obsolete]`, `[CallerMemberName]`, nullable-analysis attributes like `[NotNullWhen(true)]`. They change warnings and generated code, not run-time behaviour.
 
 ## The base of everything: System.Object {i}
 

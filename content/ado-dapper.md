@@ -45,7 +45,7 @@ Whichever way you query a .NET database — EF Core's LINQ, Dapper's SQL strings
 
 *Use `Microsoft.Data.SqlClient`, not the legacy `System.Data.SqlClient`.
 
-```csharp
+```csharp norun
 await using var conn = new SqlConnection(connectionString);          // borrows from the pool on Open
 await conn.OpenAsync(ct);
 
@@ -72,7 +72,7 @@ while (await reader.ReadAsync(ct))
 | `ExecuteNonQueryAsync` | Rows affected | INSERT/UPDATE/DELETE |
 
 :::gotcha Always parameterise
-```csharp
+```csharp norun
 var sql = $"SELECT * FROM Users WHERE Email = '{email}'";   // ✘ SQL injection: email = "' OR 1=1 --"
 cmd.Parameters.AddWithValue("@email", email);              // ✔ (prefer typed Add over AddWithValue to avoid type-inference issues)
 ```
@@ -89,7 +89,7 @@ The old disconnected in-memory model (`DataSet`, `DataTable`, `DataAdapter`) is 
 You start a transaction on the connection, attach it to every command that should be part of it, and then commit or roll back. Anything not attached runs outside it.
 :::
 
-```csharp
+```csharp norun
 await using var conn = new SqlConnection(cs);
 await conn.OpenAsync(ct);
 await using var tx = await conn.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
@@ -128,7 +128,7 @@ Inserting 100,000 rows one `INSERT` at a time takes minutes, because each one pa
 | EF Core `ExecuteUpdate`/`ExecuteDelete` | Fast for set-based updates | No entity loading |
 | Libraries (EFCore.BulkExtensions, linq2db) | Fast | Commercial licences for some |
 
-```csharp
+```csharp norun
 using var bulk = new SqlBulkCopy(conn) { DestinationTableName = "StagingPrices", BatchSize = 10_000 };
 bulk.ColumnMappings.Add("Sku", "Sku");
 bulk.ColumnMappings.Add("Price", "Price");
@@ -144,7 +144,7 @@ Dapper runs the SQL you write and copies each row's columns onto your objects' p
 
 **Dapper** (by Stack Overflow) is, at its core, just a set of extension methods on `IDbConnection`. The division of labour it offers is deliberately minimal: **you write the SQL; Dapper maps the resulting rows to objects** (and your objects to parameters), with performance close enough to hand-written ADO.NET that the difference rarely matters. There's no change tracking, no LINQ translation layer, and no migrations — Dapper simply isn't trying to be a full ORM.
 
-```csharp
+```csharp norun
 await using var conn = new SqlConnection(cs);      // Dapper opens/closes it if it's closed
 
 // Query → IEnumerable<T>; anonymous object → parameters
@@ -177,7 +177,7 @@ Dapper can also split one row across several objects, read several result sets f
 
 The one thing Dapper's simplicity doesn't give you for free is what EF Core's navigation properties handle automatically — reconstructing a nested object from a flat, joined row. Multi-mapping is Dapper's answer:
 
-```csharp
+```csharp norun
 const string sql = """
     SELECT o.Id, o.Total, o.CreatedAt, c.Id, c.Name, c.Email
     FROM Orders o JOIN Customers c ON c.Id = o.CustomerId
@@ -194,7 +194,7 @@ var orders = await conn.QueryAsync<OrderView, CustomerView, OrderView>(
 
 ### Multiple result sets in one round trip
 
-```csharp
+```csharp norun
 using var multi = await conn.QueryMultipleAsync("""
     SELECT * FROM Orders WHERE Id = @id;
     SELECT * FROM OrderLines WHERE OrderId = @id;
@@ -207,7 +207,7 @@ This is worth reaching for specifically when an "order with its lines" screen wo
 
 ### Stored procedures, output parameters, transactions
 
-```csharp
+```csharp norun
 var p = new DynamicParameters();
 p.Add("@CustomerId", customerId);
 p.Add("@NewOrderId", dbType: DbType.Int32, direction: ParameterDirection.Output);
@@ -230,7 +230,7 @@ Map custom types (strongly typed IDs, JSON columns, `DateOnly` on older provider
 Register a factory that creates a new connection when asked, not a single shared connection. Each operation opens its own short-lived connection, and the pool makes that cheap.
 :::
 
-```csharp
+```csharp norun
 // Modern: DbDataSource (Npgsql) — a singleton factory for pooled connections
 builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Kettle")!);
 public sealed class ProductQueries(NpgsqlDataSource db)
@@ -306,7 +306,7 @@ Hand-written SQL for every insert and update is slow to write and easy to get wr
 
 Needs two packages: `dotnet add package Dapper` and `dotnet add package Microsoft.Data.Sqlite` in a new console project, then `dotnet run`. It uses an in-memory SQLite database to check raw ADO.NET parameterized commands, that parameterization defuses SQL-injection-shaped input, Dapper's column-to-object mapping, `IN` list expansion, multi-mapping with `splitOn`, `QueryMultipleAsync`, and `ExecuteAsync`'s affected-row count.
 
-```csharp
+```csharp norun
 using Dapper;
 using Microsoft.Data.Sqlite;
 

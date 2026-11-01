@@ -81,7 +81,7 @@ Checking that a user is logged in isn't enough. Every request must also check th
 
 The **#1 risk** in practice. An **IDOR** (Insecure Direct Object Reference, called **BOLA** in the API Top 10) is when an endpoint trusts an ID from the client without checking that the *caller* is actually allowed to see *that specific* resource:
 
-```csharp
+```csharp norun
 // ✘ Any authenticated user can read ANY order by changing the id
 app.MapGet("/orders/{id:int}", async (int id, KettleDb db) => await db.Orders.FindAsync(id)).RequireAuthorization();
 
@@ -106,7 +106,7 @@ Also: **function-level** checks (`/admin/*` must require an admin policy, not ju
 Never glue user input into SQL or commands. Send it as parameters, so it can only ever be data.
 :::
 
-```csharp
+```csharp norun
 // ✘ SQL injection: input = "x' OR '1'='1"  or  "'; DROP TABLE Orders; --"
 var sql = "SELECT * FROM Users WHERE Email = '" + email + "'";
 db.Users.FromSqlRaw(sql);
@@ -154,7 +154,7 @@ Let an identity provider handle sign-in where you can. If you store passwords, s
 - Check new passwords against breached-password lists (the Have I Been Pwned k-anonymity API); favour length over complexity rules (NIST SP 800-63B).
 - **Session/token hygiene:** short-lived access tokens, rotating refresh tokens, revocation on password change (security stamp), secure cookie flags (`HttpOnly`, `Secure`, `SameSite`).
 
-```csharp
+```csharp norun
 var hasher = new PasswordHasher<AppUser>();
 string hash = hasher.HashPassword(user, password);                       // includes algorithm version, salt, iterations
 var result = hasher.VerifyHashedPassword(user, hash, attempt);           // Success / SuccessRehashNeeded / Failed
@@ -175,7 +175,7 @@ Rules: **don't invent crypto**; use vetted libraries and current algorithms; man
 | Random tokens, API keys | `RandomNumberGenerator.GetBytes(32)` | `System.Random`, `Guid.NewGuid()` for secrets |
 | Comparing secrets | `CryptographicOperations.FixedTimeEquals` | `==` (timing attacks) |
 
-```csharp
+```csharp norun
 public sealed class InviteTokens(IDataProtectionProvider provider)
 {
     private readonly ITimeLimitedDataProtector _p = provider.CreateProtector("Kettle.Invites.v1").ToTimeLimitedDataProtector();
@@ -191,7 +191,7 @@ public sealed class InviteTokens(IDataProtectionProvider provider)
 Serve everything over HTTPS, tell browsers to insist on it, and send headers that turn on the browser's built-in protections.
 :::
 
-```csharp
+```csharp norun
 if (!app.Environment.IsDevelopment()) app.UseHsts();        // Strict-Transport-Security: browsers refuse plain HTTP
 app.UseHttpsRedirection();
 
@@ -222,7 +222,7 @@ Defences: allow-list domains and schemes; resolve DNS and **block private, link-
 Bind requests to DTOs with only the fields the client may set, and return DTOs with only the fields it may see.
 :::
 
-```csharp
+```csharp norun
 // ✘ Binding the entity: a client can send {"isAdmin": true, "balance": 1000000}
 app.MapPut("/users/{id}", async (int id, User input, KettleDb db) => { db.Update(input); await db.SaveChangesAsync(); });
 
@@ -247,7 +247,7 @@ Limit request sizes, rates, page sizes and timeouts, so one client can't use up 
 
 ## Secure file uploads {a}
 
-```csharp
+```csharp norun
 app.MapPost("/documents", async (IFormFile file, IBlobStore store, CancellationToken ct) =>
 {
     if (file.Length is 0 or > 10 * 1024 * 1024) return Results.BadRequest("File must be 1 byte–10 MB");
@@ -335,7 +335,7 @@ Kettle shouldn't store passwords at all. Let an identity provider do it. [Episod
 
 Run with `dotnet run` (a plain console app, .NET 8/9, only base-class-library crypto and regex APIs — no extra packages). It checks injection, password hashing, constant-time comparison, secure random tokens, file-signature validation and ReDoS mitigation directly. Things that need a live HTTP pipeline or browser to observe (CSRF cookie behavior, CSP/HSTS enforcement, SSRF against a real metadata endpoint) are left to the Further reading links instead of faked here.
 
-```csharp
+```csharp norun
 // Verify this chapter: run with `dotnet run`. No external packages needed
 // (uses only System.Security.Cryptography and System.Text.RegularExpressions
 // from the base class library -- the same primitives the chapter names).

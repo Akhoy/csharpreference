@@ -13,7 +13,7 @@ next: what-is-dotnet
 ## The 30-second version
 
 - Part I is that groundwork.
-- 3 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
+- 4 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
@@ -25,8 +25,9 @@ Two developers want to start an online tea shop called Kettle. Before they write
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
 | 1 | [One platform for every app](ch:what-is-dotnet) | Kettle needs a web API, a background worker and a command-line tool. | What .NET is, the runtime vs the SDK, .NET vs .NET Framework, and the release cycle |
-| 2 | [From C# to machine code](ch:how-code-runs) | The CPU cannot read C#. Something has to translate it. | Compilation to IL, assemblies and metadata, the JIT and its tiers, and Native AOT |
-| 3 | [Projects and packages](ch:projects-sdk-nuget) | Kettle needs other people's libraries, and a repeatable build. | Projects and solutions, the SDK and MSBuild, NuGet packages, and keeping versions consistent |
+| 2 | [Your first .NET app](ch:first-app) | Nobody on the team has created, debugged or published a .NET project. | Creating projects, Program.cs, namespaces, the C# you'll see early, dotnet watch, debugging, solutions, packages, tests, publishing |
+| 3 | [From C# to machine code](ch:how-code-runs) | The CPU cannot read C#. Something has to translate it. | Compilation to IL, assemblies and metadata, the JIT and its tiers, and Native AOT |
+| 4 | [Projects and packages](ch:projects-sdk-nuget) | Kettle needs other people's libraries, and a repeatable build. | Projects and solutions, the SDK and MSBuild, NuGet packages, and keeping versions consistent |
 
 ## How to read each episode {b}
 

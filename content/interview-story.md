@@ -1,26 +1,26 @@
 ---
 id: interview-story
-title: "Part XIII as One Story: Telling Kettle's Story"
-summary: "Read this first. You've now followed Kettle from a few lines of C# to a secure, observable cloud system. Interviews ask you to do that journey in 45 minutes on a whiteboard, and to explain every decision. Part XIII shows how. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part XV as One Story: Telling Kettle's Story"
+summary: "Read this first. You've now followed Kettle from a few lines of C# to a secure, observable cloud system. Interviews ask you to do that journey in 45 minutes on a whiteboard, and to explain every decision. Part XV shows how. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: cross
-where: Interview preparation › Start of Part XIII
-fits: "The doorway into Part XIII, Interview Preparation. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Interview preparation › Start of Part XV
+fits: "The doorway into Part XV, Interview Preparation. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
-prereqs: oauth-oidc-identity
+prereqs: capstone-wholesale
 next: system-design
 ---
 
 ## The 30-second version
 
-- Part XIII shows how.
+- Part XV shows how.
 - 2 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-You've now followed Kettle from a few lines of C# to a secure, observable cloud system. Interviews ask you to do that journey in 45 minutes on a whiteboard, and to explain every decision. Part XIII shows how.
+You've now followed Kettle from a few lines of C# to a secure, observable cloud system. Interviews ask you to do that journey in 45 minutes on a whiteboard, and to explain every decision. Part XV shows how.
 
-## The road through Part XIII {b}
+## The road through Part XV {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|

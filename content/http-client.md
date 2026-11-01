@@ -19,6 +19,11 @@ next: resilience, messaging-events, observability-aspire
 - **`DelegatingHandler`**s are middleware for outbound calls: auth tokens, correlation headers, logging, and resilience (retries, circuit breakers) all slot into the same chain.
 - Pass the incoming request's `CancellationToken` through to every outbound call, and read the error body before calling `EnsureSuccessStatusCode()` — it throws away any `ProblemDetails` the server sent you.
 
+:::note What you need first
+- **[Dependency Injection in Depth](ch:dependency-injection)**: classes ask for what they need in their constructor, and the container supplies it with the right lifetime: singleton, scoped or transient.
+- **[Async and Await: Don't Hold a Thread While You Wait](ch:async-await)**: `await` waits for a `Task` without blocking a thread, so one server thread can serve many requests while they wait on I/O.
+:::
+
 ## Previously at Kettle {b}
 
 Kettle knows who's calling. Kettle itself now calls a courier API and a payment provider, and under load it runs out of sockets.
@@ -29,7 +34,11 @@ Kettle knows who's calling. Kettle itself now calls a courier API and a payment 
 
 ## The basic calls {b}
 
-```csharp
+:::plain
+`HttpClient` sends HTTP requests and reads responses: `GetFromJsonAsync` to fetch and read JSON, `PostAsJsonAsync` to send it.
+:::
+
+```csharp norun
 var response = await http.GetAsync("https://api.github.com/repos/dotnet/runtime", ct);
 response.EnsureSuccessStatusCode();                                  // throws HttpRequestException on 4xx/5xx
 var repo = await response.Content.ReadFromJsonAsync<Repo>(ct);
@@ -49,6 +58,10 @@ Those calls look harmless, and they *are* harmless at this level of abstraction.
 
 ## What an HttpClient actually is, underneath {i}
 
+:::plain
+An `HttpClient` is a thin front over a handler that owns the real network connections. Connections are pooled and reused, which is why how you create clients matters.
+:::
+
 `HttpClient` isn't the thing doing the real work — it's a thin, friendly front end over a chain of **message handlers**:
 
 ```text
@@ -61,9 +74,13 @@ The expensive part — the thing that actually opens TCP connections, negotiates
 
 ## The two classic bugs, and why they're opposite mistakes {b}
 
+:::plain
+Creating a new client for every call can run out of network sockets. Keeping one client forever can miss DNS changes. The factory, or one long-lived client with a connection lifetime, fixes both.
+:::
+
 ### Bug 1: a new HttpClient per request → socket exhaustion
 
-```csharp
+```csharp norun
 public async Task<Rates> GetRatesAsync()
 {
     using var http = new HttpClient();               // ✘ new handler + new connection pool every call
@@ -75,7 +92,7 @@ This looks responsible — `using`, proper disposal, nothing left dangling. The 
 
 ### Bug 2: one static HttpClient forever → stale DNS
 
-```csharp
+```csharp norun
 private static readonly HttpClient Http = new();     // ✘ connections live forever
 ```
 
@@ -94,9 +111,13 @@ Notice what `IHttpClientFactory` actually buys you, looking back at the diagram:
 
 ## IHttpClientFactory in practice {i}
 
+:::plain
+Register named or typed clients with the factory and inject them. It manages connection lifetimes for you and lets you configure base addresses, headers and resilience in one place.
+:::
+
 ### Named clients
 
-```csharp
+```csharp norun
 builder.Services.AddHttpClient("github", c =>
 {
     c.BaseAddress = new Uri("https://api.github.com/");
@@ -115,7 +136,7 @@ public sealed class RepoService(IHttpClientFactory factory)
 
 A better shape wraps the raw HTTP calls behind a class that receives a pre-configured `HttpClient` through its constructor, and exposes a domain-friendly API instead of raw URLs and verbs:
 
-```csharp
+```csharp norun
 public sealed class InventoryClient(HttpClient http)
 {
     public async Task<StockLevel?> GetStockAsync(string sku, CancellationToken ct)
@@ -143,9 +164,13 @@ Here's a trap that recreates the exact stale-DNS bug from above, wearing a diffe
 
 ## DelegatingHandlers: the exact same idea as middleware, running outbound {i}
 
+:::plain
+A delegating handler wraps outgoing requests, like middleware for calls you make. Use one to add auth headers, logging or retries to every call a client makes.
+:::
+
 The handler chain introduced earlier is a pipeline in the fullest sense — composable, ordered, each one wrapping the next — which should feel familiar after [Middleware](ch:middleware#now-heres-the-aha-a-middleware-is-just-a-function-wrapping-a). The difference is direction: this pipeline runs on the way **out**, for requests your app is making to someone else, not on the way in.
 
-```csharp
+```csharp norun
 public sealed class AccessTokenHandler(ITokenProvider tokens) : DelegatingHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -174,18 +199,26 @@ Typical jobs for a handler: attaching auth tokens, propagating correlation or te
 
 ## Timeouts and cancellation: getting the layering right {i}
 
+:::plain
+Every outgoing call needs a time limit, and cancellation from the incoming request should flow into it, so you stop waiting when nobody is waiting for you.
+:::
+
 - `HttpClient.Timeout` (default **100 seconds**, far too long for most APIs) applies to the entire request. When it fires, it surfaces as a `TaskCanceledException` with an inner `TimeoutException` (since .NET 5) — the only reliable way to tell "it timed out" apart from "the caller cancelled it," since both throw the same outer exception type.
 - Always pass the incoming request's `CancellationToken` through to outbound calls, so that if the original client disconnects, your app stops waiting on a downstream call nobody's going to read the answer to.
 - Once the resilience handler is in play, prefer *its* **total request timeout** and **per-attempt timeout** over `HttpClient.Timeout` — and set `HttpClient.Timeout` itself to `Infinite` or something larger, so it doesn't quietly compete with the timeouts you actually configured.
 
-```csharp
+```csharp norun
 catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException) { /* timed out */ }
 catch (TaskCanceledException) when (ct.IsCancellationRequested) { /* caller cancelled */ }
 ```
 
 ## Handling responses properly: resist the urge to just EnsureSuccessStatusCode {i}
 
-```csharp
+:::plain
+Check the status code and decide what each one means for you. A 404 may be a normal answer, a 409 a conflict to report, and a 503 something to retry later.
+:::
+
+```csharp norun
 using var res = await http.GetAsync(url, ct);
 switch (res.StatusCode)
 {
@@ -208,6 +241,10 @@ Three habits worth making automatic:
 
 ## Generated and declarative clients {a}
 
+:::plain
+Instead of hand-writing HTTP calls, you can generate a client from an API's OpenAPI description, or declare an interface and let a library (Refit) implement it.
+:::
+
 Writing a typed client by hand, as above, works well for a handful of endpoints. For a large external API, generating the client from its contract avoids hand-transcribing dozens of endpoints and keeps the client in sync as the contract evolves:
 
 | Tool | Approach |
@@ -217,7 +254,7 @@ Writing a typed client by hand, as above, works well for a handful of endpoints.
 | **NSwag / OpenAPI Generator** | Generate C# clients from OpenAPI |
 | gRPC client | Generated from `.proto` files ([App models](ch:app-models)) |
 
-```csharp
+```csharp norun
 public interface IGitHubApi
 {
     [Get("/repos/{owner}/{repo}")]
@@ -229,11 +266,19 @@ builder.Services.AddRefitClient<IGitHubApi>().ConfigureHttpClient(c => c.BaseAdd
 
 ## Service discovery {a}
 
+:::plain
+Service discovery lets you call another service by name, such as `http://catalog`, and have it resolved to a real address from configuration or the platform.
+:::
+
 In .NET Aspire and Kubernetes, you address services by **logical name** rather than a URL hard-coded to a specific host: `c.BaseAddress = new("https+http://inventory")`, with `Microsoft.Extensions.ServiceDiscovery` resolving the actual endpoint from configuration or DNS at runtime. This sidesteps the stale-DNS problem from a different angle entirely — the address itself is never a fixed IP to begin with. See [Observability & Aspire](ch:observability-aspire).
 
 ## Testing code that uses HttpClient {i}
 
-```csharp
+:::plain
+Give the client a fake handler that returns prepared responses, so tests never touch the network. For integration tests, point the client at a test server.
+:::
+
+```csharp norun
 // A stub handler: no network, deterministic responses
 public sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
 {
@@ -293,7 +338,7 @@ The tea catalogue is read 10,000 times a minute and changes once a day. [Episode
 
 The checks below cover handler ordering, a typed client built with a stub handler, and `HttpClient.Timeout` vs caller cancellation — all with a fake `HttpMessageHandler`, no real network. Save as a console app (`dotnet new console`), then `dotnet run`.
 
-```csharp
+```csharp norun
 using System.Net;
 using System.Net.Http.Json;
 

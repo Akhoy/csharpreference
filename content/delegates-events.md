@@ -33,6 +33,11 @@ next: linq, middleware, async-await
 | **event** | A delegate others can subscribe to (`+=`) but only its owner can trigger. |
 | **expression tree** | A lambda stored as a description (data) instead of as runnable code. |
 
+:::note What you need first
+- **[Classes: Objects That Guard Their Own Rules (OOP)](ch:oop)**: classes bundle data with the methods that guard it; interfaces are contracts that let you swap implementations.
+- **[Generics: Write It Once, for Any Type](ch:generics)**: `List<T>` and friends work for any type `T` while staying type-checked, and constraints say what `T` must support.
+:::
+
 ## Previously, and the problem {b}
 
 In [Episode 3](ch:generics), generics let you write `Cache<T>` once. Now the shop owner keeps changing the discount:
