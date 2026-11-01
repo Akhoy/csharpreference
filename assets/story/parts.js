@@ -20,7 +20,8 @@ window.STORY = {
     { id: 'p8', num: 'XI', title: 'Cloud and DevOps' },
     { id: 'p9', num: 'XII', title: 'Performance and internals' },
     { id: 'p10', num: 'XIII', title: 'Security' },
-    { id: 'p11', num: 'XIV', title: 'Interview preparation' }
+    { id: 'pproj', num: 'XIV', title: 'Building real projects' },
+    { id: 'p11', num: 'XV', title: 'Interview preparation' }
   ],
   scenes: [],
   scene(s) { this.scenes.push(s); }

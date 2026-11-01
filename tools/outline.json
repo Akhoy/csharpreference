@@ -24,6 +24,7 @@
     {"id": "p8", "num": "XI", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
     {"id": "p9", "num": "XII", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
     {"id": "p10", "num": "XIII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
-    {"id": "p11", "num": "XIV", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
+    {"id": "pproj", "num": "XIV", "title": "Building Real Projects", "chapters": ["projects-story", "project-foundations", "delivering-work", "production-ownership", "staff-engineer", "capstone-wholesale"]},
+    {"id": "p11", "num": "XV", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
   ]
 }

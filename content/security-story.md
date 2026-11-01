@@ -42,6 +42,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part XIII, Kettle has been built, scaled, operated and secured. Part XIV is about telling that story well in an interview.
+By the end of Part XIII, Kettle has been built, scaled, operated and secured. Part XIV starts a new product and builds it right from day one; Part XV turns it all into interview performance.
 
 [Start: Episode 1 · Think like an attacker →](ch:web-security)
