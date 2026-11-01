@@ -130,6 +130,27 @@
   });
 
   S.scene({
+    id: 'serialization', part: 'p3', title: 'JSON is a contract',
+    hook: 'The mobile app wants camelCase, a partner sends statuses as text, and payments come in three kinds.',
+    a: [
+      ['box', 'obj', 110, 110, 'Order object', { sub: 'in memory', w: 150 }],
+      ['code', 'json', 430, 110, '{"id":42,"status":"Paid",\n "payment":{"kind":"card",…}}'],
+      ['arr', 'a1', 'obj', 'json', 'serialize', {}],
+      ['pill', 'web', 160, 230, 'Web defaults: camelCase', { o: 0, w: 220 }],
+      ['pill', 'en', 440, 230, 'enums as strings', { o: 0, w: 180 }],
+      ['pill', 'poly', 300, 300, 'kind → only the subclasses you allowed', { o: 0, c: 'ok', w: 320 }],
+      ['pill', 'gen', 300, 300, 'source-generated: no reflection, AOT-ready', { o: 0, c: 'why', w: 340 }]
+    ],
+    b: [
+      { say: 'Only the **data** crosses the wire. Rename a property and the other side silently gets nothing.', pulse: ['json'] },
+      { say: 'ASP.NET Core uses the **Web defaults**: camelCase names and case-insensitive reading. Enums read better as strings.', show: ['web', 'en'] },
+      { say: 'A base-type field needs a **discriminator** and an allow-list of subclasses, never type names from the input.', show: ['poly'] },
+      { pro: true, say: 'Reuse one options instance, and let the **source generator** write the serialization code at build time.', hide: ['poly'], show: ['gen'], pulse: ['gen'] }
+    ],
+    key: 'Shape the contract on purpose; generate the code for speed.'
+  });
+
+  S.scene({
     id: 'errors-logging', part: 'p3', title: 'When it breaks at 2 a.m.',
     hook: 'A customer sees a stack trace, and the logs are unsearchable text.',
     a: [

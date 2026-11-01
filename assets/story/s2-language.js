@@ -68,6 +68,28 @@
   });
 
   S.scene({
+    id: 'operators-expressions', part: 'p2', title: 'The small print',
+    hook: 'An expensive check ran when it didn\'t need to, and a `!` hid a null until production.',
+    a: [
+      ['pill', 'q1', 150, 70, 'false && CheckStock()', { w: 230 }],
+      ['pill', 'r1', 455, 70, 'right side never runs', { w: 250, o: 0, c: 'ok' }],
+      ['pill', 'q2', 150, 150, 'customer?.Name ?? "guest"', { w: 230 }],
+      ['pill', 'r2', 455, 150, 'stops at null, then falls back', { w: 250, o: 0, c: 'ok' }],
+      ['pill', 'q3', 150, 230, 'user!.Name', { w: 230 }],
+      ['pill', 'r3', 455, 230, 'silences the compiler, checks nothing', { w: 250, o: 0, c: 'bad' }],
+      ['pill', 'q4', 150, 310, '(Sku: "TEA-01", Qty: 2)', { w: 230 }],
+      ['pill', 'r4', 455, 310, 'names vanish at run time: Item1', { w: 250, o: 0, c: 'warn' }]
+    ],
+    b: [
+      { say: '`&&` **short-circuits**: if the left side is false, the right side never runs. Put cheap checks first.', show: ['r1'] },
+      { say: '`?.` stops at null and `??` supplies a fallback, so no exception is thrown.', show: ['r2'] },
+      { say: '`!` only tells the compiler "trust me". At run time it does nothing, so a wrong guess still crashes.', show: ['r3'], pulse: ['r3'] },
+      { pro: true, say: 'Tuple names are compile-time labels; at run time it\'s `ValueTuple` with `Item1` and `Item2`. Use records for anything that leaves the method.', show: ['r4'] }
+    ],
+    key: 'Know what runs, what checks, and what survives to run time.'
+  });
+
+  S.scene({
     id: 'oop', part: 'p2', title: 'Objects that guard themselves',
     hook: 'An order shows up with quantity −3, marked shipped before it was paid.',
     a: [
@@ -225,6 +247,29 @@
       { pro: true, say: 'Calling `.Result` blocks a thread again. Under load the pool runs dry: **thread-pool starvation**. The compiler turns each async method into a **state machine**.', t1: { sub: '.Result: blocked', c: 'bad' }, pulse: ['t1'] }
     ],
     key: 'await frees the thread while you wait for I/O.'
+  });
+
+  S.scene({
+    id: 'files-streams-io', part: 'p2', title: 'A tap, not a bucket',
+    hook: 'The supplier\'s 2 GB gzipped feed crashed the import, and the warehouse read a half-written export.',
+    a: [
+      ['box', 'file', 90, 120, 'prices.csv.gz', { sub: '2 GB on disk', w: 150 }],
+      ['box', 'gz', 285, 120, 'GZipStream', { sub: 'decompress', w: 140 }],
+      ['box', 'rd', 470, 120, 'StreamReader', { sub: 'bytes → lines', w: 150 }],
+      ['arr', 'a1', 'file', 'gz', ''], ['arr', 'a2', 'gz', 'rd', ''],
+      ['dot', 'chunk', 90, 120, '80K', { o: 0 }],
+      ['pill', 'mem', 285, 210, 'memory stays at one chunk', { o: 0, c: 'ok', w: 230 }],
+      ['pill', 'tmp', 170, 300, 'write stock.tmp', { o: 0, w: 160 }],
+      ['pill', 'mv', 450, 300, 'rename → stock.csv', { o: 0, c: 'ok', w: 180 }],
+      ['arr', 'a3', 'tmp', 'mv', 'atomic', { o: 0 }]
+    ],
+    b: [
+      { say: '`File.ReadAllText` is a bucket: the whole 2 GB file in memory at once. The server ran out of memory.', bad: ['file'], pulse: ['file'] },
+      { say: 'Streams are a tap. Each layer **wraps** the one before: disk → decompress → text, one chunk at a time.', plain: ['file'], go: [['chunk', 'gz', 'rd']], show: ['mem'] },
+      { say: 'For exports, write a temporary file, then **rename** it into place. Readers see the old file or the new one, never half.', show: ['tmp', 'mv', 'a3'] },
+      { pro: true, say: 'Bytes become text only through an **encoding**: "£" is two UTF-8 bytes, and the wrong one shows up as `Â£`.', pulse: ['rd'] }
+    ],
+    key: 'Stream big data, say the encoding, swap files atomically.'
   });
 
   S.scene({
