@@ -340,6 +340,38 @@ Return an EF Core entity with its navigation properties intact — `Order.Custom
 - Stream large datasets with `IAsyncEnumerable<T>`: the JSON array gets written to the response as items arrive, rather than buffering the entire result set in memory first.
 - **Server-Sent Events** (`TypedResults.ServerSentEvents`, .NET 10) for one-way streaming updates to a browser.
 
+## Mapping between entities and DTOs {i}
+
+:::plain
+Your database classes and your API's JSON shouldn't be the same classes, so something has to copy values from one to the other. Write that copy by hand or have a source generator write it; avoid magic that only fails at run time.
+:::
+
+Endpoints take **request DTOs** and return **response DTOs**, never EF entities ([why](ch:razor-mvc#forms-binding-validation-antiforgery-and-prg)). So every endpoint copies values between the two. There are four ways to do it, in order of preference for most teams:
+
+| Approach | How | Strengths | Weaknesses |
+|---|---|---|---|
+| **Project in the query** | `db.Orders.Select(o => new OrderDto(o.Id, o.Total, o.Customer.Name))` | EF fetches only those columns; no entity is loaded at all | only for reads |
+| **Hand-written mapping** | a static method or extension: `order.ToDto()` | obvious, debuggable, fastest; the compiler flags a renamed property | typing, for large types |
+| **Source-generated mapping** (Mapperly) | `[Mapper] partial class OrderMapper { public partial OrderDto ToDto(Order o); }` | no reflection; the generated code is readable; unmapped members become build warnings; works with Native AOT | another library; conventions to learn |
+| **Reflection-based mapping** (AutoMapper) | `mapper.Map<OrderDto>(order)` with profiles | very little code for big, similar types | mistakes surface at **run time**; hidden logic in profiles; harder to debug; reflection start-up cost |
+
+```csharp norun
+public static class OrderMappings
+{
+    public static OrderDto ToDto(this Order o) =>
+        new(o.Id, o.Number, o.Total, o.Status.ToString(), o.Lines.Select(l => l.ToDto()).ToList());
+
+    public static OrderLineDto ToDto(this OrderLine l) => new(l.Sku, l.Quantity, l.Price);
+}
+```
+
+Rules that keep mapping honest:
+
+- **Mapping isn't business logic.** Calculations and rules belong in the domain; a mapper only copies.
+- **For reads, project.** Mapping a loaded entity means EF fetched every column and tracked the entity first ([EF Core querying](ch:efcore-querying)).
+- **Test the mapping you can't see.** If you use a reflection mapper, call its configuration-validation method in a unit test, so a missing member fails the build pipeline instead of production.
+- **Check the licence.** Some popular .NET libraries, including AutoMapper and MediatR, moved to commercial licences for many uses in 2025. Hand-written or source-generated mapping avoids the question.
+
 ## Putting it together: a handler that stays genuinely thin {i}
 
 Pull the threads of this chapter together into one realistic endpoint, and notice what it deliberately does *not* do:

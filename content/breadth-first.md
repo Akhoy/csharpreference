@@ -174,7 +174,18 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **GUID keys** can be made anywhere, but random version 4 GUIDs fragment clustered indexes. Version 7 (`Guid.CreateVersion7()`) is time-ordered, but SQL Server sorts GUIDs by their last bytes, so use a SQL Server-ordered sequential generator there. GUIDs aren't secrets.
 - **`record struct`** is a copied value with generated, fast equality, but its positional properties are **mutable** unless `readonly record struct`. `record class` is a shareable, inheritable reference type.
 
-### 2.4 · Classes: objects that guard their own rules
+### 2.4 · Operators, expressions and statements
+
+[Full chapter →](ch:operators-expressions)
+
+- **Expressions produce values; statements do things.** Switch expressions must cover every case, so the compiler warns when you add an enum member. Switch statements don't fall through between sections.
+- **Precedence groups, evaluation runs left to right:** `*` before `+`, `&&` before `||`. Arithmetic on `int?` is lifted, so null in gives null out. Don't write `i++ + ++i`.
+- **`&&` and `||` short-circuit;** `&` and `|` evaluate both sides. Put cheap checks before expensive ones. `?.`, `??` and `??=` handle nulls. `!` only silences the compiler and checks nothing at run time.
+- **Operator overloading:** only for obvious meanings (money, vectors). Operators come in pairs; keep `==`, `Equals`, `GetHashCode` and `IEquatable<T>` consistent (records do it for you); make lossy conversions `explicit`. C# 11 added checked operators and C# 14 user-defined `+=`.
+- **Lowering:** `foreach` is `GetEnumerator`/`MoveNext`/`Current` in a `try/finally` (duck-typed, so struct enumerators and spans work; arrays become an indexed loop), `using` is `try/finally Dispose`, and `lock` is `Monitor.Enter/Exit` or `Lock.EnterScope`.
+- **Tuples** are mutable `ValueTuple` structs whose names vanish at run time (they serialise as `Item1`), with value `==`. **Anonymous types** are immutable classes with real names and value `Equals` but reference `==`. Use records for anything that crosses a boundary.
+
+### 2.5 · Classes: objects that guard their own rules
 
 [Full chapter →](ch:oop)
 
@@ -192,7 +203,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **`static`, `sealed`, `partial`.** A static class can't be created or inherited; it's for helpers and extension methods. Avoid **mutable static fields**: they're shared by every request and thread in the process (Kettle's static basket counter showed every shopper's header the total for everyone). `sealed` documents "not designed for inheritance" and enables devirtualisation, so seal by default. `partial` splits a class across files, mainly so source generators can add code to it.
 - **`System.Object`** gives every type `Equals`/`GetHashCode` (override together), `ToString` (override it for readable logs), `GetType` (the runtime type, the entry point to reflection) and a protected shallow `MemberwiseClone`.
 
-### 2.5 · Generics: write it once, for any type
+### 2.6 · Generics: write it once, for any type
 
 [Full chapter →](ch:generics)
 
@@ -204,7 +215,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Generic math** (C# 11): `+` and `Zero` belong to a *type*, not to a value, and interfaces used to describe only instance members. **Static abstract interface members** let `INumber<T>` require a static `Zero` and a `+` operator, so one `Sum<T>(…) where T : INumber<T>` works for every numeric type. You'll meet its cousin `IParsable<T>` when binding custom route and query types.
 - **Generics you already use everywhere**: `List<Order>` (what's stored), `Task<Order>` (what eventually comes back), `ILogger<OrderService>` (`T` is just a label, used via `typeof(T).Name` as the log category), `IOptions<PaymentOptions>`, `DbSet<Order>`. **Open generics** registered in DI, such as `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))`, let the container build `IRepository<Order>`, `IRepository<Customer>` and any future entity on demand from one registration.
 
-### 2.6 · Delegates: passing behaviour around
+### 2.7 · Delegates: passing behaviour around
 
 [Full chapter →](ch:delegates-events)
 
@@ -220,7 +231,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **ASP.NET Core is built from delegates.** Option configuration is `Action<TOptions>`, DI factories are `Func<IServiceProvider, T>`, endpoints are delegates, and the core pipeline type is `delegate Task RequestDelegate(HttpContext context)`. A **middleware** is a function that receives the *next* `RequestDelegate` and returns a new one that wraps it with before and after code. Building `Logging(Auth(endpoint))` composes the onion; a request runs Logging's "before", then Auth, then the endpoint, then back out through Logging's "after". It's the decorator idea again.
 - **The same lambda can become code or data.** Assigned to `Func<decimal, bool>`, it compiles to IL you can run but can't inspect. Assigned to `Expression<Func<decimal, bool>>`, the compiler builds an **expression tree**: objects describing the code (a `GreaterThan` node with the parameter on one side and the constant on the other). A provider like EF Core can walk that tree and write SQL. `IEnumerable.Where` takes the first kind; `IQueryable.Where` takes the second.
 
-### 2.7 · Collections: pick the container that fits the question
+### 2.8 · Collections: pick the container that fits the question
 
 [Full chapter →](ch:collections)
 
@@ -252,7 +263,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Arrays, spans and collection expressions.** `[1, 2, 3]` (C# 12) builds arrays, lists or spans depending on the target type, and `..` spreads another collection in. `^1` indexes from the end. A **range** on an array (`a[1..3]`) makes a **copy**; a **span** (`a.AsSpan(1, 2)`) is a **window** onto the same memory, so writing through it changes the array. Return `[]` or `Array.Empty<T>()` rather than `null`, so callers can always `foreach`.
 - **Custom equality and ordering** can be supplied from outside the type: `EqualityComparer<T>.Create(equals, getHashCode)` for sets and dictionaries, and `Comparer<T>.Create` for sorted collections. The equals and hash functions must agree with each other.
 
-### 2.8 · LINQ: ask for the result, not the loop
+### 2.9 · LINQ: ask for the result, not the loop
 
 [Full chapter →](ch:linq)
 
@@ -284,7 +295,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Expression trees are how C# becomes SQL.** The provider walks the tree: a `BinaryExpression` becomes `(left op right)`, a `MemberExpression` (`o.Total`) becomes a column, a `ConstantExpression` a value. A call to your own C# method is a node with no SQL equivalent, so EF Core throws "could not be translated" (since EF Core 3; older versions silently ran it in memory after fetching everything). Captured variables become **SQL parameters**, never text pasted into the SQL, which is why LINQ queries are naturally safe from SQL injection. Because an `IQueryable` is a tree waiting to grow, you can add `Where` clauses conditionally and still send one query.
 - **Performance.** LINQ to Objects allocates enumerators, delegates and closures, which is negligible in business code. In true hot paths a `for` loop over an array or span can be several times faster, so measure with BenchmarkDotNet first. `Any()` stops at the first match (101 items touched in the demo), while `Count() > 0` touches everything (10,000); in EF Core, `Any()` becomes `EXISTS`. Avoid `ToList()` in the middle of a chain. Newer .NET versions vectorise `Sum`/`Min`/`Max`, so upgrading is often a free speed-up.
 
-### 2.9 · Exceptions and cleanup: failing safely
+### 2.10 · Exceptions and cleanup: failing safely
 
 [Full chapter →](ch:exceptions-disposal)
 
@@ -310,7 +321,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
   - Holding a scoped disposable in a singleton keeps using it after the request disposed it.
   - Forgetting to dispose `CancellationTokenSource`, `Timer` or `SemaphoreSlim` leaks timers and handles.
 
-### 2.10 · Async and await: don't hold a thread while you wait
+### 2.11 · Async and await: don't hold a thread while you wait
 
 [Full chapter →](ch:async-await)
 
@@ -337,7 +348,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Fire-and-forget inside a request is broken three ways**: its exceptions are never observed; it's killed if the app shuts down mid-way; and the scoped services it uses (like `DbContext`) are disposed when the request ends, possibly while it's still running. Hand the work to a background queue (`Channel<T>` plus a hosted service) or a durable message broker.
 - **You can't `await` inside `lock`.** A `Monitor` lock belongs to the **thread** that took it, and after an `await` the method may resume on a different thread, which would then try to release a lock it never acquired, so the compiler forbids it (CS1996). `SemaphoreSlim(1, 1)` counts permits instead of tracking an owner thread, offers `WaitAsync`, and must be released in a `finally`.
 
-### 2.11 · Files, streams and text
+### 2.12 · Files, streams and text
 
 [Full chapter →](ch:files-streams-io)
 
@@ -349,7 +360,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Path traversal:** never use user input as a path. Store files under generated names, or check that `Path.GetFullPath(...)` still starts with the root. `Path.Combine` with a rooted second argument drops the first.
 - **Containers have temporary disks.** Persist to Blob Storage, which is stream-based too; use local temp files only for scratch work. `FileSystemWatcher` is a hint, not a guarantee.
 
-### 2.12 · Modern C#: let the compiler catch it
+### 2.13 · Modern C#: let the compiler catch it
 
 [Full chapter →](ch:modern-csharp)
 
@@ -396,7 +407,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
   - C# 13: `params` collections, `Lock`;
   - C# 14: extension members, `field`, null-conditional assignment (`a?.B = x`).
 
-### 2.13 · Advanced C#: one long night at Kettle
+### 2.14 · Advanced C#: one long night at Kettle
 
 [Full chapter →](ch:advanced-csharp)
 

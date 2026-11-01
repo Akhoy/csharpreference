@@ -12,7 +12,7 @@
   "parts": [
     {"id": "p0", "num": "0", "title": "Orientation", "chapters": ["big-picture", "breadth-first"]},
     {"id": "p1", "num": "I", "title": "The .NET Platform", "chapters": ["platform-story", "what-is-dotnet", "how-code-runs", "projects-sdk-nuget"]},
-    {"id": "p2", "num": "II", "title": "The C# Language", "chapters": ["csharp-story", "type-system", "everyday-types", "oop", "generics", "delegates-events", "collections", "linq", "exceptions-disposal", "async-await", "files-streams-io", "modern-csharp", "advanced-csharp"]},
+    {"id": "p2", "num": "II", "title": "The C# Language", "chapters": ["csharp-story", "type-system", "everyday-types", "operators-expressions", "oop", "generics", "delegates-events", "collections", "linq", "exceptions-disposal", "async-await", "files-streams-io", "modern-csharp", "advanced-csharp"]},
     {"id": "p3", "num": "III", "title": "ASP.NET Core", "chapters": ["aspnet-story", "aspnet-hosting", "dependency-injection", "configuration-options", "middleware", "routing", "building-apis", "serialization", "errors-logging", "auth", "http-client", "caching-ratelimit-cors", "background-work", "api-design", "app-models"]},
     {"id": "pui", "num": "IV", "title": "Web UI: MVC, Razor Pages and Blazor", "chapters": ["ui-story", "razor-mvc", "blazor-components", "blazor-render-modes", "blazor-advanced"]},
     {"id": "p4", "num": "V", "title": "Data Access", "chapters": ["data-story", "relational-fundamentals", "ado-dapper", "efcore-fundamentals", "efcore-querying", "efcore-advanced", "nosql-redis"]},
