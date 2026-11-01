@@ -1327,9 +1327,59 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   6. **Mitigate first** (roll back, scale, fail over, flip a feature flag), then find the root cause and hold a blameless post-mortem.
   7. Add the signal or alert you wished you'd had.
 
-## Part IX · Cloud and DevOps
+## Part IX · Microservices
 
-### 9.1 · Cloud fundamentals and the Azure map
+### 9.1 · Service boundaries
+
+[Full chapter →](ch:ms-boundaries)
+
+- **A good boundary keeps changes on one side.** Things that change together belong in one service: high cohesion. Things on either side should know little about each other: loose coupling. Test candidates against last quarter's real changes.
+- **Name the coupling.** Deployment (released together), domain (knowing another's rules), temporal (needing another to be up), data (reading another's tables) and contract (breaking on another's schema). A split pays off only if it removes more deployment, domain and data coupling than the temporal coupling the network adds.
+- **Find boundaries from the business:** capabilities (take payments, ship parcels), refined by bounded contexts where words change meaning, and explored with **event storming**. Check that one team can own it, it owns its data, most changes stay inside, it tolerates neighbours being down, and it scales differently.
+- **Anti-patterns:** entity services (CRUD per table), shared databases, chatty synchronous chains (availability multiplies down), technical-layer services, shared libraries holding business rules, and splitting before the domain is understood. Together they make a **distributed monolith**.
+- **Conway's law:** systems mirror team communication. Give each service one owning team, design teams alongside boundaries, and have a platform team supply the shared plumbing.
+- **Extract, don't rewrite.** Make the module clean inside the monolith first, then use branch by abstraction behind a feature flag, move and sync the data, make the new service the only writer, shift traffic gradually and delete the old path. At the edge, a gateway implements the **strangler fig**. Start with a valuable, peripheral capability, not the core.
+
+### 9.2 · Communication between services
+
+[Full chapter →](ch:ms-communication)
+
+- **A network call can be slow, fail, or succeed without you knowing.** After a timeout the outcome is unknown, so calls that change state need idempotency keys.
+- **Sync or async?** Synchronous only when the caller needs the answer to respond, typically queries. Commands and notifications go through messages, which decouple availability: four services at 99.9% in one synchronous chain give about 99.6%.
+- **REST or gRPC?** gRPC has `.proto` contracts with generated clients, binary payloads over HTTP/2, streaming and built-in deadlines, and evolves safely by adding fields with new numbers. REST/JSON is universal and easy to debug. A common split is gRPC inside, REST at the edge.
+- **Deadlines:** set a total budget and pass the remaining time down every hop (gRPC deadlines, cancellation tokens), so services stop work the client has already abandoned. Retry at one layer only.
+- **Gateway:** one front door for routing, TLS, token checks, rate limits and CORS, hiding the internal layout. **YARP** builds one as an ASP.NET Core app; API Management is the managed option. A **BFF** is a gateway shaped for one client and owned by its team.
+- **Discovery:** platform DNS on Kubernetes and Container Apps, `Microsoft.Extensions.ServiceDiscovery` with logical names, wired by Aspire.
+- **Contracts:** only backward-compatible changes (add optional fields, endpoints and message types); run v1 and v2 side by side for breaking ones; tolerant readers. **Consumer-driven contract tests** (Pact) prove compatibility in the provider's build.
+
+### 9.3 · Data across services
+
+[Full chapter →](ch:ms-data)
+
+- **Each service owns its data.** Others use its API or events, never its tables. A shared schema is an unowned contract that breaks independent change. Separate databases can still share a server.
+- **No distributed transactions:** two-phase commit holds locks across participants, couples availability and isn't supported by most brokers and cloud databases. Use local transactions, the outbox, idempotent consumers and sagas instead.
+- **Reading across services:** **API composition** (parallel, batched calls; fresh but needs every service up) or **read models** built from events (fast and resilient, slightly stale, rebuildable, version-aware against out-of-order events).
+- **Local copies** of others' data are owned caches, updated by events. Record the values a decision used, such as the price on each order line.
+- **Choose consistency per piece of data.** Keep each invariant (never charge twice, never oversell) inside one service's transaction. If an invariant needs two services' data at once, the boundary is wrong.
+- **Sagas:** decide orchestration vs choreography, give every state a timeout, put irreversible steps last, and show honest intermediate states.
+- **Reporting:** stream events or CDC into an analytics store; never let reports query service databases.
+- **UX for eventual consistency:** honest states, read-your-own-writes from responses, push updates when they land, and idempotent actions.
+
+### 9.4 · Running microservices
+
+[Full chapter →](ch:ms-operations)
+
+- **Independent deployability is the test.** Every service gets its own pipeline triggered by its own changes (monorepo with path filters, or polyrepo). Images are tagged by commit SHA. Shared packages hold contract types only. Release the provider first, then consumers, then remove old paths.
+- **Observability across services:** OpenTelemetry propagates one trace ID through HTTP, gRPC and message headers, alongside structured logs with service name and version, a baseline RED dashboard per service plus queue and dead-letter metrics, and alerts on user-facing symptoms.
+- **Zero trust between services:** each service has its own identity and calls with client-credentials tokens checked for roles. Pass the user's identity on with token exchange where it matters. A mesh can add mTLS. Least privilege per service.
+- **Testing:** unit and component tests per service (real database in a container, fakes for other services), consumer-driven contract tests between services, and a few end-to-end journeys. Avoid shared integration environments that force coordinated versions.
+- **Platform team and paved road:** a service template, shared pipelines, self-service infrastructure through IaC, and ServiceDefaults.
+- **Sidecars:** a **service mesh** gives mTLS, retries, traffic splitting and telemetry without code changes, at an operational cost. **Dapr** offers portable building blocks (pub/sub, state, invocation, workflows). Libraries suit .NET-only systems. One owner per concern.
+- **.NET Aspire** describes the system in an AppHost (`AddProject`, `WithReference`), runs it all locally with a dashboard, and can generate deployment assets. Study **eShop** as a reference.
+
+## Part X · Cloud and DevOps
+
+### 10.1 · Cloud fundamentals and the Azure map
 
 [Full chapter →](ch:cloud-azure-overview)
 
@@ -1398,7 +1448,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Operational Excellence**: IaC, CI/CD, observability, runbooks, safe deployments (slots, canaries).
   - **Performance Efficiency**: scale-out, caching, CDN, async processing, partitioning, load tests.
 
-### 9.2 · Docker and containers
+### 10.2 · Docker and containers
 
 [Full chapter →](ch:docker)
 
@@ -1439,7 +1489,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Server GC** is the ASP.NET Core default, and it used to make one heap per core and be memory-hungry in small containers. **.NET 9+ enables DATAS** (Dynamic Adaptation To Application Sizes), which grows and shrinks the heap count with load.
   - Set realistic Kubernetes **requests and limits**: too low gives **OOMKilled** restarts. `DOTNET_PROCESSOR_COUNT` overrides the detected CPU count.
 
-### 9.3 · Azure compute: App Service, Functions, Container Apps, AKS
+### 10.3 · Azure compute: App Service, Functions, Container Apps, AKS
 
 [Full chapter →](ch:azure-compute)
 
@@ -1490,7 +1540,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Functions vs Container Apps**: a trigger/binding programming model with per-execution billing vs any container with KEDA scaling.
   - **Consumption vs Premium**: scale to zero with cold starts and time limits vs pre-warmed instances, VNet and always paying for the minimum.
 
-### 9.4 · Azure data and messaging services
+### 10.4 · Azure data and messaging services
 
 [Full chapter →](ch:azure-data-messaging)
 
@@ -1559,7 +1609,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Aspire integrations (`AddAzureServiceBusClient("bus")`) wire all of this up with health checks.
 
-### 9.5 · Azure identity and secrets
+### 10.5 · Azure identity and secrets
 
 [Full chapter →](ch:azure-identity-secrets)
 
@@ -1604,7 +1654,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   To call another API **as the service**, use client credentials via managed identity: `GetTokenAsync(new(["api://inventory-api/.default"]))`. `.default` means "all application permissions granted to me".
 
-### 9.6 · CI/CD and infrastructure as code
+### 10.6 · CI/CD and infrastructure as code
 
 [Full chapter →](ch:cicd-iac)
 
@@ -1649,7 +1699,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Pulumi**: IaC in **C#** or another general-purpose language.
 - **azd and GitOps.** **azd** ties templates, IaC and deploy together: `azd up` provisions and deploys, and `azd pipeline config` generates CI with federated credentials. For Aspire, it **generates the infrastructure from the AppHost model**. **GitOps** (Argo CD, Flux) makes a Git repo the source of truth for cluster state. CI only bumps the image tag in the config repo; an in-cluster agent **pulls** and reconciles, which gives drift correction, an audit trail and rollback by `git revert`.
 
-### 9.7 · Kubernetes
+### 10.7 · Kubernetes
 
 [Full chapter →](ch:kubernetes)
 
@@ -1716,9 +1766,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Security**: Defender for Containers, Azure Policy for Kubernetes.
   - **Mesh**: an Istio-based mesh add-on.
 
-## Part X · Performance and Internals
+## Part XI · Performance and Internals
 
-### 10.1 · Memory and garbage collection
+### 11.1 · Memory and garbage collection
 
 [Full chapter →](ch:memory-gc)
 
@@ -1798,7 +1848,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Most business code is I/O-bound, so **measure first**. And **don't call `GC.Collect()`** in production: it promotes objects before they've earned it, wastes CPU and pauses at a moment you didn't choose. The only legitimate uses are tests, benchmarks and after a one-off huge batch cleanup.
 
-### 10.2 · Threading and concurrency
+### 11.2 · Threading and concurrency
 
 [Full chapter →](ch:threading-concurrency)
 
@@ -1865,7 +1915,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - background work bounded;
   - cross-instance coordination through distributed locks or the database, never a C# `lock`.
 
-### 10.3 · Performance engineering
+### 11.3 · Performance engineering
 
 [Full chapter →](ch:performance-engineering)
 
@@ -1938,9 +1988,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **canaries** with automated latency comparison;
   - review checklists: async all the way, no N+1, projections, timeouts, pagination limits, no per-request large allocations.
 
-## Part XI · Security
+## Part XII · Security
 
-### 11.1 · Web application security
+### 12.1 · Web application security
 
 [Full chapter →](ch:web-security)
 
@@ -2027,7 +2077,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - Unsafe deserializers: no `BinaryFormatter`, and **no Newtonsoft `TypeNameHandling.All`**, which lets the payload pick which type to instantiate (gadget chains → remote code execution). XML with DTDs disabled (XXE; .NET's defaults are safe).
 - **Security logging.** Log authentication failures, access denials, privilege changes and rate-limit hits with user and correlation IDs, and alert on spikes. **Never log** passwords, tokens, keys, card numbers or sensitive personal data; use `Microsoft.Extensions.Compliance.Redaction`. Protect the log store with RBAC and retention. **Defender for Cloud** handles posture management and threat detection.
 
-### 11.2 · OAuth 2.0, OpenID Connect and identity
+### 12.2 · OAuth 2.0, OpenID Connect and identity
 
 [Full chapter →](ch:oauth-oidc-identity)
 
@@ -2099,9 +2149,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **hand-rolled HS256 JWTs with a shared key**, where *any service holding the key can mint tokens* → asymmetric keys at a real IdP;
   - sensitive data in claims (readable by anyone holding the token) → minimal claims, details looked up server-side.
 
-## Part XII · Interview Preparation
+## Part XIII · Interview Preparation
 
-### 12.1 · System design
+### 13.1 · System design
 
 [Full chapter →](ch:system-design)
 
@@ -2189,7 +2239,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   The classic **LRU cache** pairs a `Dictionary<K, LinkedListNode<(K, V)>>` with a `LinkedList`, for O(1) get and put. On a hit, move the node to the front. On insert past capacity, evict `_order.Last` and remove its key from the map. Guard the whole thing with a `Lock`, because both structures must change together, so `Interlocked` isn't enough.
 
-### 12.2 · Study plan and resources
+### 13.2 · Study plan and resources
 
 [Full chapter →](ch:study-plan-resources)
 

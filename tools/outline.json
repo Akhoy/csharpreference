@@ -19,9 +19,10 @@
     {"id": "p5", "num": "VI", "title": "Architecture & Design", "chapters": ["architecture-story", "design-principles", "design-patterns", "app-architectures", "cqrs-mediator-result", "ddd", "microservices"]},
     {"id": "p6", "num": "VII", "title": "Testing", "chapters": ["testing-story", "unit-testing", "integration-testing"]},
     {"id": "p7", "num": "VIII", "title": "Distributed Systems", "chapters": ["distributed-story", "messaging-events", "resilience", "observability-aspire"]},
-    {"id": "p8", "num": "IX", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "docker", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
-    {"id": "p9", "num": "X", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
-    {"id": "p10", "num": "XI", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
-    {"id": "p11", "num": "XII", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
+    {"id": "pms", "num": "IX", "title": "Microservices", "chapters": ["ms-story", "ms-boundaries", "ms-communication", "ms-data", "ms-operations"]},
+    {"id": "p8", "num": "X", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "docker", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
+    {"id": "p9", "num": "XI", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
+    {"id": "p10", "num": "XII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
+    {"id": "p11", "num": "XIII", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
   ]
 }

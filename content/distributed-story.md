@@ -43,6 +43,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part VIII, Kettle's services talk through a broker, survive each other's failures, and can be traced end to end. But they all still run on one server in a cupboard. Part IX moves them to the cloud.
+By the end of Part VIII, Kettle's services talk through a broker, survive each other's failures, and can be traced end to end. Next, the team splits the monolith for real. That's Part IX.
 
 [Start: Episode 1 · Don't wait, publish →](ch:messaging-events)

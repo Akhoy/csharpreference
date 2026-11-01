@@ -73,6 +73,10 @@ A strong answer: "It depends on the problem, not the trend. Microservices solve 
 
 ## Finding service boundaries {i}
 
+:::tip The full treatment
+This chapter decides *whether* to split. Part IX shows *how*: [boundaries](ch:ms-boundaries), [communication](ch:ms-communication), [data](ch:ms-data) and [running many services](ch:ms-operations).
+:::
+
 Bad boundaries are the most expensive microservices mistake there is: services that must change together, call each other constantly, or share data have paid the full cost of distribution while getting none of its benefits.
 
 Good boundaries:

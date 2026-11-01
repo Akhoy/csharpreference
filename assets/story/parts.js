@@ -14,10 +14,10 @@ window.STORY = {
     { id: 'p5', num: 'VI', title: 'Architecture and design' },
     { id: 'p6', num: 'VII', title: 'Testing' },
     { id: 'p7', num: 'VIII', title: 'Distributed systems' },
-    { id: 'p8', num: 'IX', title: 'Cloud and DevOps' },
-    { id: 'p9', num: 'X', title: 'Performance and internals' },
-    { id: 'p10', num: 'XI', title: 'Security' },
-    { id: 'p11', num: 'XII', title: 'Interview preparation' }
+    { id: 'p8', num: 'X', title: 'Cloud and DevOps' },
+    { id: 'p9', num: 'XI', title: 'Performance and internals' },
+    { id: 'p10', num: 'XII', title: 'Security' },
+    { id: 'p11', num: 'XIII', title: 'Interview preparation' }
   ],
   scenes: [],
   scene(s) { this.scenes.push(s); }

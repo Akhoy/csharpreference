@@ -1,26 +1,26 @@
 ---
 id: cloud-story
-title: "Part IX as One Story: Kettle Moves to the Cloud"
-summary: "Read this first. Kettle's single server can't survive the holiday rush, and a hardware failure would take the business down. Part IX moves Kettle to Azure: packaged in containers, running on managed services, with no passwords in config, deployed by a pipeline, and kept alive by an orchestrator. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part X as One Story: Kettle Moves to the Cloud"
+summary: "Read this first. Kettle's single server can't survive the holiday rush, and a hardware failure would take the business down. Part X moves Kettle to Azure: packaged in containers, running on managed services, with no passwords in config, deployed by a pipeline, and kept alive by an orchestrator. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: infra
-where: Cloud and DevOps › Start of Part IX
-fits: "The doorway into Part IX, Cloud & DevOps. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Cloud and DevOps › Start of Part X
+fits: "The doorway into Part X, Cloud & DevOps. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
-prereqs: observability-aspire
+prereqs: ms-operations
 next: cloud-azure-overview
 ---
 
 ## The 30-second version
 
-- Part IX moves Kettle to Azure: packaged in containers, running on managed services, with no passwords in config, deployed by a pipeline, and kept alive by an orchestrator.
+- Part X moves Kettle to Azure: packaged in containers, running on managed services, with no passwords in config, deployed by a pipeline, and kept alive by an orchestrator.
 - 7 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-Kettle's single server can't survive the holiday rush, and a hardware failure would take the business down. Part IX moves Kettle to Azure: packaged in containers, running on managed services, with no passwords in config, deployed by a pipeline, and kept alive by an orchestrator.
+Kettle's single server can't survive the holiday rush, and a hardware failure would take the business down. Part X moves Kettle to Azure: packaged in containers, running on managed services, with no passwords in config, deployed by a pipeline, and kept alive by an orchestrator.
 
-## The road through Part IX {b}
+## The road through Part X {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
@@ -47,6 +47,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part IX, Kettle runs on infrastructure it doesn't have to babysit, and releases are a push to Git. Then the next Black Friday arrives, and the bottlenecks are inside Kettle's own process. That's Part X.
+By the end of Part X, Kettle runs on infrastructure it doesn't have to babysit, and releases are a push to Git. Then the next Black Friday arrives, and the bottlenecks are inside Kettle's own process. That's Part XI.
 
 [Start: Episode 1 · Renting the data centre →](ch:cloud-azure-overview)

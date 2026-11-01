@@ -301,7 +301,7 @@ A middle-tier API that received a user's access token exchanges it at the author
 
 ## Next episode {b}
 
-By the end of Part XI, Kettle has been built, scaled, operated and secured. Part XII is about telling that story well in an interview. [Part XII · Telling Kettle's Story →](ch:interview-story)
+By the end of Part XII, Kettle has been built, scaled, operated and secured. Part XIII is about telling that story well in an interview. [Part XIII · Telling Kettle's Story →](ch:interview-story)
 
 ## Further reading
 

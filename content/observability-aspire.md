@@ -313,7 +313,7 @@ An SLI is a measured indicator of service level (e.g. % of requests under 300 ms
 
 ## Next episode {b}
 
-By the end of Part VIII, Kettle's services talk through a broker, survive each other's failures, and can be traced end to end. But they all still run on one server in a cupboard. Part IX moves them to the cloud. [Part IX · Kettle Moves to the Cloud →](ch:cloud-story)
+By the end of Part VIII, Kettle's services talk through a broker, survive each other's failures, and can be traced end to end. Now the team is ready to split the monolith for real, into services that deploy on their own. [Part IX · Kettle Splits for Real →](ch:ms-story)
 
 ## Further reading
 
