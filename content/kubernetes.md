@@ -292,7 +292,7 @@ The container keeps exiting shortly after starting and Kubernetes restarts it wi
 
 ## Next episode {b}
 
-By the end of Part VIII, Kettle runs on infrastructure it doesn't have to babysit, and releases are a push to Git. Then the next Black Friday arrives, and the bottlenecks are inside Kettle's own process. That's Part IX. [Part IX · Kettle Under Load →](ch:performance-story)
+By the end of Part IX, Kettle runs on infrastructure it doesn't have to babysit, and releases are a push to Git. Then the next Black Friday arrives, and the bottlenecks are inside Kettle's own process. That's Part X. [Part X · Kettle Under Load →](ch:performance-story)
 
 ## Further reading
 

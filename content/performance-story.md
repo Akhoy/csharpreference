@@ -1,10 +1,10 @@
 ---
 id: performance-story
-title: "Part IX as One Story: Kettle Under Load"
-summary: "Read this first. Kettle survives normal days easily. Under real load, the problems are subtler: memory that climbs all day, counters that lose updates, and a slow page that nobody can explain. Part IX goes inside the runtime: the garbage collector, threads, and the method for finding what's really slow. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part X as One Story: Kettle Under Load"
+summary: "Read this first. Kettle survives normal days easily. Under real load, the problems are subtler: memory that climbs all day, counters that lose updates, and a slow page that nobody can explain. Part X goes inside the runtime: the garbage collector, threads, and the method for finding what's really slow. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: runtime
-where: Performance and internals › Start of Part IX
-fits: "The doorway into Part IX, Performance & Internals. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Performance and internals › Start of Part X
+fits: "The doorway into Part X, Performance & Internals. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
 prereqs: kubernetes
 next: memory-gc
@@ -12,15 +12,15 @@ next: memory-gc
 
 ## The 30-second version
 
-- Part IX goes inside the runtime: the garbage collector, threads, and the method for finding what's really slow.
+- Part X goes inside the runtime: the garbage collector, threads, and the method for finding what's really slow.
 - 3 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-Kettle survives normal days easily. Under real load, the problems are subtler: memory that climbs all day, counters that lose updates, and a slow page that nobody can explain. Part IX goes inside the runtime: the garbage collector, threads, and the method for finding what's really slow.
+Kettle survives normal days easily. Under real load, the problems are subtler: memory that climbs all day, counters that lose updates, and a slow page that nobody can explain. Part X goes inside the runtime: the garbage collector, threads, and the method for finding what's really slow.
 
-## The road through Part IX {b}
+## The road through Part X {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
@@ -43,6 +43,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part IX, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part X.
+By the end of Part X, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part XI.
 
 [Start: Episode 1 · Who cleans up? →](ch:memory-gc)

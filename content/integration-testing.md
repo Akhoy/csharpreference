@@ -297,7 +297,7 @@ The pyramid recommends mostly unit tests, fewer integration tests and very few E
 
 ## Next episode {b}
 
-By the end of Part VI, Kettle's releases are boring, which is how releases should be. With that safety net in place, Kettle can start splitting into separate services. Part VII deals with what goes wrong once they have to talk to each other. [Part VII · Kettle Becomes Several Services →](ch:distributed-story)
+By the end of Part VII, Kettle's releases are boring, which is how releases should be. With that safety net in place, Kettle can start splitting into separate services. Part VIII deals with what goes wrong once they have to talk to each other. [Part VIII · Kettle Becomes Several Services →](ch:distributed-story)
 
 ## Further reading
 

@@ -282,7 +282,7 @@ Native AOT (or ReadyToRun), the slim builder, trimming, source generators instea
 
 ## Next episode {b}
 
-By the end of Part IX, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part X. [Part X · Kettle Gets Attacked →](ch:security-story)
+By the end of Part X, Kettle is fast for reasons the team can measure and explain. Then an email arrives from a security researcher. That's Part XI. [Part XI · Kettle Gets Attacked →](ch:security-story)
 
 ## Further reading
 

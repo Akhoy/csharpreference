@@ -1,10 +1,10 @@
 ---
 id: architecture-story
-title: "Part V as One Story: Kettle Grows a Codebase"
-summary: "Read this first. Kettle's team has grown from two developers to twelve, in three teams. The code that two people understood is now a tangle that twelve people trip over. Part V is about the shapes code can take so that change stays cheap: principles, patterns, architectures, and finally the question of whether to split into services. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part VI as One Story: Kettle Grows a Codebase"
+summary: "Read this first. Kettle's team has grown from two developers to twelve, in three teams. The code that two people understood is now a tangle that twelve people trip over. Part VI is about the shapes code can take so that change stays cheap: principles, patterns, architectures, and finally the question of whether to split into services. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: arch
-where: Architecture and design › Start of Part V
-fits: "The doorway into Part V, Architecture & Design. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Architecture and design › Start of Part VI
+fits: "The doorway into Part VI, Architecture & Design. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
 prereqs: nosql-redis
 next: design-principles
@@ -12,15 +12,15 @@ next: design-principles
 
 ## The 30-second version
 
-- Part V is about the shapes code can take so that change stays cheap: principles, patterns, architectures, and finally the question of whether to split into services.
+- Part VI is about the shapes code can take so that change stays cheap: principles, patterns, architectures, and finally the question of whether to split into services.
 - 6 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-Kettle's team has grown from two developers to twelve, in three teams. The code that two people understood is now a tangle that twelve people trip over. Part V is about the shapes code can take so that change stays cheap: principles, patterns, architectures, and finally the question of whether to split into services.
+Kettle's team has grown from two developers to twelve, in three teams. The code that two people understood is now a tangle that twelve people trip over. Part VI is about the shapes code can take so that change stays cheap: principles, patterns, architectures, and finally the question of whether to split into services.
 
-## The road through Part V {b}
+## The road through Part VI {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
@@ -46,6 +46,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part V, Kettle's code has boundaries that match its business, and the team knows when splitting into services would help and when it would hurt. But every change still feels risky. Part VI fixes that.
+By the end of Part VI, Kettle's code has boundaries that match its business, and the team knows when splitting into services would help and when it would hurt. But every change still feels risky. Part VII fixes that.
 
 [Start: Episode 1 · Code that bends →](ch:design-principles)

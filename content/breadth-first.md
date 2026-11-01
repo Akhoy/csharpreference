@@ -692,11 +692,58 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
   MAUI Blazor Hybrid reuses the same components in native apps. (A full part on MVC and Blazor is coming.)
 - **Others**: GraphQL via Hot Chocolate (exact-field queries over one endpoint; hard to cache over HTTP, needs query cost limits, and has an N+1 risk solved by DataLoaders), OData (`$filter`/`$select`/`$expand` over `IQueryable`), raw WebSockets, Server-Sent Events (`TypedResults.ServerSentEvents`, .NET 10) and health-check endpoints.
 
-## Part IV · Data Access
+## Part IV · Web UI: MVC, Razor Pages and Blazor
+
+### 4.1 · MVC and Razor Pages
+
+[Full chapter →](ch:razor-mvc)
+
+- **Server rendering** means the server builds finished HTML for each request; links and form posts ask for the next page. It gives a fast first paint, search-engine-friendly content and one project to build. It's the simplest tool for form-heavy sites like Kettle's admin.
+- **Razor** mixes C# into HTML with `@`. Every `@expression` is **HTML-encoded**, which blocks most XSS. `@Html.Raw` bypasses that, so use it only for HTML you produced yourself. Views compile to C# classes at build time, so typos are build errors.
+- **MVC:** a controller's action loads a **view model** and returns `View(vm)`. The view is found at `Views/{Controller}/{Action}.cshtml`, then `Views/Shared/`. Layouts wrap pages (`@RenderBody`); `_ViewStart` and `_ViewImports` apply to a whole folder. **Partials** format markup they're given; **view components** load their own data with DI. **Tag helpers** (`asp-action`, `asp-for`) build URLs from routes and inputs from model properties.
+- **Forms:** model binding fills an **input model**, never an entity, so attackers can't over-post fields. Check `ModelState.IsValid` yourself. **Antiforgery** tokens defend cookie-authenticated forms against CSRF; Razor Pages validate them automatically. **Post/Redirect/Get** stops a refresh from resubmitting, with `TempData` carrying a one-time message.
+- **Razor Pages** pair `Page.cshtml` with a `PageModel`: `OnGet`, `OnPost`, and named handlers like `OnPostRefund`. The route comes from the folder, `[BindProperty]` binds form fields, and `AuthorizeFolder` protects whole areas. It's usually simpler than MVC for page-shaped apps; both can coexist.
+- **Filters** run inside MVC in a fixed order: authorization → resource → action/page → exception → result. Unlike middleware, they see the action and its arguments. Use them for auditing and translating domain errors; use middleware for HTTP-level concerns.
+
+### 4.2 · Blazor components
+
+[Full chapter →](ch:blazor-components)
+
+- **A component describes UI for its current state.** Each render produces a **render tree**; Blazor **diffs** it against the last one and applies only the changes. It re-renders after its own event handlers, when its parent passes parameters, or on `StateHasChanged`.
+- **Parameters** flow down, and **`EventCallback`** flows up. `EventCallback` also re-renders the parent, which a plain `Action` doesn't. A `Value`/`ValueChanged` parameter pair enables `@bind-Value`. **`RenderFragment`** passes UI as a value (child content, templates); `@typeparam` makes generic components.
+- **`@bind`** syncs inputs both ways, on `onchange` by default. `@bind:event="oninput"` updates per keystroke, and `@bind:after` runs code after the value is set.
+- **Lifecycle:** `SetParametersAsync` → `OnInitialized{Async}` (once) → `OnParametersSet{Async}` (each time parameters arrive) → render → `OnAfterRender{Async}(firstRender)` → `Dispose`. Async methods render at the first `await` and again when they finish. Reload data in `OnParametersSetAsync` when it depends on a route parameter. Unsubscribe from service events in `Dispose`, or the component leaks.
+- **`@key`** matches list items by identity, not position, so inserts don't re-render every row or move state to the wrong item. From timers and other threads, update with **`InvokeAsync(StateHasChanged)`**.
+- **Forms:** `EditForm` + `DataAnnotationsValidator` + `Input*` components. `OnValidSubmit` runs only when the data is valid. `FormName` and `[SupplyParameterFromForm]` make forms work under static rendering.
+- **DI scope depends on render mode:** one request (static), one **circuit** (Interactive Server, the whole session) or the whole app (WebAssembly). So a scoped `DbContext` in Interactive Server lives for the session: use `IDbContextFactory` instead.
+
+### 4.3 · Render modes
+
+[Full chapter →](ch:blazor-render-modes)
+
+- **Static SSR** (the default) renders HTML per request with no interactivity. **Streaming rendering** sends the page at once and streams slow parts into the same response. **Enhanced navigation and forms** patch the page instead of reloading it. Use it for content, SEO and anything without per-user state.
+- **Interactive Server:** after prerendering, a SignalR WebSocket **circuit** carries UI events to the server and diffs back. Strengths: fast start, direct server access, code stays private. Costs: a round trip per interaction, **memory per connected user**, a UI that pauses when the connection drops, and scale-out that needs sticky sessions or Azure SignalR Service.
+- **Interactive WebAssembly:** the .NET runtime runs in the browser, so interactions are instant, there's no per-user server memory and the app can work offline. Costs: a download and start-up time, all code inspectable (no secrets, and the API must enforce everything), and data over HTTP. AOT makes the download bigger and execution faster.
+- **Auto** starts on Server and switches to WebAssembly once cached. The component must work in both places, so put its data access behind an interface with a server and an HTTP implementation.
+- **Prerendering runs initialisation twice:** once for the HTML, once when the page becomes interactive. Persist state across the gap (`PersistentComponentState`, or `[PersistentState]` in .NET 10), disable prerendering for that component, or make the load cheap. JS interop isn't available during prerendering.
+- **Mixing rules:** a static parent can host interactive children; an interactive component's children share its mode; parameters crossing into an interactive component must be **serialisable** (no delegates or `RenderFragment`s); WebAssembly components live in the `.Client` project.
+
+### 4.4 · Blazor in production
+
+[Full chapter →](ch:blazor-advanced)
+
+- **JS interop:** import collocated `.razor.js` modules as `IJSObjectReference` in `OnAfterRenderAsync(firstRender)`. Make few, coarse calls, since in Server mode each is a round trip. JS calls .NET through a `DotNetObjectReference` to `[JSInvokable]` methods. Dispose both references, and never let JS edit DOM that Blazor renders.
+- **Auth:** an `AuthenticationStateProvider` supplies the user as a cascading `Task<AuthenticationState>`; `[Authorize]` protects pages and `<AuthorizeView>` hides UI. In Interactive Server the user is fixed for the circuit's life, so re-check sensitive operations. In WebAssembly, client checks are cosmetic: the API enforces everything, ideally behind a BFF.
+- **Performance** is mostly about **wasted renders**: mutable parameters, chatty events, changing cascading values and giant components. Use immutable parameters, `ShouldRender`, `@key`, `<Virtualize>` for long lists, and QuickGrid for tables.
+- **Errors:** an unhandled exception ends an Interactive Server user's **circuit**. Wrap risky UI in `<ErrorBoundary>`, which shows fallback content and logs. Catch exceptions in fire-and-forget tasks yourself.
+- **State that must survive** belongs in the URL, protected browser storage or the server, never only in a circuit.
+- **Testing:** bUnit renders components with fake services, navigation, auth and JS; Playwright handles a few end-to-end journeys.
+
+## Part V · Data Access
 
 Layer 5: where data lives and how to get it efficiently. Most real performance problems end up here.
 
-### 4.1 · Relational database fundamentals
+### 5.1 · Relational database fundamentals
 
 [Full chapter →](ch:relational-fundamentals)
 
@@ -744,7 +791,7 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Connection pooling**: opening a physical connection (TCP, TLS, authentication) is expensive, so providers keep a pool per connection string. `Open` borrows and `Dispose` returns, with a default maximum of 100 in SqlClient. "Timeout expired… obtaining a connection from the pool" comes from undisposed connections or contexts, long transactions, slow queries, sync-over-async holding connections while blocked, or more parallel work than the pool can serve. Open late, close early.
 - **SQL Server vs PostgreSQL**: SqlClient vs Npgsql drivers. Locking with optional row versioning vs MVCC by default. Columnstore, temporal tables and Query Store vs JSONB, arrays, `ON CONFLICT` and extensions like PostGIS and pgvector. Commercial vs open source. EF Core hides most differences for CRUD, but tuning details differ.
 
-### 4.2 · ADO.NET and Dapper
+### 5.2 · ADO.NET and Dapper
 
 [Full chapter →](ch:ado-dapper)
 
@@ -756,7 +803,7 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Connections in DI**: `AddNpgsqlDataSource` registers a singleton factory for pooled connections; for SQL Server, a small connection factory keeps code testable.
 - **Dapper vs EF Core is about the job, not popularity.** EF Core gives LINQ, change tracking, a unit of work, migrations, relationships and typed queries, at the cost of a steeper learning curve; the performance gap has shrunk a lot since EF Core 6–8. Dapper gives explicit SQL, a natural fit for CTEs, window functions and hints, and minimal overhead. The common pragmatic split follows CQRS: **EF Core for writes** (aggregates, rules, migrations) and **Dapper or EF raw SQL for reads** (flat DTO queries with no tracking). EF Core alone can do raw reads with `Database.SqlQuery<T>($"…")`, which is still parameterised because it's an interpolated-string handler.
 
-### 4.3 · EF Core fundamentals
+### 5.3 · EF Core fundamentals
 
 [Full chapter →](ch:efcore-fundamentals)
 
@@ -779,7 +826,7 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Migrations** turn model changes into versioned schema changes. Each one has `Up`/`Down` methods plus an updated **model snapshot**, which the next migration diffs against. Applied migrations are recorded in `__EFMigrationsHistory`, so `database update` is safe to rerun. In production, generate an **idempotent SQL script** (reviewable) or a **migration bundle** in the pipeline. Calling `MigrateAsync()` at startup races across replicas, needs DDL permissions and slows startup. For zero-downtime deploys, old and new code run side by side, so migrations must be **backward-compatible** (**expand/contract**): add nullable columns, backfill, make them required a release later; rename by adding the new column, copying, switching the code and dropping the old one later. Database-first `scaffold` generates entities from an existing schema.
 - **Seeding**: `HasData` (reference data, part of migrations) and `UseSeeding`/`UseAsyncSeeding` (EF 9, development and test data). **Providers**: SQL Server, Npgsql, SQLite, Pomelo MySQL, Cosmos (a document database with very different query capabilities), Oracle. The InMemory provider is for testing only, and even there it's discouraged, because it isn't relational and hides real behaviour.
 
-### 4.4 · EF Core querying and performance
+### 5.4 · EF Core querying and performance
 
 [Full chapter →](ch:efcore-querying)
 
@@ -817,7 +864,7 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
   9. Hot, stable data? Cache it.
   10. Bulk writes? Use set-based operations.
 
-### 4.5 · EF Core advanced: concurrency, transactions, interceptors, filters
+### 5.5 · EF Core advanced: concurrency, transactions, interceptors, filters
 
 [Full chapter →](ch:efcore-advanced)
 
@@ -844,7 +891,7 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
   - read-replica contexts.
 - **Testing EF code**: avoid the **InMemory** provider, which isn't relational: no constraints or real transactions and different query semantics, so tests can pass while production fails. SQLite in-memory is real SQL but a different dialect. A **real database in a container (Testcontainers)** gives the highest fidelity and is recommended for repositories and queries. Mock repository interfaces only when unit-testing application logic.
 
-### 4.6 · NoSQL, Redis and choosing a data store
+### 5.6 · NoSQL, Redis and choosing a data store
 
 [Full chapter →](ch:nosql-redis)
 
@@ -880,11 +927,11 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Search and vectors are projections**: keep the source of truth in SQL or Cosmos, and project into Azure AI Search or Elasticsearch through the change feed or events, for full-text, facets, synonyms, semantic ranking and hybrid vector search. Vector stores include Azure AI Search, Cosmos DB, pgvector, SQL Server 2025, Redis and Qdrant, accessed through `Microsoft.Extensions.VectorData` and `Microsoft.Extensions.AI`.
 - **Choosing a store**: relational for business data; documents for whole aggregates and global scale; Redis for caches, sessions, counters, locks, leaderboards and limits; **Blob Storage** for files (store the URL in the database, never the file); search indexes for relevance; Event Hubs or Kafka for high-volume replayable streams; Data Explorer for telemetry; graph databases for path queries. Don't use a cache as the system of record, and don't pick NoSQL to dodge migrations: schema-on-read still needs versioning (a `schemaVersion` field plus code that handles old shapes).
 
-## Part V · Architecture and Design
+## Part VI · Architecture and Design
 
 Layer 4: how you organise your own code so that change stays cheap as the system grows.
 
-### 5.1 · Design principles: SOLID and beyond
+### 6.1 · Design principles: SOLID and beyond
 
 [Full chapter →](ch:design-principles)
 
@@ -923,7 +970,7 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 
   The test is whether the abstraction **pays for itself** through testability, a real variation point, or isolating something volatile (I/O, third parties, time). If not, keep it concrete and refactor later, which is cheap when tests exist.
 
-### 5.2 · Design patterns: the GoF catalogue in modern .NET
+### 6.2 · Design patterns: the GoF catalogue in modern .NET
 
 [Full chapter →](ch:design-patterns)
 
@@ -953,7 +1000,7 @@ Layer 4: how you organise your own code so that change stays cheap as the system
   - **Iterator** is built in (`IEnumerable`, `yield`, `IAsyncEnumerable`). **Visitor** adds operations to a hierarchy through double dispatch (`ExpressionVisitor` is how EF translates queries; Roslyn syntax visitors); pattern matching often replaces simple visitors. **Memento** captures and restores state; **Interpreter** evaluates small languages.
 - **Architecture-scale patterns** live in other chapters: DI and Service Locator, Options, Repository, Unit of Work and Specification, CQRS and Result, Aggregate and Value Object, Outbox, Inbox and Saga, Retry and Circuit Breaker, API Gateway, BFF and Strangler Fig, Cache-Aside.
 
-### 5.3 · Application architectures: layered, Clean, hexagonal, vertical slice, modular monolith
+### 6.3 · Application architectures: layered, Clean, hexagonal, vertical slice, modular monolith
 
 [Full chapter →](ch:app-architectures)
 
@@ -972,7 +1019,7 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 - **Enforce boundaries, or they erode within a sprint**: project references (the compiler rejects undeclared dependencies, the strongest guarantee), `internal` by default, **architecture tests** (NetArchTest, ArchUnitNET: "Domain must not depend on EF Core", "modules must not reference each other's internals") in CI, analyzers, and **ADRs** (Architecture Decision Records) documenting why.
 - **Choosing**: small CRUD → minimal APIs plus EF directly, in feature folders. Rich rules on a long-lived product → Clean with a DDD domain and CQRS reads. Many features and a fast team → slices over a shared domain. Several bounded contexts and few teams → modular monolith. Independent scaling, many teams and mature DevOps → microservices, often extracted from a modular monolith.
 
-### 5.4 · CQRS, the mediator pipeline and the Result pattern
+### 6.4 · CQRS, the mediator pipeline and the Result pattern
 
 [Full chapter →](ch:cqrs-mediator-result)
 
@@ -991,7 +1038,7 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 - **The Result pattern makes expected failure part of the contract.** "Not found", "insufficient stock", "already registered" and "card declined" are normal outcomes. As exceptions they're **invisible in the signature** (`Task<Order> PlaceAsync()` hides five ways to fail), expensive under load, turn control flow into distant `try/catch`, and are easy to forget. A `Result<T>` is either a success value or a typed `Error(Code, Message, Type)`. Implicit conversions let handlers simply `return order.Id;` or `return OrderErrors.PaymentDeclined;`. Map Results to HTTP **once** at the edge (`ToHttp`, `ToProblem`), so every endpoint agrees on what "not found" means. Libraries: ErrorOr, FluentResults, Ardalis.Result, OneOf, CSharpFunctionalExtensions; "railway-oriented programming" chains them with `Map`/`Bind`. C# still has no built-in discriminated unions, which is why these exist.
 - **Exceptions vs Results**: exceptions for bugs and broken invariants, infrastructure failures (database down, timeouts), things the caller can't meaningfully handle, and constructors or framework callbacks. Results for business rejections, validation failures and anything the caller is *expected* to branch on. Both coexist, with a global `IExceptionHandler` as the backstop for the unexpected.
 
-### 5.5 · Domain-Driven Design
+### 6.5 · Domain-Driven Design
 
 [Full chapter →](ch:ddd)
 
@@ -1025,7 +1072,7 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 - **Persisting with EF Core** without polluting the model: Fluent API configuration, value converters for strongly typed IDs, `CustomerId` mapped as a plain property (enforcing "reference by ID" at the persistence layer), private setters, private constructors, backing fields, and owned or complex types. The purest alternative is separate persistence models plus mapping: more code, zero coupling.
 - **When DDD is overkill**: tactical DDD costs types, mapping, a learning curve and eventual consistency, so use it for **complex core domains with rich, changing rules**. For CRUD and supporting subdomains, a simple EF model with validation is better. **Strategic DDD** (contexts and language) pays off almost everywhere.
 
-### 5.6 · Monoliths, microservices and distributed architecture
+### 6.6 · Monoliths, microservices and distributed architecture
 
 [Full chapter →](ch:microservices)
 
@@ -1073,11 +1120,11 @@ Layer 4: how you organise your own code so that change stays cheap as the system
   - microservices first (a new product, one team, 15 services).
 - **Readiness checklist**: CI/CD and infrastructure as code per service, containers and an orchestrator or PaaS, centralised logs, metrics and **distributed tracing**, resilience on every outbound call, a broker with outbox and idempotency practices, API versioning and contract tests, health checks with autoscaling and graceful shutdown, service-to-service identity (managed identity, client credentials, mTLS) and clear on-call ownership.
 
-## Part VI · Testing
+## Part VII · Testing
 
 Layer 8, first concern: proving the code does what you think, in a way that survives refactoring.
 
-### 6.1 · Unit testing and test doubles
+### 7.1 · Unit testing and test doubles
 
 [Full chapter →](ch:unit-testing)
 
@@ -1092,7 +1139,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **What's worth testing**: domain logic (invariants, calculations, state transitions), handlers' decision logic with fakes at the edges, algorithms, parsers, mappers with logic, edge cases and error paths, and regression tests for bugs. Not worth it: trivial properties, pass-through code, framework behaviour, private methods (test them through public behaviour). **Coverage is a diagnostic, not a goal**: a test can run every line and assert nothing. **Mutation testing** (Stryker.NET flips `>` to `>=` and checks a test fails) measures whether tests actually catch bugs.
 - **TDD**: **Red** (a failing test for the next small behaviour) → **Green** (the simplest code that passes) → **Refactor** (improve the design under the tests' safety net), in minutes-long cycles. You get tests by construction and usage-driven, testable APIs. It can feel slow during exploratory design and is awkward around heavy framework code, so many teams use it selectively for domain logic and bug fixes, where the failing reproduction test is both the diagnosis and the regression guard. **BDD** (Given-When-Then, Reqnroll) writes executable specifications with business stakeholders.
 
-### 6.2 · Integration, end-to-end testing and strategy
+### 7.2 · Integration, end-to-end testing and strategy
 
 [Full chapter →](ch:integration-testing)
 
@@ -1112,9 +1159,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **E2E, smoke, load and chaos**: keep E2E tests **few**, on critical paths (sign-up, checkout), and tolerant of async processing (poll with timeouts, never fixed sleeps). Run **smoke tests** after each deploy to gate promotion. Use load tests to set p50/p95/p99, throughput and error-rate baselines against production-like data. Chaos testing (Azure Chaos Studio, Polly chaos strategies) injects faults to verify resilience.
 - **Tests in CI**: unit tests on every commit, integration tests on every PR (GitHub-hosted Ubuntu runners have Docker, so Testcontainers just works). Quarantine and fix **flaky tests** immediately, because they destroy trust in the whole suite. Keep the suite fast with parallel collections, shared containers and Respawn. Publish results and coverage, and make the test run a required merge check.
 
-## Part VII · Distributed Systems
+## Part VIII · Distributed Systems
 
-### 7.1 · Messaging and events
+### 8.1 · Messaging and events
 
 [Full chapter →](ch:messaging-events)
 
@@ -1174,7 +1221,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Tools: Marten (on PostgreSQL), EventStoreDB/KurrentDB, Cosmos DB change feed. Use it where history *is* the product (ledgers, compliance), not as a default.
 
-### 7.2 · Resilience
+### 8.2 · Resilience
 
 [Full chapter →](ch:resilience)
 
@@ -1223,7 +1270,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Liveness vs readiness.** **Liveness** asks "is the process stuck?" and failing it **restarts** the instance. **Readiness** asks "can it serve traffic now (dependencies reachable, warm-up done)?" and failing it **removes the instance from the load balancer** without restarting it. Tag checks (`"live"` and `"ready"`) and map `/health/live` and `/health/ready` with predicates. **Never put dependencies in liveness**: if the database blips, the orchestrator restarts *every* instance and a hiccup becomes a full outage.
 - **Chaos engineering** proves the strategies work before an outage does. **Polly chaos strategies** (v8.3+: `AddChaosLatency`, `AddChaosFault`, `AddChaosOutcome`, `AddChaosBehavior`) are switched on by configuration in test environments. **Azure Chaos Studio** injects platform faults (VM shutdown, network latency, AKS pod chaos). **Game days** are planned exercises to watch alerts and recovery.
 
-### 7.3 · Observability and .NET Aspire
+### 8.3 · Observability and .NET Aspire
 
 [Full chapter →](ch:observability-aspire)
 
@@ -1280,9 +1327,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   6. **Mitigate first** (roll back, scale, fail over, flip a feature flag), then find the root cause and hold a blameless post-mortem.
   7. Add the signal or alert you wished you'd had.
 
-## Part VIII · Cloud and DevOps
+## Part IX · Cloud and DevOps
 
-### 8.1 · Cloud fundamentals and the Azure map
+### 9.1 · Cloud fundamentals and the Azure map
 
 [Full chapter →](ch:cloud-azure-overview)
 
@@ -1351,7 +1398,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Operational Excellence**: IaC, CI/CD, observability, runbooks, safe deployments (slots, canaries).
   - **Performance Efficiency**: scale-out, caching, CDN, async processing, partitioning, load tests.
 
-### 8.2 · Docker and containers
+### 9.2 · Docker and containers
 
 [Full chapter →](ch:docker)
 
@@ -1392,7 +1439,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Server GC** is the ASP.NET Core default, and it used to make one heap per core and be memory-hungry in small containers. **.NET 9+ enables DATAS** (Dynamic Adaptation To Application Sizes), which grows and shrinks the heap count with load.
   - Set realistic Kubernetes **requests and limits**: too low gives **OOMKilled** restarts. `DOTNET_PROCESSOR_COUNT` overrides the detected CPU count.
 
-### 8.3 · Azure compute: App Service, Functions, Container Apps, AKS
+### 9.3 · Azure compute: App Service, Functions, Container Apps, AKS
 
 [Full chapter →](ch:azure-compute)
 
@@ -1443,7 +1490,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Functions vs Container Apps**: a trigger/binding programming model with per-execution billing vs any container with KEDA scaling.
   - **Consumption vs Premium**: scale to zero with cold starts and time limits vs pre-warmed instances, VNet and always paying for the minimum.
 
-### 8.4 · Azure data and messaging services
+### 9.4 · Azure data and messaging services
 
 [Full chapter →](ch:azure-data-messaging)
 
@@ -1512,7 +1559,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Aspire integrations (`AddAzureServiceBusClient("bus")`) wire all of this up with health checks.
 
-### 8.5 · Azure identity and secrets
+### 9.5 · Azure identity and secrets
 
 [Full chapter →](ch:azure-identity-secrets)
 
@@ -1557,7 +1604,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   To call another API **as the service**, use client credentials via managed identity: `GetTokenAsync(new(["api://inventory-api/.default"]))`. `.default` means "all application permissions granted to me".
 
-### 8.6 · CI/CD and infrastructure as code
+### 9.6 · CI/CD and infrastructure as code
 
 [Full chapter →](ch:cicd-iac)
 
@@ -1602,7 +1649,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Pulumi**: IaC in **C#** or another general-purpose language.
 - **azd and GitOps.** **azd** ties templates, IaC and deploy together: `azd up` provisions and deploys, and `azd pipeline config` generates CI with federated credentials. For Aspire, it **generates the infrastructure from the AppHost model**. **GitOps** (Argo CD, Flux) makes a Git repo the source of truth for cluster state. CI only bumps the image tag in the config repo; an in-cluster agent **pulls** and reconciles, which gives drift correction, an audit trail and rollback by `git revert`.
 
-### 8.7 · Kubernetes
+### 9.7 · Kubernetes
 
 [Full chapter →](ch:kubernetes)
 
@@ -1669,9 +1716,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Security**: Defender for Containers, Azure Policy for Kubernetes.
   - **Mesh**: an Istio-based mesh add-on.
 
-## Part IX · Performance and Internals
+## Part X · Performance and Internals
 
-### 9.1 · Memory and garbage collection
+### 10.1 · Memory and garbage collection
 
 [Full chapter →](ch:memory-gc)
 
@@ -1751,7 +1798,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Most business code is I/O-bound, so **measure first**. And **don't call `GC.Collect()`** in production: it promotes objects before they've earned it, wastes CPU and pauses at a moment you didn't choose. The only legitimate uses are tests, benchmarks and after a one-off huge batch cleanup.
 
-### 9.2 · Threading and concurrency
+### 10.2 · Threading and concurrency
 
 [Full chapter →](ch:threading-concurrency)
 
@@ -1818,7 +1865,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - background work bounded;
   - cross-instance coordination through distributed locks or the database, never a C# `lock`.
 
-### 9.3 · Performance engineering
+### 10.3 · Performance engineering
 
 [Full chapter →](ch:performance-engineering)
 
@@ -1891,9 +1938,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **canaries** with automated latency comparison;
   - review checklists: async all the way, no N+1, projections, timeouts, pagination limits, no per-request large allocations.
 
-## Part X · Security
+## Part XI · Security
 
-### 10.1 · Web application security
+### 11.1 · Web application security
 
 [Full chapter →](ch:web-security)
 
@@ -1980,7 +2027,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - Unsafe deserializers: no `BinaryFormatter`, and **no Newtonsoft `TypeNameHandling.All`**, which lets the payload pick which type to instantiate (gadget chains → remote code execution). XML with DTDs disabled (XXE; .NET's defaults are safe).
 - **Security logging.** Log authentication failures, access denials, privilege changes and rate-limit hits with user and correlation IDs, and alert on spikes. **Never log** passwords, tokens, keys, card numbers or sensitive personal data; use `Microsoft.Extensions.Compliance.Redaction`. Protect the log store with RBAC and retention. **Defender for Cloud** handles posture management and threat detection.
 
-### 10.2 · OAuth 2.0, OpenID Connect and identity
+### 11.2 · OAuth 2.0, OpenID Connect and identity
 
 [Full chapter →](ch:oauth-oidc-identity)
 
@@ -2052,9 +2099,9 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **hand-rolled HS256 JWTs with a shared key**, where *any service holding the key can mint tokens* → asymmetric keys at a real IdP;
   - sensitive data in claims (readable by anyone holding the token) → minimal claims, details looked up server-side.
 
-## Part XI · Interview Preparation
+## Part XII · Interview Preparation
 
-### 11.1 · System design
+### 12.1 · System design
 
 [Full chapter →](ch:system-design)
 
@@ -2142,7 +2189,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   The classic **LRU cache** pairs a `Dictionary<K, LinkedListNode<(K, V)>>` with a `LinkedList`, for O(1) get and put. On a hit, move the node to the front. On insert past capacity, evict `_order.Last` and remove its key from the map. Guard the whole thing with a `Lock`, because both structures must change together, so `Interlocked` isn't enough.
 
-### 11.2 · Study plan and resources
+### 12.2 · Study plan and resources
 
 [Full chapter →](ch:study-plan-resources)
 

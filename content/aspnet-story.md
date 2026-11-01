@@ -53,6 +53,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part III, Kettle is a real web API: it starts and stops cleanly, wires its services together, knows who's calling, survives slow partners and serves several kinds of client. It still keeps its orders in memory, though. That's Part IV.
+By the end of Part III, Kettle is a real web API: it starts and stops cleanly, wires its services together, knows who's calling, survives slow partners and serves several kinds of client. It still keeps its orders in memory, though. That's Part V.
 
 [Start: Episode 1 · Program.cs, start to finish →](ch:aspnet-hosting)

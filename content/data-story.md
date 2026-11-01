@@ -1,26 +1,26 @@
 ---
 id: data-story
-title: "Part IV as One Story: Kettle Remembers"
-summary: "Read this first. Kettle's API works, but every deploy wipes the orders, because they live in a list in memory. Part IV gives Kettle a memory that survives restarts, stays correct when two people change the same thing, and stays fast as the tables grow into millions of rows. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part V as One Story: Kettle Remembers"
+summary: "Read this first. Kettle's API works, but every deploy wipes the orders, because they live in a list in memory. Part V gives Kettle a memory that survives restarts, stays correct when two people change the same thing, and stays fast as the tables grow into millions of rows. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: data
-where: Data access › Start of Part IV
-fits: "The doorway into Part IV, Data Access. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Data access › Start of Part V
+fits: "The doorway into Part V, Data Access. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
-prereqs: app-models
+prereqs: blazor-advanced
 next: relational-fundamentals
 ---
 
 ## The 30-second version
 
-- Part IV gives Kettle a memory that survives restarts, stays correct when two people change the same thing, and stays fast as the tables grow into millions of rows.
+- Part V gives Kettle a memory that survives restarts, stays correct when two people change the same thing, and stays fast as the tables grow into millions of rows.
 - 6 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-Kettle's API works, but every deploy wipes the orders, because they live in a list in memory. Part IV gives Kettle a memory that survives restarts, stays correct when two people change the same thing, and stays fast as the tables grow into millions of rows.
+Kettle's API works, but every deploy wipes the orders, because they live in a list in memory. Part V gives Kettle a memory that survives restarts, stays correct when two people change the same thing, and stays fast as the tables grow into millions of rows.
 
-## The road through Part IV {b}
+## The road through Part V {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
@@ -46,6 +46,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part IV, Kettle's data is durable, correct under concurrency and fast to query, with a cache in front of the hot reads. But the code that does all this has grown into a few enormous classes. Part V is about shaping it.
+By the end of Part V, Kettle's data is durable, correct under concurrency and fast to query, with a cache in front of the hot reads. But the code that does all this has grown into a few enormous classes. Part VI is about shaping it.
 
 [Start: Episode 1 · Tables, indexes, transactions →](ch:relational-fundamentals)

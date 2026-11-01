@@ -244,7 +244,7 @@ It's fire-and-forget: messages aren't persisted, and subscribers that are offlin
 
 ## Next episode {b}
 
-By the end of Part IV, Kettle's data is durable, correct under concurrency and fast to query, with a cache in front of the hot reads. But the code that does all this has grown into a few enormous classes. Part V is about shaping it. [Part V · Kettle Grows a Codebase →](ch:architecture-story)
+By the end of Part V, Kettle's data is durable, correct under concurrency and fast to query, with a cache in front of the hot reads. But the code that does all this has grown into a few enormous classes. Part VI is about shaping it. [Part VI · Kettle Grows a Codebase →](ch:architecture-story)
 
 ## Further reading
 

@@ -142,6 +142,10 @@ Notice that `ShippingNotifier` is **not** a hub — it's just an ordinary servic
 
 ## Server-rendered HTML: MVC and Razor Pages {b}
 
+:::tip The full treatment
+This section is the overview. [MVC and Razor Pages](ch:razor-mvc), in Part IV, covers Razor syntax, forms, validation, antiforgery, filters and how views are compiled.
+:::
+
 Step away from APIs and real-time push entirely: sometimes the actual deliverable is a web page rendered as HTML, with forms a browser posts back to directly, no separate frontend framework involved. **Razor** is the templating syntax underneath both options here — C# mixed directly into HTML markup (`@Model.Name`, `@foreach`).
 
 | | MVC (Model-View-Controller) | Razor Pages |
@@ -177,6 +181,10 @@ public sealed class EditModel(KettleDb db) : PageModel
 Notice `OnPostAsync` redirects on success rather than returning a view directly — the Post-Redirect-Get pattern, which exists specifically so that refreshing the page after a successful save doesn't resubmit the form a second time. Because this model relies on the browser submitting real HTML forms rather than an API client attaching a bearer token, server-rendered apps use **cookie auth** by default and need **antiforgery** tokens on every form — added automatically by the form tag helpers. This defends against **CSRF** (cross-site request forgery: a malicious site tricking your browser into submitting a form to a real site where you're already logged in, using your cookies without your consent) — exactly the risk [Auth](ch:auth#cookies-vs-bearer-tokens-the-tradeoff-behind-how-do-i-stay-l) flags as cookies' particular weak point.
 
 ## Blazor: C# instead of JavaScript, with a choice of where it actually runs {i}
+
+:::tip The full treatment
+This section is the overview. Part IV has three chapters on Blazor: [components](ch:blazor-components), [render modes](ch:blazor-render-modes) and [running it in production](ch:blazor-advanced).
+:::
 
 **Blazor** builds interactive web UIs from **Razor components** written entirely in C# — no JavaScript framework needed. The one question that matters for understanding Blazor is: *where does that C# actually run — on the server, or in the browser?* Since .NET 8, you don't have to pick one answer for the whole app. A single unified model ("Blazor Web App") lets you choose a **render mode** per component:
 
@@ -245,7 +253,7 @@ Static server-side rendering (no interactivity), Interactive Server (logic on th
 
 ## Next episode {b}
 
-By the end of Part III, Kettle is a real web API: it starts and stops cleanly, wires its services together, knows who's calling, survives slow partners and serves several kinds of client. It still keeps its orders in memory, though. That's Part IV. [Part IV · Kettle Remembers →](ch:data-story)
+By the end of Part III, Kettle is a real web API: it starts and stops cleanly, wires its services together, knows who's calling, survives slow partners and serves several kinds of client. But Kettle's staff still fix orders by hand in SQL, and the storefront feels clunky. Part IV gives Kettle a face. [Part IV · Kettle Gets a Face →](ch:ui-story)
 
 ## Further reading
 

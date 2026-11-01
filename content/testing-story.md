@@ -1,10 +1,10 @@
 ---
 id: testing-story
-title: "Part VI as One Story: Kettle Stops Breaking"
-summary: "Read this first. Kettle deploys several times a week now, and each release breaks something nobody noticed for days. Part VI builds the safety net: fast tests for the rules, and realistic tests for the wiring between the parts. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
+title: "Part VII as One Story: Kettle Stops Breaking"
+summary: "Read this first. Kettle deploys several times a week now, and each release breaks something nobody noticed for days. Part VII builds the safety net: fast tests for the rules, and realistic tests for the wiring between the parts. Each chapter is an episode: something breaks at Kettle, and the chapter is the fix."
 layer: cross
-where: Testing › Start of Part VI
-fits: "The doorway into Part VI, Testing. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
+where: Testing › Start of Part VII
+fits: "The doorway into Part VII, Testing. It shows the whole road before you walk it, so each chapter arrives as the answer to a problem you've already met."
 levels: b
 prereqs: microservices
 next: unit-testing
@@ -12,15 +12,15 @@ next: unit-testing
 
 ## The 30-second version
 
-- Part VI builds the safety net: fast tests for the rules, and realistic tests for the wiring between the parts.
+- Part VII builds the safety net: fast tests for the rules, and realistic tests for the wiring between the parts.
 - 2 episodes. Each starts with **Previously at Kettle** and the problem that just appeared, and ends with **Next episode**: the new problem the fix creates.
 - Learn the problem first, and the technique stops being trivia.
 
 ## Where Kettle is now {b}
 
-Kettle deploys several times a week now, and each release breaks something nobody noticed for days. Part VI builds the safety net: fast tests for the rules, and realistic tests for the wiring between the parts.
+Kettle deploys several times a week now, and each release breaks something nobody noticed for days. Part VII builds the safety net: fast tests for the rules, and realistic tests for the wiring between the parts.
 
-## The road through Part VI {b}
+## The road through Part VII {b}
 
 | # | Episode | What breaks at Kettle | What you learn |
 |---|---|---|---|
@@ -42,6 +42,6 @@ The [Kettle Storybook](story.html) has a short animated scene for every episode 
 
 ## Where this part ends {b}
 
-By the end of Part VI, Kettle's releases are boring, which is how releases should be. With that safety net in place, Kettle can start splitting into separate services. Part VII deals with what goes wrong once they have to talk to each other.
+By the end of Part VII, Kettle's releases are boring, which is how releases should be. With that safety net in place, Kettle can start splitting into separate services. Part VIII deals with what goes wrong once they have to talk to each other.
 
 [Start: Episode 1 · Fast proof →](ch:unit-testing)

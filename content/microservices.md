@@ -232,7 +232,7 @@ A system split into services that are still tightly coupled: a shared database, 
 
 ## Next episode {b}
 
-By the end of Part V, Kettle's code has boundaries that match its business, and the team knows when splitting into services would help and when it would hurt. But every change still feels risky. Part VI fixes that. [Part VI · Kettle Stops Breaking →](ch:testing-story)
+By the end of Part VI, Kettle's code has boundaries that match its business, and the team knows when splitting into services would help and when it would hurt. But every change still feels risky. Part VII fixes that. [Part VII · Kettle Stops Breaking →](ch:testing-story)
 
 ## Further reading
 
