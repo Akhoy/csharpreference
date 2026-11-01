@@ -61,6 +61,32 @@ Latency is how long one request takes, throughput is how many you handle per sec
 
 **Use percentiles, not averages.** Here's a concrete illustration of why: out of 100 requests, if 98 take 50 ms and 2 take 5,000 ms, the *average* is about 148 ms — already looks bad, but still hides what's going on — while the p99 is 5,000 ms, the number that actually describes the experience of the unluckiest 2% of users. (Source: this is just `latency[⌈p·N⌉ − 1]` on the sorted array — verified below.) At real traffic volumes, that 2% is thousands of people, and a user loading a page that fires ten API calls hits that unlucky tail on nearly every page load, not just rarely. **Little's Law** links the three core metrics precisely: concurrency = throughput × latency (so 500 RPS × 0.2 s = 100 concurrent requests in flight) — a formula worth keeping handy when sizing a thread pool or a connection pool, since it tells you exactly how many requests you need to support *simultaneously*, not just per second.
 
+### See it run: what an average hides
+
+:::walk Ten requests, three summaries
+```csharp
+double[] latencyMs = [48, 52, 50, 49, 51, 47, 53, 50, 5000, 4800];
+Array.Sort(latencyMs);
+
+Console.WriteLine($"average: {latencyMs.Average():N0} ms");
+Console.WriteLine($"p50: {Percentile(latencyMs, 0.50)} ms");
+Console.WriteLine($"p90: {Percentile(latencyMs, 0.90)} ms");
+Console.WriteLine($"p99: {Percentile(latencyMs, 0.99)} ms");
+
+static double Percentile(double[] sorted, double p) => sorted[(int)Math.Ceiling(p * sorted.Length) - 1];
+```
+@1-2 | latencyMs = [47, 48, 49, 50, 50, 51, 52, 53, 4800, 5000]
+Eight fast requests and two that hit a slow dependency. Sorted, so percentiles can be read by position.
+@4 | | > average: 1,020 ms
+The average describes **no actual request**: nobody waited about a second. It's dragged up by the two slow ones and hides that most requests were fast.
+@5 | | > p50: 50 ms
+The median: half the requests took 50 ms or less. A typical user's experience.
+@6 | | > p90: 4800 ms
+One in ten requests took nearly five seconds. That's the number to alert on.
+@7 | | > p99: 5000 ms
+The tail. A page that makes ten API calls hits this tail on most loads.
+:::
+
 ## Where time goes in a .NET backend {i}
 
 :::plain

@@ -263,6 +263,73 @@ The outbox row is the one worth defaulting to for anything that genuinely matter
 
 The distinction worth holding onto between the first two rows: a *domain* service still speaks the business's language and can contain real rules (`TransferService` deciding how a transfer actually works), while an *application* service is pure orchestration — it calls other things in the right order and contains no judgment calls of its own. `PlaceOrderHandler` from earlier chapters is a textbook application service precisely because every actual decision inside it (can this order be placed? is this quantity valid?) was delegated to the aggregate itself.
 
+## See it run: an aggregate guarding its rules {i}
+
+Kettle's `Order` is an aggregate root. All changes go through its methods, so its rules can't be bypassed, and `Money` is a value object compared by value.
+
+:::walk An order that protects itself
+```csharp
+var order = Order.Place(customerId: 7);
+order.AddLine("TEA-01", 2, new Money(6.50m, "GBP"));
+order.AddLine("TEA-01", 1, new Money(6.50m, "GBP"));
+Console.WriteLine($"{order.Lines.Count} line, qty {order.Lines[0].Quantity}, total {order.Total}");
+
+order.Ship();
+try { order.AddLine("TEA-02", 1, new Money(4m, "GBP")); }
+catch (InvalidOperationException e) { Console.WriteLine(e.Message); }
+
+Console.WriteLine(new Money(6.50m, "GBP") == new Money(6.50m, "GBP"));
+
+readonly record struct Money(decimal Amount, string Currency)
+{
+    public Money Times(int n) => new(Amount * n, Currency);
+    public static Money operator +(Money a, Money b) => new(a.Amount + b.Amount, a.Currency);
+    public override string ToString() => $"{Currency} {Amount:0.00}";
+}
+
+sealed class OrderLine(string sku, int quantity, Money price)
+{
+    public string Sku { get; } = sku;
+    public int Quantity { get; internal set; } = quantity;
+    public Money Price { get; } = price;
+}
+
+sealed class Order
+{
+    private readonly List<OrderLine> _lines = [];
+    private bool _shipped;
+    private Order(int customerId) => CustomerId = customerId;
+
+    public int CustomerId { get; }
+    public IReadOnlyList<OrderLine> Lines => _lines;
+    public Money Total => _lines.Aggregate(new Money(0, "GBP"), (sum, l) => sum + l.Price.Times(l.Quantity));
+
+    public static Order Place(int customerId) => new(customerId);
+
+    public void AddLine(string sku, int quantity, Money price)
+    {
+        if (_shipped) throw new InvalidOperationException("can't change a shipped order");
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+        var existing = _lines.Find(l => l.Sku == sku);
+        if (existing is not null) existing.Quantity += quantity;
+        else _lines.Add(new OrderLine(sku, quantity, price));
+    }
+
+    public void Ship() => _shipped = true;
+}
+```
+@1 | order = Order { CustomerId = 7, Lines = [] }
+The constructor is private: orders are created only through `Place`, the one way in.
+@2-3 | order = Order { Lines = [TEA-01 × 3] }
+Adding the same tea twice merges into one line. That rule lives inside the aggregate, so no caller can create duplicate lines.
+@4 | | > 1 line, qty 3, total GBP 19.50
+`Total` is calculated from the lines, never stored separately, so it can't drift out of date.
+@6-8 | | > can't change a shipped order
+Once shipped, the aggregate refuses changes. Callers can't reach the line list to edit it, because it's only exposed as `IReadOnlyList`.
+@10 | | > True
+Two `Money` values with the same amount and currency are equal: a value object has no identity of its own.
+:::
+
 ## Rich vs anemic domain models {i}
 
 :::plain

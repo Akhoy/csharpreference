@@ -250,6 +250,45 @@ sut.IsExpired(new Subscription { EndsAt = new DateTimeOffset(2026, 10, 28, 12, 0
 - **Timers, delays, `PeriodicTimer`**: pass `TimeProvider` so `FakeTimeProvider.Advance` drives them without real waiting.
 - **Logging**: `FakeLogger<T>` (Microsoft.Extensions.Diagnostics.Testing) captures log records to assert on.
 
+## See it run: a test that controls time {i}
+
+A promotion that depends on today's date can't be tested with the real clock. Inject a clock, and the test decides what time it is.
+
+:::walk Testing a Black Friday rule without waiting for Black Friday
+```csharp
+var clock = new FakeClock(new DateTimeOffset(2026, 11, 26, 23, 0, 0, TimeSpan.Zero));
+var promo = new BlackFridayPromotion(clock);
+
+Check(promo.DiscountFor(100m) == 0m, "no discount the evening before");
+clock.Now = clock.Now.AddHours(2);
+Check(promo.DiscountFor(100m) == 30m, "30% off on Black Friday");
+
+static void Check(bool ok, string behaviour) => Console.WriteLine($"{(ok ? "PASS" : "FAIL")}: {behaviour}");
+
+interface IClock { DateTimeOffset Now { get; } }
+
+sealed class FakeClock(DateTimeOffset start) : IClock
+{
+    public DateTimeOffset Now { get; set; } = start;
+}
+
+sealed class BlackFridayPromotion(IClock clock)
+{
+    private static readonly DateOnly BlackFriday = new(2026, 11, 27);
+    public decimal DiscountFor(decimal total) =>
+        DateOnly.FromDateTime(clock.Now.UtcDateTime) == BlackFriday ? total * 0.30m : 0m;
+}
+```
+@1-2 | clock.Now = 2026-11-26 23:00 UTC
+**Arrange:** a fake clock set to the evening before, injected into the class under test.
+@4 | | > PASS: no discount the evening before
+**Act and assert:** the rule gives no discount yet.
+@5 | clock.Now = 2026-11-27 01:00 UTC
+The test moves time forward two hours, instantly. No waiting, and no dependence on the day the test happens to run.
+@6 | | > PASS: 30% off on Black Friday
+In real code, inject .NET's `TimeProvider` and use `FakeTimeProvider` in tests, which does the same job and also controls timers ([Everyday types](ch:everyday-types#dates-and-times)).
+:::
+
 ## Test data builders and fixtures {i}
 
 :::plain

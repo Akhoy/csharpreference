@@ -209,6 +209,43 @@ public sealed class ChargeOnOrderPlaced(KettleDb db, IPaymentGateway payments) :
 
 Note the **idempotency key passed to `payments.ChargeAsync`** — the exact pattern from [API design](ch:api-design#idempotency-keys-for-post-making-the-one-unsafe-by-default-m) — because the inbox table alone only protects your own database. The payment provider is a *different* system with no visibility into your inbox, so if this consumer crashes after charging but before the inbox row commits, redelivery would charge the card a second time unless the idempotency key passed to the gateway itself prevents it. External side effects always need their own deduplication, because your database transaction can't roll back a card charge.
 
+## See it run: a duplicate that does no harm {i}
+
+The broker delivers `OrderPlaced` twice, as it's allowed to. The consumer records each message ID in an **inbox** and skips any it has already handled.
+
+:::walk An idempotent consumer
+```csharp
+var inbox = new HashSet<Guid>();
+var stock = new Dictionary<string, int> { ["TEA-01"] = 10 };
+var message = new OrderPlaced(Guid.Parse("7f3a0000-0000-0000-0000-000000000001"), "TEA-01", 2);
+
+Handle(message);
+Handle(message);
+Console.WriteLine($"stock left: {stock["TEA-01"]}");
+
+void Handle(OrderPlaced m)
+{
+    if (!inbox.Add(m.MessageId))
+    {
+        Console.WriteLine($"duplicate {m.MessageId.ToString()[..8]}: skipped");
+        return;
+    }
+    stock[m.Sku] -= m.Quantity;
+    Console.WriteLine($"reserved {m.Quantity} × {m.Sku}");
+}
+
+record OrderPlaced(Guid MessageId, string Sku, int Quantity);
+```
+@1-3 | inbox = {} ; stock = { TEA-01 → 10 }
+The inbox remembers which messages have been handled. Each message carries an ID that stays the same when it's redelivered.
+@5 | inbox = { 7f3a… } ; stock = { TEA-01 → 8 } | > reserved 2 × TEA-01
+First delivery: the ID is new, so the stock is reserved.
+@6 | | > duplicate 7f3a0000: skipped
+The broker delivers the same message again, perhaps because the consumer crashed before acknowledging it. `HashSet.Add` returns false for an ID it already has, so the handler does nothing.
+@7 | | > stock left: 8
+Two deliveries, one reservation. In production, the inbox row and the stock change are saved in **the same database transaction**, so a crash can't record one without the other.
+:::
+
 ## Retries, poison messages and dead-lettering {i}
 
 :::plain

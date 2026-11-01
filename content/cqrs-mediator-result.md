@@ -305,6 +305,56 @@ Returning an explicit success-or-failure object (with a typed error) from operat
 FluentValidation validators per command, executed by a ValidationBehavior pipeline behaviour before the handler, which short-circuits with a validation-failure Result (or throws a ValidationException mapped to 400 ProblemDetails). Keep business-rule checks that need aggregates inside the domain.
 :::
 
+## See it run: a Result and a pipeline step {i}
+
+A command handler that returns a `Result` instead of throwing, and a validation step wrapped around it, the way a mediator pipeline behaviour would be.
+
+:::walk Expected failures as values
+```csharp
+var placeOrder = new ValidationStep<PlaceOrder>(
+    new PlaceOrderHandler(),
+    cmd => cmd.Quantity > 0 ? null : "Quantity must be positive");
+
+Show(placeOrder.Handle(new PlaceOrder("TEA-01", 2)));
+Show(placeOrder.Handle(new PlaceOrder("TEA-99", 1)));
+Show(placeOrder.Handle(new PlaceOrder("TEA-01", 0)));
+
+static void Show(Result<int> r) => Console.WriteLine(r.IsSuccess ? $"ok: order {r.Value}" : $"failed: {r.Error}");
+
+record PlaceOrder(string Sku, int Quantity);
+
+readonly record struct Result<T>(bool IsSuccess, T? Value, string? Error)
+{
+    public static Result<T> Ok(T value) => new(true, value, null);
+    public static Result<T> Fail(string error) => new(false, default, error);
+}
+
+interface IHandler<TRequest> { Result<int> Handle(TRequest request); }
+
+sealed class PlaceOrderHandler : IHandler<PlaceOrder>
+{
+    private int _lastOrder = 1041;
+    private readonly HashSet<string> _inStock = ["TEA-01", "TEA-02"];
+    public Result<int> Handle(PlaceOrder cmd) =>
+        _inStock.Contains(cmd.Sku) ? Result<int>.Ok(++_lastOrder) : Result<int>.Fail($"{cmd.Sku} is out of stock");
+}
+
+sealed class ValidationStep<TRequest>(IHandler<TRequest> next, Func<TRequest, string?> validate) : IHandler<TRequest>
+{
+    public Result<int> Handle(TRequest request) =>
+        validate(request) is { } error ? Result<int>.Fail(error) : next.Handle(request);
+}
+```
+@1-3 | placeOrder = ValidationStep → PlaceOrderHandler
+The handler is wrapped in a validation step with the same interface, like a mediator's pipeline behaviour.
+@5 | | > ok: order 1042
+Valid and in stock: the handler succeeds and returns the new order number inside a `Result`.
+@6 | | > failed: TEA-99 is out of stock
+Out of stock is an **expected** outcome, not an exception. The `Result` carries the reason, and the caller has to look at `IsSuccess` to get the value.
+@7 | | > failed: Quantity must be positive
+Bad input never reaches the handler: the validation step stops it first, for every command it wraps.
+:::
+
 ## Next episode {b}
 
 "Product" means one thing to the catalogue team and another to the warehouse. [Episode 5 · Speak the business language →](ch:ddd)

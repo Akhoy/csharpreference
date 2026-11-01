@@ -81,6 +81,32 @@ A few remembered numbers, such as requests per day to per second and how slow ea
 
 **Example:** 10M daily active users, each making 20 reads and 1 write per day → reads ≈ 200M/day ≈ 2,300 RPS average (~10k peak); writes ≈ 10M/day ≈ 115 RPS average. That's a **read-heavy** system, so caching and read replicas matter more than write sharding.
 
+### See it run: estimating Kettle at ten million users
+
+:::walk From users to requests per second and storage
+```csharp
+long dailyUsers = 10_000_000;
+long readsPerDay = dailyUsers * 20;
+long writesPerDay = dailyUsers * 1;
+const int secondsPerDay = 86_400;
+
+Console.WriteLine($"reads: {readsPerDay / secondsPerDay:N0}/s average, about {readsPerDay / secondsPerDay * 5:N0}/s at peak");
+Console.WriteLine($"writes: {writesPerDay / secondsPerDay:N0}/s average");
+
+long bytesPerOrder = 2_000;
+double terabytesPerYear = writesPerDay * 365.0 * bytesPerOrder / 1e12;
+Console.WriteLine($"storage: {terabytesPerYear:N1} TB of orders per year");
+```
+@1-4 | dailyUsers = 10,000,000 ; readsPerDay = 200,000,000 ; writesPerDay = 10,000,000
+Assume each user makes 20 reads and 1 write a day. A day is about 100,000 seconds (86,400 exactly).
+@6 | | > reads: 2,314/s average, about 11,570/s at peak
+Peaks are often 2 to 10 times the average; 5× is a reasonable guess to say out loud.
+@7 | | > writes: 115/s average
+Reads outnumber writes 20 to 1, so the design should spend its effort on **caching and read replicas**, not on sharding writes.
+@9-11 | | > storage: 7.3 TB of orders per year
+At 2 KB per order, one relational database holds years of orders. No exotic storage is needed yet, and the estimate says so.
+:::
+
 ## Building blocks and their .NET/Azure choices {i}
 
 :::plain

@@ -468,6 +468,63 @@ For simpler lifecycles, an **enum plus a transition table** or a library like **
 - **Memento:** capture and restore an object's state (undo, snapshots). Event sourcing snapshots are a relative.
 - **Interpreter:** evaluate sentences in a small language (rule engines, query parsers). Expression trees and Roslyn scripting are related.
 
+## See it run: Strategy and Decorator together {i}
+
+Two patterns from this chapter, stacked. The pricing **strategy** decides the price; two **decorators** wrap it, adding logging and caching without either one changing the strategy.
+
+:::walk Swapping a strategy, stacking decorators
+```csharp
+IPricing pricing = new LoggingPricing(new CachingPricing(new StandardPricing()));
+Console.WriteLine(pricing.PriceOf("TEA-01"));
+Console.WriteLine(pricing.PriceOf("TEA-01"));
+
+pricing = new LoggingPricing(new CachingPricing(new SalePricing(0.30m)));
+Console.WriteLine(pricing.PriceOf("TEA-01"));
+
+interface IPricing { decimal PriceOf(string sku); }
+
+sealed class StandardPricing : IPricing
+{
+    public decimal PriceOf(string sku) => 10.00m;
+}
+
+sealed class SalePricing(decimal discount) : IPricing
+{
+    public decimal PriceOf(string sku) => Math.Round(10.00m * (1 - discount), 2);
+}
+
+sealed class CachingPricing(IPricing inner) : IPricing
+{
+    private readonly Dictionary<string, decimal> _cache = [];
+    public decimal PriceOf(string sku)
+    {
+        if (_cache.TryGetValue(sku, out var price)) { Console.WriteLine("(from cache)"); return price; }
+        return _cache[sku] = inner.PriceOf(sku);
+    }
+}
+
+sealed class LoggingPricing(IPricing inner) : IPricing
+{
+    public decimal PriceOf(string sku)
+    {
+        Console.WriteLine($"pricing {sku}");
+        return inner.PriceOf(sku);
+    }
+}
+```
+@1 | pricing = Logging → Caching → Standard
+Three objects, each implementing `IPricing`, each wrapping the next. The caller only sees one `IPricing`.
+@2 | | > pricing TEA-01 | > 10.00
+The call goes in through the logging decorator, then the caching decorator, which misses and asks the strategy.
+@3 | | > pricing TEA-01 | > (from cache) | > 10.00
+The second call is answered by the cache. The strategy never ran, and it didn't need to know caching exists.
+@5 | pricing = Logging → Caching → Sale(30%)
+Black Friday: swap the **strategy**. The decorators are reused unchanged.
+@6 | | > pricing TEA-01 | > 7.00
+:::
+
+In a real app the wrapping is done once, in DI registration, often with a helper such as Scrutor's `Decorate<IPricing, CachingPricing>()`, so no caller ever sees it.
+
 ## Beyond GoF: patterns you'll meet in .NET backends {i}
 
 :::plain

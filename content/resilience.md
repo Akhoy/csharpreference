@@ -80,6 +80,38 @@ Attempt 1 ── fail ──▶ wait 200ms ±jitter ──▶ Attempt 2 ── f
 If every layer retries 3 times (gateway → API → service → database), one failure becomes 3 × 3 × 3 = **27** attempts on the bottom layer, right when it's struggling. Retry at **one** layer (usually closest to the failing dependency), keep counts low, combine with circuit breakers, and set **timeout budgets** that shrink as calls go deeper.
 :::
 
+### See it run: retrying with backoff
+
+:::walk Two timeouts, then success
+```csharp
+int attempt = 0;
+string CallPaymentApi() => ++attempt < 3 ? throw new TimeoutException($"attempt {attempt} timed out") : "charged";
+
+for (int retry = 0; ; retry++)
+{
+    try
+    {
+        Console.WriteLine(CallPaymentApi());
+        break;
+    }
+    catch (TimeoutException e) when (retry < 3)
+    {
+        var delay = TimeSpan.FromMilliseconds(200 * Math.Pow(2, retry));
+        Console.WriteLine($"{e.Message}; retrying in {delay.TotalMilliseconds} ms (plus jitter)");
+    }
+}
+```
+@1-2 | attempt = 0
+A pretend payment API that times out twice, then succeeds: a typical transient fault.
+@4-9 | retry = 0 ; attempt = 1
+The first call throws a `TimeoutException`.
+@11-15 | retry = 0 ; delay = 200 ms | > attempt 1 timed out; retrying in 200 ms (plus jitter)
+The `when (retry < 3)` filter allows up to three retries. The delay doubles each time: 200, 400, 800 ms. A real retry would also wait, and add a random **jitter** so thousands of clients don't retry in step.
+@11-15 | retry = 1 ; delay = 400 ms | > attempt 2 timed out; retrying in 400 ms (plus jitter)
+@6-9 | retry = 2 ; attempt = 3 | > charged
+The third attempt succeeds. Once retries run out, the filter stops matching, and the exception reaches the caller.
+:::
+
 ## Circuit breaker {i}
 
 :::plain
@@ -99,6 +131,45 @@ After too many failures, stop calling the dependency for a while and fail immedi
 Why bother: waiting for every call to a down dependency to time out wastes threads and connections, adds latency for your users, and piles more load onto a service that's already struggling — the opposite of what it needs to recover. The breaker **fails fast** instead (so you can fall back immediately) and gives the dependency a quiet window to recover. The OPEN state is deliberate rest, not a malfunction.
 
 Tune: the failure ratio (e.g. 50%), the **minimum throughput** before evaluating (to avoid tripping on 2 of 3 calls), the sampling window, and the break duration. **Log state changes** and expose them as metrics — a circuit flipping open is exactly the kind of event worth paging someone over.
+
+### See it run: a circuit breaker's states
+
+:::walk Closed, open, half-open, closed
+```csharp
+var breaker = new Breaker(failuresToOpen: 3);
+foreach (var succeeds in new[] { false, false, false, true })
+    Console.WriteLine(breaker.Call(succeeds));
+
+breaker.BreakDurationElapsed();
+Console.WriteLine(breaker.Call(true));
+
+sealed class Breaker(int failuresToOpen)
+{
+    private int _failures;
+    private string _state = "closed";
+
+    public string Call(bool succeeds)
+    {
+        if (_state == "open") return "open: failed fast, dependency not called";
+        if (succeeds) { _failures = 0; _state = "closed"; return "closed: call succeeded"; }
+        if (++_failures >= failuresToOpen || _state == "half-open") { _state = "open"; return $"failure {_failures}: circuit OPENS"; }
+        return $"failure {_failures}: still closed";
+    }
+
+    public void BreakDurationElapsed() => _state = "half-open";
+}
+```
+@1-3 | | > failure 1: still closed | > failure 2: still closed
+The breaker starts **closed**: calls go through and failures are counted.
+@2-3 | | > failure 3: circuit OPENS
+The third failure trips it **open**.
+@2-3 | | > open: failed fast, dependency not called
+While open, calls fail immediately without touching the dependency. That saves your threads and gives the dependency room to recover, even though this call would have succeeded.
+@5 | _state = "half-open"
+After the break duration, the breaker goes **half-open** and lets a trial call through.
+@6 | | > closed: call succeeded
+The trial succeeds, so the breaker **closes** again. A failure here would have reopened it at once.
+:::
 
 ## Timeouts {i}
 
