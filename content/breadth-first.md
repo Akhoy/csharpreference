@@ -23,7 +23,18 @@ Three promises about what's here:
 - **No bare claims.** Each point says what something is, *how* it works, and *why* it matters. If a sentence says "X is safe" or "X is faster", the reason is right next to it.
 - **Every heading links to its chapter.** When a point feels thin, follow the link to its full chapter. That's where the step-through diagrams, runnable code and interview questions are.
 
-Reading time is roughly three to four hours. If you have less, read each part's opening paragraph and the bold lead-ins.
+Reading time is roughly four to five hours. If you have less, read each part's opening paragraph and the bold lead-ins.
+
+## Reading tracks: start to finish
+
+The book is ordered as a ladder: each chapter only assumes what came before it, and inside each chapter, sections tagged **basic** come first, then **intermediate**, then **advanced**. Every section opens with a plain-words box, and Part II and III chapters open with a "What you need first" recap. Pick the track that fits where you are:
+
+| Track | For | Read, in order |
+|---|---|---|
+| **1. Fundamentals first** | .NET basics feel shaky | [Your first .NET app](ch:first-app) → [What .NET is](ch:what-is-dotnet) → [How code runs](ch:how-code-runs) → [Projects & packages](ch:projects-sdk-nuget) → [Types](ch:type-system) → [OOP](ch:oop) → [Generics](ch:generics) → [Delegates](ch:delegates-events) → [Collections](ch:collections) → [LINQ](ch:linq) → [Exceptions](ch:exceptions-disposal) → [Async](ch:async-await) → [Hosting](ch:aspnet-hosting) → [DI](ch:dependency-injection) → [Configuration](ch:configuration-options) → [Middleware](ch:middleware) → [Routing](ch:routing) → [Building APIs](ch:building-apis). Basic sections only on the first pass; then repeat with intermediate. |
+| **2. The whole book** | building complete, deep knowledge | Parts 0 to XV in order. Part IV (Web UI) can wait if you only build APIs. |
+| **3. Ship it to production** | you can code, but haven't run things for real | [Building APIs](ch:building-apis) → [EF Core](ch:efcore-fundamentals) → [Integration testing](ch:integration-testing) → [Starting a project right](ch:project-foundations) → [Request journey](ch:request-journey) → [nginx](ch:reverse-proxy-nginx) → [Linux deployment](ch:linux-deploy) → [Docker](ch:docker) → [Containers on one host](ch:containers-single-host) → [Production configuration](ch:prod-config) → [Running what you built](ch:production-ownership) |
+| **4. Staff interview soon** | two weeks to an interview | This page end to end → [System design](ch:system-design) → [Staff engineer](ch:staff-engineer) → [Capstone](ch:capstone-wholesale) → [Async](ch:async-await) → [Memory & GC](ch:memory-gc) → [Threading](ch:threading-concurrency) → [Resilience](ch:resilience) → [Production configuration](ch:prod-config) → [Delivering work](ch:delivering-work) → [Running what you built](ch:production-ownership) → every chapter's interview questions in the [Question bank](#/questions) |
 
 ## Part 0 · Orientation
 
@@ -81,7 +92,20 @@ This part is layer 2: what actually runs your code, and the tools that build it.
   A runtime identifier (RID) such as `linux-x64` or `linux-musl-arm64` says which platform a self-contained or native build targets.
 - **The BCL already has most of what you'd reach to NuGet for**: System.Text.Json, `HttpClient`, concurrent, immutable and frozen collections, `Channel<T>`, `PriorityQueue`, `System.IO.Pipelines` (the high-performance I/O that Kestrel uses), `Activity` and `Meter` for telemetry, cryptography, and source-generated `Regex`. Two habits matter in production code. Prefer `DateTimeOffset` or UTC over `DateTime`, because a `DateTime`'s `Kind` is often `Unspecified`, so you can't tell which time zone it means. And inject `TimeProvider` (.NET 8) instead of calling `DateTime.Now`, so time becomes a dependency your tests can control.
 
-### 1.2 · How your code runs: IL, the JIT and the CLR
+### 1.2 · Your first .NET app, end to end
+
+[Full chapter →](ch:first-app)
+
+- **One install, one command.** The **SDK** contains the compiler, the `dotnet` CLI, templates and a runtime; servers often need only the runtime. Several SDKs install side by side, and `global.json` pins which one a repository uses, so everyone builds with the same tools.
+- **A project is a `.csproj` plus `.cs` files**; it builds into one assembly. `dotnet new console|web|classlib|xunit` creates one, `dotnet run` restores packages, compiles to IL in `bin/` and runs it, and a **solution** groups projects. `bin/` and `obj/` are build output and never committed.
+- **`Program.cs` is the entry point.** **Top-level statements** let the file contain code directly; the compiler wraps it in a hidden `Main`, with `args`, `await` and return codes still available. A web app's `Program.cs` is the same thing: code that builds and runs a server.
+- **Namespaces** give types a family name so identical class names don't clash; `using` lets you write the short name. **Implicit usings** import the common namespaces for you, and `global using` applies one to the whole project.
+- **The edit-run loop**: `dotnet watch` reruns or **Hot Reload**s the app on save, keeping its state; "rude edits" such as signature changes need a restart, and code in `Program.cs` that already ran won't run again.
+- **Debugging**: breakpoint (F9), start (F5), then step over (F10), into (F11), out (Shift+F11), and inspect locals, watches and the call stack. Conditional breakpoints, logpoints and break-on-thrown-exception find the one bad case in thousands. Debug builds keep variables visible; Release builds optimise them away.
+- **Splitting code**: a class library holds logic that the app, tests and other apps share; project references go one way. Packages come from NuGet with `dotnet add package`; tests live in a test project run by `dotnet test`, arranged as arrange, act, assert.
+- **Publishing**: `dotnet publish -c Release` produces the deployable folder (optionally self-contained, single-file or a container image). It runs with `appsettings.json` and environment variables; `launchSettings.json` is for local development only.
+
+### 1.3 · How your code runs: IL, the JIT and the CLR
 
 [Full chapter →](ch:how-code-runs)
 
@@ -112,7 +136,7 @@ This part is layer 2: what actually runs your code, and the tools that build it.
   - Two generated files drive loading: `.deps.json` lists every dependency and where to find it, and `.runtimeconfig.json` names the shared framework version and runtime settings such as Server GC.
   - **Roll-forward**: an app built for 8.0.x runs on the newest installed 8.0 patch automatically. Rolling to a new *major* version needs `<RollForward>Major</RollForward>`, because majors may contain breaking changes.
 
-### 1.3 · Projects, the SDK, NuGet and the toolbox
+### 1.4 · Projects, the SDK, NuGet and the toolbox
 
 [Full chapter →](ch:projects-sdk-nuget)
 
@@ -1426,9 +1450,116 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Sidecars:** a **service mesh** gives mTLS, retries, traffic splitting and telemetry without code changes, at an operational cost. **Dapr** offers portable building blocks (pub/sub, state, invocation, workflows). Libraries suit .NET-only systems. One owner per concern.
 - **.NET Aspire** describes the system in an AppHost (`AddProject`, `WithReference`), runs it all locally with a dashboard, and can generate deployment assets. Study **eShop** as a reference.
 
+## Part X · Hosting in Production
+
+This part is layer 7 in practice: how a request reaches your app, the proxy in front of it, the server underneath, how new versions get there, and the settings that only matter under real load.
+
+### 10.1 · A request's journey: DNS to Kestrel
+
+[Full chapter →](ch:request-journey)
+
+- **A request crosses several hops**, each of which can fail, add latency or change it: DNS turns the name into an address, TCP and TLS set up a private verified connection, a CDN or WAF may answer from the edge, a load balancer picks a healthy instance, a reverse proxy forwards to Kestrel, and only then does your middleware run.
+- **TLS is usually ended before your app**, so Kestrel sees plain HTTP from the proxy's IP. The proxy passes the originals in `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host`, and **`UseForwardedHeaders` must run first**, trusting only known proxies (`KnownProxies`/`KnownNetworks`, `ForwardLimit`). Get it wrong and every user has the same IP (breaking rate limits), HTTPS redirects loop, and generated links say `http://`. Trusting any sender lets attackers forge their IP.
+- **Timeouts stack**: each layer's timeout must be shorter than the one in front of it, so the innermost gives up first with a clear error instead of the proxy returning a vague 504 while work continues behind it.
+- **Reading errors by hop**: **502** means the proxy got a bad or no response (app crashed, wrong port, closed keep-alive connection); **503** means nothing healthy to send to (all instances failing readiness, overloaded); **504** means the upstream didn't answer in time. Correlate with the request ID that the proxy and the app both log.
+
+### 10.2 · nginx in front of ASP.NET Core
+
+[Full chapter →](ch:reverse-proxy-nginx)
+
+- **nginx does the jobs Kestrel shouldn't do alone on the internet**: TLS with certificates, HTTP-to-HTTPS redirects, buffering slow clients, request size limits, compression, static files, rate limiting and load balancing, with Kestrel bound to `127.0.0.1` so only nginx can reach it.
+- **Config is nested blocks**: `http` → `upstream` (the Kestrel instances, with `keepalive` connections that need `proxy_http_version 1.1` and an empty `Connection` header) → `server` (one per site and port, plus a default server that returns 444 to stray hostnames) → `location` (per path, with `proxy_pass` and `proxy_set_header` for the forwarded headers).
+- **The inheritance trap**: `proxy_set_header` and `add_header` in a `location` *replace* all those from the level above, rather than adding to them, so a location that sets one header silently loses the rest.
+- **Limits must agree**: nginx's `client_max_body_size` defaults to **1 MB** and Kestrel's body limit to ~28.6 MB, so uploads fail at the proxy with 413 first. **WebSockets** (SignalR, Blazor Server) need the `Upgrade`/`Connection` headers mapped and a long `proxy_read_timeout`.
+- **Change safely**: `nginx -t` then `reload`, which starts new workers with the new config while old ones finish their requests; `restart` drops connections. Logs should include `$request_time`, `$upstream_response_time` and a request ID.
+
+### 10.3 · Caddy, Traefik, YARP, IIS and managed front doors
+
+[Full chapter →](ch:other-proxies)
+
+- **Caddy** gets and renews certificates automatically and proxies with a three-line config: the least to run on a small server.
+- **Traefik** reads routes from Docker labels or Kubernetes objects, so containers that come and go are routed without editing config; the Docker socket it reads is root-equivalent, so protect it.
+- **YARP** is a reverse-proxy *library* for ASP.NET Core: routing, active health checks, load balancing and transforms (such as a BFF swapping a cookie for a bearer token) written in C#, with the whole middleware toolbox. You own and deploy it like any app.
+- **IIS** hosts ASP.NET Core through the **ASP.NET Core Module**: in-process by default (inside `w3wp.exe`, no Kestrel, fastest) or out-of-process (IIS proxies to Kestrel). Install the Hosting Bundle, use a "No Managed Code" app pool, deploy with `app_offline.htm`, and read startup failures (500.30, 502.5) in the Event Log.
+- **Managed front doors** (Front Door, Application Gateway, App Service, Container Apps ingress, AWS ALB, Cloudflare, Kubernetes ingress) do the proxy's job on a platform. Two rules: **lock the origin** so it only accepts traffic from the front door, and configure forwarded headers for the exact number of proxies in front.
+
+### 10.4 · Deploying to a Linux server, end to end
+
+[Full chapter →](ch:linux-deploy)
+
+- **Harden first**: SSH keys only, no root login, a firewall allowing 22/80/443, automatic security updates, a dedicated service user, UTC and time sync.
+- **Publish** framework-dependent (small; `apt` patches the runtime for all apps) or **self-contained** (carries its runtime; nothing to install; patched by redeploying). Build once and deploy the same artifact everywhere.
+- **systemd runs the app**: `Type=notify` with `AddSystemd()` so it's marked active only when started, `Restart=always`, a dedicated `User`, secrets from a root-owned `EnvironmentFile`, sandboxing (`ProtectSystem=strict`, `PrivateTmp`, `NoNewPrivileges`), and **`TimeoutStopSec` longer than `HostOptions.ShutdownTimeout`** so graceful shutdown isn't cut off. Logs go to journald (`journalctl -u`).
+- **Certificates**: certbot proves domain control through an HTTP challenge on port 80, renews from a timer, and needs a deploy hook to reload nginx, or the new certificate never gets used.
+- **Zero-downtime deploys**: run two instances (blue/green) on two localhost ports; start the new one, wait for its readiness check, switch nginx's upstream and reload, let the old one drain, then stop it. Rollback is switching back. Migrations must be **expand/contract** so old and new code share the database safely.
+- **State that must survive**: Data Protection keys (otherwise every deploy logs everyone out), uploads, and the database, backed up off the server nightly, with an alert if a backup doesn't run and a restore tested regularly. One server is a single point of failure: know your RTO and script the rebuild.
+
+### 10.5 · Docker and containers
+
+[Full chapter →](ch:docker)
+
+- **A container is an isolated process that shares the host's kernel.** **Namespaces** give it its own filesystem, network and process view, and **cgroups** cap its CPU and memory. Because there's no guest OS or kernel, it's MBs not GBs, starts in seconds or less, and packs hundreds to a host. The same fact explains the weakness: isolation is good but **weaker than a VM's**, since a kernel exploit crosses containers. Why containers won: **one immutable image** runs identically on a laptop, in CI and in prod. Dependencies are explicit, rollback means redeploying the previous tag, and every platform accepts the image, which becomes the contract between dev and ops.
+- **Image, layer, container, registry.**
+  - An **image** is a read-only stack of **layers** (filesystem diffs, one per `FROM`/`COPY`/`RUN`, **cached** and shared between images) plus metadata: entrypoint, env, ports, user.
+  - A **container** is a running instance with one thin **writable layer** on top. Many containers share one image.
+  - **Registries**: Docker Hub, **ACR**, GHCR, and **MCR** for official .NET images.
+  - A **tag** (`:1.4.2`, `:latest`) is a mutable label. A **digest** (`@sha256:…`) is immutable content addressing, which is what you pin for true reproducibility.
+- **The .NET images** (mcr.microsoft.com/dotnet):
+  - `sdk`: ~800 MB, **build stage only**;
+  - `aspnet`: web apps;
+  - `runtime`: console apps and workers;
+  - `runtime-deps`: native OS libraries only, for **self-contained or Native AOT** apps;
+  - variants: `-alpine` (small, but musl libc, so check native dependencies like ICU), `-noble` (Ubuntu 24.04), `-azurelinux3.0`, **`-noble-chiseled`** (distroless: **no shell, no package manager, non-root by default**, the smallest attack surface) and `-composite` (composite ReadyToRun for faster startup).
+
+  **Since .NET 8**, ASP.NET Core images listen on **8080** (`ASPNETCORE_HTTP_PORTS`) instead of 80, because binding below 1024 needs root, and they ship a non-root **`app`** user (UID 1654).
+- **The production Dockerfile, technique by technique:**
+  1. **Multi-stage**: `FROM sdk AS build` to restore, build and publish, then `FROM aspnet` and `COPY --from=build` only the publish output. The final image has no SDK, source or tools.
+  2. **Layer-cache ordering**: copy `Directory.Build.props`, `Directory.Packages.props`, `global.json` and the `.csproj` files, **run `dotnet restore`, and only then copy the source**. Docker reruns a layer, and everything after it, only when that layer's inputs change. So a `.cs` edit reuses the slow restore layer, because the slow, rarely changing work comes first.
+  3. **`.dockerignore`** excludes `bin/`, `obj/`, `.git`, `.vs`, `node_modules` and local settings files. Builds get faster and you don't leak files.
+  4. **Non-root** (`USER app`) on a **chiseled** base.
+  5. **Exec-form `ENTRYPOINT ["dotnet", "Kettle.Api.dll"]`**, not the shell form. Exec form makes `dotnet` **PID 1**, and `docker stop` and Kubernetes send `SIGTERM` to PID 1. With the shell form, `/bin/sh` is PID 1, it doesn't forward the signal, and your app never starts its graceful shutdown; it gets SIGKILLed after the grace period instead.
+  6. **Pin versions** and **rebuild regularly** to pick up base-image security patches.
+- **No Dockerfile needed for standard apps**: `dotnet publish -t:PublishContainer -p ContainerFamily=noble-chiseled -p ContainerRegistry=kettleacr.azurecr.io` builds an OCI image with **no Docker daemon** and can push it straight to a registry, configured with `<ContainerRepository>` and `<ContainerPort>` in the csproj. Use a Dockerfile when you need extra OS packages or complex builds.
+- **Configuration and state in containers.**
+  - Config comes from **environment variables set at runtime** (`ConnectionStrings__Kettle`), so **one image is promoted through every environment**.
+  - **Never `COPY` secrets or pass them as build args**: they persist in image layers and anyone who pulls the image can read them. Use the platform secret store or, better, **managed identity**, so there's no secret at all.
+  - The **filesystem is ephemeral** and vanishes when the container is replaced. Use Blob Storage or a database, and volumes only where truly needed.
+  - **Persist Data Protection keys** (Blob + Key Vault) for multi-instance apps.
+  - **Log to stdout**, and expose health endpoints for probes.
+- **Local dev**: `compose.yaml` runs the API plus SQL, Redis and RabbitMQ (`docker compose up -d --build`, `down -v`), with `depends_on` (plus a health condition) for startup ordering. **Aspire's AppHost** solves the same problem in C#, adding connection-string wiring and a dashboard.
+- **Size, startup and security.**
+  - **Shrink the image**: chiseled or distroless (fewer packages means fewer CVEs and no shell for an attacker); Alpine; `InvariantGlobalization=true` to drop ICU; trimming plus self-contained on `runtime-deps`; **Native AOT** (tens of MB, millisecond startup); ReadyToRun or composite images for startup.
+  - **Security practice**: scan images in CI (Trivy, Grype, Docker Scout, Defender for Containers); run non-root with a **read-only root filesystem**; drop Linux capabilities; never run privileged; **sign images** (Notation or cosign) and admit only signed images; produce an **SBOM**; let Dependabot or Renovate bump base images.
+- **.NET is container-aware.** The GC and thread pool read the container's **cgroup limits**, not the host's RAM and cores, so a 2-CPU container doesn't size its thread pool for the host's 64 cores.
+  - With a memory limit, the **GC heap hard limit defaults to 75%** of the container limit (`DOTNET_GCHeapHardLimitPercent`). The rest is left for native memory, thread stacks and the runtime.
+  - **Server GC** is the ASP.NET Core default, and it used to make one heap per core and be memory-hungry in small containers. **.NET 9+ enables DATAS** (Dynamic Adaptation To Application Sizes), which grows and shrinks the heap count with load.
+  - Set realistic Kubernetes **requests and limits**: too low gives **OOMKilled** restarts. `DOTNET_PROCESSOR_COUNT` overrides the detected CPU count.
+
+
+### 10.6 · Containers in production on one host
+
+[Full chapter →](ch:containers-single-host)
+
+- **The server runs only Docker**; the whole stack (proxy, API, worker, database) is described in a `compose.yaml` in git, identical on staging and production, so environments stop drifting.
+- **Production compose adds what local compose skips**: images by version tag from a registry (never `build:` or `:latest`), health checks with `depends_on: condition: service_healthy`, `restart: unless-stopped`, named volumes for data, certificates and Data Protection keys, secrets mounted as files (read with `AddKeyPerFile`), resource limits, log rotation, and a `stop_grace_period` longer than the 10-second default.
+- **Only the proxy publishes ports.** Docker's published ports bypass `ufw` on many setups, so a published database port can be open to the internet.
+- **Deploy** by pulling the new tag, running migrations as a one-off container, and `docker compose up -d --wait`; roll back by redeploying the previous tag. Compose recreates rather than rolls, so there's a brief gap unless you run two copies or use a platform with rolling updates.
+- **Outgrow it** when you need failover, rolling updates or scaling across machines: the same images then run on Container Apps or Kubernetes.
+
+### 10.7 · Production configuration and choosing where to host
+
+[Full chapter →](ch:prod-config)
+
+- **Fail fast at startup**: `ValidateOnStart` for options and `ValidateOnBuild`/`ValidateScopes` for DI, so a misconfigured release fails its deploy instead of its first real request.
+- **Bound everything**: Kestrel body, header and timeout limits; the request-timeouts middleware (which only works if cancellation tokens are passed down); timeouts and resilience on every outgoing call.
+- **Health checks have three jobs**: **liveness** (restart me; no dependencies in it, or a database blip restarts every instance), **readiness** (send me traffic; checks what requests need), **startup** (still booting).
+- **Shutdown timeouts must nest**: app < supervisor (systemd, Docker's 10 s default) < platform; in Kubernetes add a `preStop` delay because endpoint removal and SIGTERM happen in parallel.
+- **Runtime**: Server GC with **DATAS** by default from .NET 9; memory limits set; thread-pool starvation (high latency, low CPU) comes from blocking on async; UTC everywhere, and chiseled images lack ICU and tzdata unless you use the `-extra` variants; connection pools sized to the database's limit; readiness gated on warm-up.
+- **Where to host** is a trade of money and control against operational work: one VM, VM plus Compose, App Service, Container Apps, Kubernetes or serverless. Choose the least operations that meets real needs, and move when a real need appears. The chapter ends with a go-live checklist.
+
 ## Part XI · Cloud and DevOps
 
-### 10.1 · Cloud fundamentals and the Azure map
+### 11.1 · Cloud fundamentals and the Azure map
 
 [Full chapter →](ch:cloud-azure-overview)
 
@@ -1497,48 +1628,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Operational Excellence**: IaC, CI/CD, observability, runbooks, safe deployments (slots, canaries).
   - **Performance Efficiency**: scale-out, caching, CDN, async processing, partitioning, load tests.
 
-### 10.2 · Docker and containers
-
-[Full chapter →](ch:docker)
-
-- **A container is an isolated process that shares the host's kernel.** **Namespaces** give it its own filesystem, network and process view, and **cgroups** cap its CPU and memory. Because there's no guest OS or kernel, it's MBs not GBs, starts in seconds or less, and packs hundreds to a host. The same fact explains the weakness: isolation is good but **weaker than a VM's**, since a kernel exploit crosses containers. Why containers won: **one immutable image** runs identically on a laptop, in CI and in prod. Dependencies are explicit, rollback means redeploying the previous tag, and every platform accepts the image, which becomes the contract between dev and ops.
-- **Image, layer, container, registry.**
-  - An **image** is a read-only stack of **layers** (filesystem diffs, one per `FROM`/`COPY`/`RUN`, **cached** and shared between images) plus metadata: entrypoint, env, ports, user.
-  - A **container** is a running instance with one thin **writable layer** on top. Many containers share one image.
-  - **Registries**: Docker Hub, **ACR**, GHCR, and **MCR** for official .NET images.
-  - A **tag** (`:1.4.2`, `:latest`) is a mutable label. A **digest** (`@sha256:…`) is immutable content addressing, which is what you pin for true reproducibility.
-- **The .NET images** (mcr.microsoft.com/dotnet):
-  - `sdk`: ~800 MB, **build stage only**;
-  - `aspnet`: web apps;
-  - `runtime`: console apps and workers;
-  - `runtime-deps`: native OS libraries only, for **self-contained or Native AOT** apps;
-  - variants: `-alpine` (small, but musl libc, so check native dependencies like ICU), `-noble` (Ubuntu 24.04), `-azurelinux3.0`, **`-noble-chiseled`** (distroless: **no shell, no package manager, non-root by default**, the smallest attack surface) and `-composite` (composite ReadyToRun for faster startup).
-
-  **Since .NET 8**, ASP.NET Core images listen on **8080** (`ASPNETCORE_HTTP_PORTS`) instead of 80, because binding below 1024 needs root, and they ship a non-root **`app`** user (UID 1654).
-- **The production Dockerfile, technique by technique:**
-  1. **Multi-stage**: `FROM sdk AS build` to restore, build and publish, then `FROM aspnet` and `COPY --from=build` only the publish output. The final image has no SDK, source or tools.
-  2. **Layer-cache ordering**: copy `Directory.Build.props`, `Directory.Packages.props`, `global.json` and the `.csproj` files, **run `dotnet restore`, and only then copy the source**. Docker reruns a layer, and everything after it, only when that layer's inputs change. So a `.cs` edit reuses the slow restore layer, because the slow, rarely changing work comes first.
-  3. **`.dockerignore`** excludes `bin/`, `obj/`, `.git`, `.vs`, `node_modules` and local settings files. Builds get faster and you don't leak files.
-  4. **Non-root** (`USER app`) on a **chiseled** base.
-  5. **Exec-form `ENTRYPOINT ["dotnet", "Kettle.Api.dll"]`**, not the shell form. Exec form makes `dotnet` **PID 1**, and `docker stop` and Kubernetes send `SIGTERM` to PID 1. With the shell form, `/bin/sh` is PID 1, it doesn't forward the signal, and your app never starts its graceful shutdown; it gets SIGKILLed after the grace period instead.
-  6. **Pin versions** and **rebuild regularly** to pick up base-image security patches.
-- **No Dockerfile needed for standard apps**: `dotnet publish -t:PublishContainer -p ContainerFamily=noble-chiseled -p ContainerRegistry=kettleacr.azurecr.io` builds an OCI image with **no Docker daemon** and can push it straight to a registry, configured with `<ContainerRepository>` and `<ContainerPort>` in the csproj. Use a Dockerfile when you need extra OS packages or complex builds.
-- **Configuration and state in containers.**
-  - Config comes from **environment variables set at runtime** (`ConnectionStrings__Kettle`), so **one image is promoted through every environment**.
-  - **Never `COPY` secrets or pass them as build args**: they persist in image layers and anyone who pulls the image can read them. Use the platform secret store or, better, **managed identity**, so there's no secret at all.
-  - The **filesystem is ephemeral** and vanishes when the container is replaced. Use Blob Storage or a database, and volumes only where truly needed.
-  - **Persist Data Protection keys** (Blob + Key Vault) for multi-instance apps.
-  - **Log to stdout**, and expose health endpoints for probes.
-- **Local dev**: `compose.yaml` runs the API plus SQL, Redis and RabbitMQ (`docker compose up -d --build`, `down -v`), with `depends_on` (plus a health condition) for startup ordering. **Aspire's AppHost** solves the same problem in C#, adding connection-string wiring and a dashboard.
-- **Size, startup and security.**
-  - **Shrink the image**: chiseled or distroless (fewer packages means fewer CVEs and no shell for an attacker); Alpine; `InvariantGlobalization=true` to drop ICU; trimming plus self-contained on `runtime-deps`; **Native AOT** (tens of MB, millisecond startup); ReadyToRun or composite images for startup.
-  - **Security practice**: scan images in CI (Trivy, Grype, Docker Scout, Defender for Containers); run non-root with a **read-only root filesystem**; drop Linux capabilities; never run privileged; **sign images** (Notation or cosign) and admit only signed images; produce an **SBOM**; let Dependabot or Renovate bump base images.
-- **.NET is container-aware.** The GC and thread pool read the container's **cgroup limits**, not the host's RAM and cores, so a 2-CPU container doesn't size its thread pool for the host's 64 cores.
-  - With a memory limit, the **GC heap hard limit defaults to 75%** of the container limit (`DOTNET_GCHeapHardLimitPercent`). The rest is left for native memory, thread stacks and the runtime.
-  - **Server GC** is the ASP.NET Core default, and it used to make one heap per core and be memory-hungry in small containers. **.NET 9+ enables DATAS** (Dynamic Adaptation To Application Sizes), which grows and shrinks the heap count with load.
-  - Set realistic Kubernetes **requests and limits**: too low gives **OOMKilled** restarts. `DOTNET_PROCESSOR_COUNT` overrides the detected CPU count.
-
-### 10.3 · Azure compute: App Service, Functions, Container Apps, AKS
+### 11.2 · Azure compute: App Service, Functions, Container Apps, AKS
 
 [Full chapter →](ch:azure-compute)
 
@@ -1589,7 +1679,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Functions vs Container Apps**: a trigger/binding programming model with per-execution billing vs any container with KEDA scaling.
   - **Consumption vs Premium**: scale to zero with cold starts and time limits vs pre-warmed instances, VNet and always paying for the minimum.
 
-### 10.4 · Azure data and messaging services
+### 11.3 · Azure data and messaging services
 
 [Full chapter →](ch:azure-data-messaging)
 
@@ -1658,7 +1748,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Aspire integrations (`AddAzureServiceBusClient("bus")`) wire all of this up with health checks.
 
-### 10.5 · Azure identity and secrets
+### 11.4 · Azure identity and secrets
 
 [Full chapter →](ch:azure-identity-secrets)
 
@@ -1703,7 +1793,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   To call another API **as the service**, use client credentials via managed identity: `GetTokenAsync(new(["api://inventory-api/.default"]))`. `.default` means "all application permissions granted to me".
 
-### 10.6 · CI/CD and infrastructure as code
+### 11.5 · CI/CD and infrastructure as code
 
 [Full chapter →](ch:cicd-iac)
 
@@ -1748,7 +1838,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Pulumi**: IaC in **C#** or another general-purpose language.
 - **azd and GitOps.** **azd** ties templates, IaC and deploy together: `azd up` provisions and deploys, and `azd pipeline config` generates CI with federated credentials. For Aspire, it **generates the infrastructure from the AppHost model**. **GitOps** (Argo CD, Flux) makes a Git repo the source of truth for cluster state. CI only bumps the image tag in the config repo; an in-cluster agent **pulls** and reconciles, which gives drift correction, an audit trail and rollback by `git revert`.
 
-### 10.7 · Kubernetes
+### 11.6 · Kubernetes
 
 [Full chapter →](ch:kubernetes)
 
@@ -1817,7 +1907,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 ## Part XII · Performance and Internals
 
-### 11.1 · Memory and garbage collection
+### 12.1 · Memory and garbage collection
 
 [Full chapter →](ch:memory-gc)
 
@@ -1897,7 +1987,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   Most business code is I/O-bound, so **measure first**. And **don't call `GC.Collect()`** in production: it promotes objects before they've earned it, wastes CPU and pauses at a moment you didn't choose. The only legitimate uses are tests, benchmarks and after a one-off huge batch cleanup.
 
-### 11.2 · Threading and concurrency
+### 12.2 · Threading and concurrency
 
 [Full chapter →](ch:threading-concurrency)
 
@@ -1964,7 +2054,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - background work bounded;
   - cross-instance coordination through distributed locks or the database, never a C# `lock`.
 
-### 11.3 · Performance engineering
+### 12.3 · Performance engineering
 
 [Full chapter →](ch:performance-engineering)
 
@@ -2039,7 +2129,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 ## Part XIII · Security
 
-### 12.1 · Web application security
+### 13.1 · Web application security
 
 [Full chapter →](ch:web-security)
 
@@ -2126,7 +2216,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - Unsafe deserializers: no `BinaryFormatter`, and **no Newtonsoft `TypeNameHandling.All`**, which lets the payload pick which type to instantiate (gadget chains → remote code execution). XML with DTDs disabled (XXE; .NET's defaults are safe).
 - **Security logging.** Log authentication failures, access denials, privilege changes and rate-limit hits with user and correlation IDs, and alert on spikes. **Never log** passwords, tokens, keys, card numbers or sensitive personal data; use `Microsoft.Extensions.Compliance.Redaction`. Protect the log store with RBAC and retention. **Defender for Cloud** handles posture management and threat detection.
 
-### 12.2 · OAuth 2.0, OpenID Connect and identity
+### 13.2 · OAuth 2.0, OpenID Connect and identity
 
 [Full chapter →](ch:oauth-oidc-identity)
 
@@ -2198,9 +2288,63 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **hand-rolled HS256 JWTs with a shared key**, where *any service holding the key can mint tokens* → asymmetric keys at a real IdP;
   - sensitive data in claims (readable by anyone holding the token) → minimal claims, details looked up server-side.
 
+## Part XIV · Building Real Projects
+
+Every earlier part taught a technology. This part is the practice of putting them together: setting up a codebase, delivering a large project, running it in production, and leading technical direction, as Kettle builds a second product, Kettle Wholesale, the right way from day one.
+
+### 14.1 · Starting a project right
+
+[Full chapter →](ch:project-foundations)
+
+- **Conventions are cheap at the start and expensive to retrofit**, so set them before the first feature.
+- **Shared settings live in one place**: `Directory.Build.props` (target framework, nullable, analyzers, warnings as errors, deterministic builds, lock files), `Directory.Packages.props` (central package management: every version once, enforced by `NU1008`), `.editorconfig` (style), `global.json` (SDK).
+- **Make the build the referee**: `TreatWarningsAsErrors` keeps the warning count at zero; `AnalysisLevel` turns on the analyzers; `EnforceCodeStyleInBuild` runs style rules in CI. Gotchas: the `:warning` suffix is editor-only (use `dotnet_diagnostic.IDExxxx.severity`), IDE0005 needs `GenerateDocumentationFile`, and naming rules also match constants. Break each gate on purpose once to prove it works.
+- **A walking skeleton first**: one thin slice through every layer, deployed by the real pipeline with health checks and telemetry, so the hard integration problems surface on day three, not launch week.
+- **CI is the definition of "it works"**: locked restore, format check, build, tests, a vulnerable-package check, publish once; least-privilege tokens, timeouts, cancellation of stale runs; branch protection on `main`.
+- **Decision records** keep the *why* for expensive-to-reverse choices. Start as a **modular monolith** with written triggers for evolving it.
+
+### 14.2 · Delivering large projects
+
+[Full chapter →](ch:delivering-work)
+
+- **Big projects fail at the end**, when pieces meet for the first time, so remove "the end": slice vertically, merge daily, deploy continuously.
+- **Vertical slices** go through every layer and are demoable: happy path first, then by workflow step, rule or data variation. **Do the riskiest part first** with time-boxed spikes; estimate in ranges; track throughput; cut scope, not quality.
+- **Trunk-based development with feature flags** separates deploying from releasing. A **percentage** filter re-rolls on every evaluation, so one user flips between versions; use **targeting** for consistent per-user rollouts. Flags need owners, removal dates and tests of both states.
+- **Change live code in parallel**: branch by abstraction, shadow runs that compare old and new on real input, gradual switch-over, then delete the old path; the strangler fig does the same for whole systems; expand/contract does it for data.
+- **Definition of done** includes observable, secure, migration-safe and deployed. **Review** design and correctness before style, with labelled comments and fast turnaround. **Tech debt** is made visible with its delivery cost and paid down where you're working.
+
+### 14.3 · Seeing it through: running what you built
+
+[Full chapter →](ch:production-ownership)
+
+- **You build it, you run it.** A readiness review before launch asks whether the team can operate the service, not just whether it works.
+- **SLIs and SLOs** define "working" from the user's side; the **error budget** (43.2 minutes a month at 99.9%) makes reliability a shared numeric decision. **Burn-rate alerts** (14.4× over an hour = 2% of the month's budget) page for real threats and ignore blips.
+- **Alerts** are on symptoms, actionable and urgent, each linked to a **runbook** that starts with mitigation. On-call is small, regular, prepared with game days, and measured.
+- **Incidents**: declare early, one commander, **mitigate first** (rollback, flag off), communicate on a schedule, keep a timeline. **Blameless postmortems** find contributing factors and produce owned, dated actions.
+- **Versioning and deprecation**: semantic versions for things others depend on; `Deprecation` and `Sunset` headers and usage tracking before removing an API. The **DORA metrics** (deployment frequency, lead time, change failure rate, time to restore) show speed and stability improve together.
+
+### 14.4 · Working as a staff engineer
+
+[Full chapter →](ch:staff-engineer)
+
+- **The output is better decisions and stronger teams** across several teams, achieved mostly through influence, documents and other people.
+- **Design docs**: problem and goals first, explicit non-goals, honest alternatives, trade-offs, rollout and operability. Match rigour to **reversibility**: decide two-way doors fast, take care over one-way doors.
+- **Strategy** is a diagnosis, a guiding policy and a few coherent actions, and it says what you won't do. **Migrations** need a business case, a pilot, tooling that makes them easy, visible progress, and someone who finishes the long tail and turns the old system off.
+- **Influence** comes from trust, talking to people before the meeting, and framing proposals in each audience's terms; with executives, lead with the conclusion and the decision needed.
+- **Staff interviews** test scope, judgement and ownership through stories: prepare five or six, told as situation, task, action and result, focused on your reasoning.
+
+### 14.5 · Capstone: Kettle Wholesale from zero to production
+
+[Full chapter →](ch:capstone-wholesale)
+
+- **Seven phases with exit criteria**: discovery (real users, risks, scope line), foundations, walking skeleton, core slices, hardening (load, failure and security tests, SLOs and runbooks), gradual launch behind flags, and operating and evolving.
+- **Derive rough numbers first** (users, traffic, data size, consistency, availability): they rule out most complexity before any debate.
+- **The architecture**: a modular monolith on Container Apps with managed Postgres, Front Door, managed identity, an outbox for reliable side effects, optimistic concurrency and idempotency keys for orders, and written triggers for extracting services.
+- **Every failure mode maps to a phase** that prevents it, and the self-test checks you could run such a project yourself.
+
 ## Part XV · Interview Preparation
 
-### 13.1 · System design
+### 15.1 · System design
 
 [Full chapter →](ch:system-design)
 
@@ -2288,7 +2432,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
   The classic **LRU cache** pairs a `Dictionary<K, LinkedListNode<(K, V)>>` with a `LinkedList`, for O(1) get and put. On a hit, move the node to the front. On insert past capacity, evict `_order.Last` and remove its key from the map. Guard the whole thing with a `Lock`, because both structures must change together, so `Interlocked` isn't enough.
 
-### 13.2 · Study plan and resources
+### 15.2 · Study plan and resources
 
 [Full chapter →](ch:study-plan-resources)
 
