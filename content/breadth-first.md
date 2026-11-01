@@ -161,7 +161,20 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **`var` vs `object` vs `dynamic`**: `var` is compile-time inference, so `var x = 5` compiles to exactly `int x = 5` and is fully typed. `object` is "any type", so you must cast to do anything with it. `dynamic` defers every member lookup to run time, so typos become exceptions in production and you lose IntelliSense and speed.
 - **Object layout**: every heap object carries a 16-byte header on 64-bit (8 bytes the runtime uses for locks and hashing, plus a pointer to its type) before your fields, and fields are padded for alignment. An empty object costs about 24 bytes, so a million tiny objects is about 24 MB of headers. An **array of structs** has one header and stores the data side by side: 1,000 orders as structs took about two-thirds of the memory of 1,000 objects in the browser runtime, and about half on a 64-bit server, with one object for the GC instead of 1,001. The runtime may reorder a class's fields, but structs keep declaration order, which matters for interop (`[StructLayout]`).
 
-### 2.3 · Classes: objects that guard their own rules
+### 2.3 · Everyday types: numbers, text, dates and IDs
+
+[Full chapter →](ch:everyday-types)
+
+- **Integers have fixed ranges and wrap silently.** `int.MaxValue + 1` is `int.MinValue` unless you use `checked`. Integer division truncates toward zero. Use `int` by default and `long` for totals and IDs that may pass about 2.1 billion.
+- **`float`/`double` are binary**, so `0.1 + 0.2 != 0.3`: compare with a tolerance. **`decimal` is base ten and exact for money.** `Math.Round(2.5)` is **2** (banker's rounding): pass `MidpointRounding.AwayFromZero` for the school rule. A cast truncates. Parse and format data with `CultureInfo.InvariantCulture`.
+- **Strings are immutable**, which makes them safe to share and stable as keys, but `+=` in a loop copies everything each time. Use `StringBuilder`, `string.Join` or `string.Create`. `==` is chosen from declared types (`object` compares references) while `Equals` is virtual, so strings in `object` variables can be `!=` yet `Equals`. Literals are **interned**; interning user input leaks memory. Use ordinal comparison for identifiers. `Length` counts UTF-16 units, not visible characters.
+- **`default`** is the zero value of any type; `null` exists only for references and nullable value types. `is T t` tests and converts; `as` returns null silently; a cast throws at once.
+- **`int?` is a real `Nullable<int>` struct** (boxes to null or a boxed `int`); **`string?` is only an annotation** for compiler warnings.
+- **Dates:** `DateTime` comparisons ignore `Kind`. Use UTC or `DateTimeOffset` for instants, `DateOnly`/`TimeOnly` for dates and clock times, `Stopwatch` for durations, and inject `TimeProvider` for testable time. Daylight saving creates missing and repeated local times.
+- **GUID keys** can be made anywhere, but random version 4 GUIDs fragment clustered indexes. Version 7 (`Guid.CreateVersion7()`) is time-ordered, but SQL Server sorts GUIDs by their last bytes, so use a SQL Server-ordered sequential generator there. GUIDs aren't secrets.
+- **`record struct`** is a copied value with generated, fast equality, but its positional properties are **mutable** unless `readonly record struct`. `record class` is a shareable, inheritable reference type.
+
+### 2.4 · Classes: objects that guard their own rules
 
 [Full chapter →](ch:oop)
 
@@ -179,7 +192,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **`static`, `sealed`, `partial`.** A static class can't be created or inherited; it's for helpers and extension methods. Avoid **mutable static fields**: they're shared by every request and thread in the process (Kettle's static basket counter showed every shopper's header the total for everyone). `sealed` documents "not designed for inheritance" and enables devirtualisation, so seal by default. `partial` splits a class across files, mainly so source generators can add code to it.
 - **`System.Object`** gives every type `Equals`/`GetHashCode` (override together), `ToString` (override it for readable logs), `GetType` (the runtime type, the entry point to reflection) and a protected shallow `MemberwiseClone`.
 
-### 2.4 · Generics: write it once, for any type
+### 2.5 · Generics: write it once, for any type
 
 [Full chapter →](ch:generics)
 
@@ -191,7 +204,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Generic math** (C# 11): `+` and `Zero` belong to a *type*, not to a value, and interfaces used to describe only instance members. **Static abstract interface members** let `INumber<T>` require a static `Zero` and a `+` operator, so one `Sum<T>(…) where T : INumber<T>` works for every numeric type. You'll meet its cousin `IParsable<T>` when binding custom route and query types.
 - **Generics you already use everywhere**: `List<Order>` (what's stored), `Task<Order>` (what eventually comes back), `ILogger<OrderService>` (`T` is just a label, used via `typeof(T).Name` as the log category), `IOptions<PaymentOptions>`, `DbSet<Order>`. **Open generics** registered in DI, such as `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))`, let the container build `IRepository<Order>`, `IRepository<Customer>` and any future entity on demand from one registration.
 
-### 2.5 · Delegates: passing behaviour around
+### 2.6 · Delegates: passing behaviour around
 
 [Full chapter →](ch:delegates-events)
 
@@ -207,7 +220,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **ASP.NET Core is built from delegates.** Option configuration is `Action<TOptions>`, DI factories are `Func<IServiceProvider, T>`, endpoints are delegates, and the core pipeline type is `delegate Task RequestDelegate(HttpContext context)`. A **middleware** is a function that receives the *next* `RequestDelegate` and returns a new one that wraps it with before and after code. Building `Logging(Auth(endpoint))` composes the onion; a request runs Logging's "before", then Auth, then the endpoint, then back out through Logging's "after". It's the decorator idea again.
 - **The same lambda can become code or data.** Assigned to `Func<decimal, bool>`, it compiles to IL you can run but can't inspect. Assigned to `Expression<Func<decimal, bool>>`, the compiler builds an **expression tree**: objects describing the code (a `GreaterThan` node with the parameter on one side and the constant on the other). A provider like EF Core can walk that tree and write SQL. `IEnumerable.Where` takes the first kind; `IQueryable.Where` takes the second.
 
-### 2.6 · Collections: pick the container that fits the question
+### 2.7 · Collections: pick the container that fits the question
 
 [Full chapter →](ch:collections)
 
@@ -239,7 +252,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Arrays, spans and collection expressions.** `[1, 2, 3]` (C# 12) builds arrays, lists or spans depending on the target type, and `..` spreads another collection in. `^1` indexes from the end. A **range** on an array (`a[1..3]`) makes a **copy**; a **span** (`a.AsSpan(1, 2)`) is a **window** onto the same memory, so writing through it changes the array. Return `[]` or `Array.Empty<T>()` rather than `null`, so callers can always `foreach`.
 - **Custom equality and ordering** can be supplied from outside the type: `EqualityComparer<T>.Create(equals, getHashCode)` for sets and dictionaries, and `Comparer<T>.Create` for sorted collections. The equals and hash functions must agree with each other.
 
-### 2.7 · LINQ: ask for the result, not the loop
+### 2.8 · LINQ: ask for the result, not the loop
 
 [Full chapter →](ch:linq)
 
@@ -271,7 +284,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Expression trees are how C# becomes SQL.** The provider walks the tree: a `BinaryExpression` becomes `(left op right)`, a `MemberExpression` (`o.Total`) becomes a column, a `ConstantExpression` a value. A call to your own C# method is a node with no SQL equivalent, so EF Core throws "could not be translated" (since EF Core 3; older versions silently ran it in memory after fetching everything). Captured variables become **SQL parameters**, never text pasted into the SQL, which is why LINQ queries are naturally safe from SQL injection. Because an `IQueryable` is a tree waiting to grow, you can add `Where` clauses conditionally and still send one query.
 - **Performance.** LINQ to Objects allocates enumerators, delegates and closures, which is negligible in business code. In true hot paths a `for` loop over an array or span can be several times faster, so measure with BenchmarkDotNet first. `Any()` stops at the first match (101 items touched in the demo), while `Count() > 0` touches everything (10,000); in EF Core, `Any()` becomes `EXISTS`. Avoid `ToList()` in the middle of a chain. Newer .NET versions vectorise `Sum`/`Min`/`Max`, so upgrading is often a free speed-up.
 
-### 2.8 · Exceptions and cleanup: failing safely
+### 2.9 · Exceptions and cleanup: failing safely
 
 [Full chapter →](ch:exceptions-disposal)
 
@@ -297,7 +310,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
   - Holding a scoped disposable in a singleton keeps using it after the request disposed it.
   - Forgetting to dispose `CancellationTokenSource`, `Timer` or `SemaphoreSlim` leaks timers and handles.
 
-### 2.9 · Async and await: don't hold a thread while you wait
+### 2.10 · Async and await: don't hold a thread while you wait
 
 [Full chapter →](ch:async-await)
 
@@ -324,7 +337,19 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Fire-and-forget inside a request is broken three ways**: its exceptions are never observed; it's killed if the app shuts down mid-way; and the scoped services it uses (like `DbContext`) are disposed when the request ends, possibly while it's still running. Hand the work to a background queue (`Channel<T>` plus a hosted service) or a durable message broker.
 - **You can't `await` inside `lock`.** A `Monitor` lock belongs to the **thread** that took it, and after an `await` the method may resume on a different thread, which would then try to release a lock it never acquired, so the compiler forbids it (CS1996). `SemaphoreSlim(1, 1)` counts permits instead of tracking an owner thread, offers `WaitAsync`, and must be released in a `finally`.
 
-### 2.10 · Modern C#: let the compiler catch it
+### 2.11 · Files, streams and text
+
+[Full chapter →](ch:files-streams-io)
+
+- **A stream is a tap, not a bucket:** read or write a chunk at a time, so memory stays flat however big the data. `FileStream`, `MemoryStream`, network, `GZipStream` and `CryptoStream` all share one `Stream` API, and they **wrap** each other (file → decompress → `StreamReader`), the Decorator pattern.
+- **Bytes need an encoding to become text.** UTF-8 for files and HTTP; .NET strings are UTF-16 in memory. "£" is 2 UTF-8 bytes, an emoji 4. A wrong encoding shows `Â£`. `Encoding.UTF8` writes a 3-byte BOM; `File.WriteAllText` doesn't.
+- **"All" helpers load everything:** `ReadAllText`/`ReadAllLines`/`ReadAllBytes`. `File.ReadLines`, `Directory.EnumerateFiles` and `StreamReader` are lazy. Build paths with `Path.Combine`/`Join`.
+- **Async IO** frees threads: `FileOptions.Asynchronous`, `ReadAsync` into pooled buffers (it may return fewer bytes than asked: loop to 0), `CopyToAsync`, and cancellation. Writers buffer, so dispose or flush or you lose the end of the file. Pipelines handle high-throughput parsing.
+- **Atomic writes:** write a temp file in the same folder, dispose it, then `File.Move(temp, final, overwrite: true)`, so readers never see half a file.
+- **Path traversal:** never use user input as a path. Store files under generated names, or check that `Path.GetFullPath(...)` still starts with the root. `Path.Combine` with a rooted second argument drops the first.
+- **Containers have temporary disks.** Persist to Blob Storage, which is stream-based too; use local temp files only for scratch work. `FileSystemWatcher` is a hint, not a guarantee.
+
+### 2.12 · Modern C#: let the compiler catch it
 
 [Full chapter →](ch:modern-csharp)
 
@@ -371,7 +396,7 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
   - C# 13: `params` collections, `Lock`;
   - C# 14: extension members, `field`, null-conditional assignment (`a?.B = x`).
 
-### 2.11 · Advanced C#: one long night at Kettle
+### 2.13 · Advanced C#: one long night at Kettle
 
 [Full chapter →](ch:advanced-csharp)
 
@@ -539,7 +564,20 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Formats and streaming**: controllers honour `Accept` through output formatters, while minimal APIs return JSON unless you return another `IResult`. `Results.File` and `Results.Stream` serve files, and `PhysicalFile` adds HTTP range support. `IAsyncEnumerable<T>` streams a JSON array as items arrive instead of buffering everything. `TypedResults.ServerSentEvents` (.NET 10) streams one-way updates.
 - **Thin handlers**: an endpoint should only **bind → validate → delegate → map the result to HTTP**. Stock checks, pricing and order rules live in application and domain code that never sees `HttpContext` and can be tested without a web server.
 
-### 3.7 · Error handling, ProblemDetails and logging
+### 3.7 · JSON and System.Text.Json
+
+[Full chapter →](ch:serialization)
+
+- **Serialization is a contract:** the data, not the object, crosses the wire, and renaming a property silently breaks the other side.
+- **Defaults:** public properties only (not fields), C# names, case-sensitive reading, enums as numbers, records built through their constructor. **ASP.NET Core's Web defaults:** camelCase, case-insensitive reading, quoted numbers allowed. Configure them once with `ConfigureHttpJsonOptions`/`AddJsonOptions`.
+- **Shaping:** `[JsonPropertyName]`, `[JsonIgnore]`, `WhenWritingNull`, `JsonStringEnumConverter` (enums as strings are safer contracts), `[JsonRequired]`/`required`, `UnmappedMemberHandling.Disallow`, `[JsonExtensionData]`, naming policies including snake and kebab case.
+- **Polymorphism** needs `[JsonPolymorphic]` + `[JsonDerivedType(typeof(X), "label")]`: a discriminator and an **allow-list**, unlike Newtonsoft's dangerous `TypeNameHandling`.
+- **Converters** (`JsonConverter<T>` with the ref-struct `Utf8JsonReader`) give full control; throw `JsonException` for bad input so it becomes a 400. **DOM:** `JsonNode` (mutable), `JsonDocument` (read-only, pooled: dispose it).
+- **Large payloads:** `SerializeAsync` to streams, `DeserializeAsyncEnumerable`, and `IAsyncEnumerable<T>` endpoints, instead of whole strings.
+- **Speed:** cache `JsonSerializerOptions` (they cache metadata; CA1869 flags per-call creation). **Source generation** (`JsonSerializerContext`, `[JsonSerializable]`) removes reflection and is required for Native AOT. **Safety:** `MaxDepth` 64, request size limits, cycles (prefer DTOs).
+- **Migrating from Newtonsoft:** case sensitivity, comments and trailing commas, quoted numbers, non-public members and `JObject` → `JsonNode` all differ.
+
+### 3.8 · Error handling, ProblemDetails and logging
 
 [Full chapter →](ch:errors-logging)
 
@@ -559,7 +597,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Destinations**: built-in console, debug and EventSource providers; **OpenTelemetry** (`WithLogging()`, exported over OTLP alongside traces and metrics); Application Insights through the Azure Monitor OpenTelemetry distro; **Serilog**, with rich sinks and enrichers, and NLog. In containers, log **JSON to stdout** and let the platform ship it, just as the app doesn't own its secrets on disk. `AddHttpLogging` logs requests, but choose fields deliberately, because headers and bodies contain tokens and personal data.
 - **What to log**: business events with IDs, exceptions *with the exception object*, external calls (target, duration, outcome), retries and circuit-breaker changes, and a non-secret startup summary. Never log passwords, tokens, keys, connection strings, card data, unnecessary PII, full bodies or `Authorization` headers. Log a failure **once**, where it's handled, not at every layer it passes through. Don't log cancellations as errors. Log IDs rather than whole objects. Use `Microsoft.Extensions.Compliance.Redaction` for classified data. Correlate across services with W3C trace context (`traceparent`), which flows automatically through `HttpClient` with OpenTelemetry.
 
-### 3.8 · Authentication and authorization
+### 3.9 · Authentication and authorization
 
 [Full chapter →](ch:auth)
 
@@ -583,7 +621,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Resource-based authorization** handles rules that depend on *which row* ("your own orders only"): load the resource, then call `IAuthorizationService.AuthorizeAsync(user, order, requirement)` with an `AuthorizationHandler<TRequirement, Order>`. Return **404 instead of 403** for someone else's order, because a 403 confirms the order exists. This is the standard defence against **IDOR** (insecure direct object references), one of the most common real API vulnerabilities.
 - **Other schemes**: custom API-key handlers (`AuthenticationHandler<T>`; compare **hashed** keys in constant time), mTLS client certificates for service-to-service, managed-identity tokens for Azure-to-Azure, and **policy schemes** (`ForwardDefaultSelector`) to choose a scheme per request. **Claims transformation** (`IClaimsTransformation`) enriches the principal with app-specific permissions on **every** authentication, so it must be cheap or cached, or you've added a database call to every request.
 
-### 3.9 · Calling other services: HttpClient and IHttpClientFactory
+### 3.10 · Calling other services: HttpClient and IHttpClientFactory
 
 [Full chapter →](ch:http-client)
 
@@ -597,7 +635,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Response handling**: dispose every `HttpResponseMessage`, because with `ResponseHeadersRead` the connection only returns to the pool when you do. Use `ResponseHeadersRead` to stream large bodies. Switch on status codes (404 → `null`, 429 → honour `Retry-After`). Don't call `EnsureSuccessStatusCode` reflexively, because it throws away the `ProblemDetails` body the server sent.
 - **Generated clients**: Refit (an interface plus attributes, implemented by a source generator), Kiota and NSwag (generated from OpenAPI), and gRPC clients (from `.proto`). **Service discovery** (`https+http://inventory` with `Microsoft.Extensions.ServiceDiscovery`) resolves logical names at run time in Aspire and Kubernetes. **Testing**: construct the typed client with an `HttpClient` over a stub `HttpMessageHandler` (don't mock `HttpClient` itself), or run WireMock.Net for realistic HTTP.
 
-### 3.10 · Caching, rate limiting, CORS and compression
+### 3.11 · Caching, rate limiting, CORS and compression
 
 [Full chapter →](ch:caching-ratelimit-cors)
 
@@ -632,7 +670,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
   - a plain 500 without CORS headers *also* looks like a CORS error, so read the server logs first.
 - **Response compression** (Brotli, gzip) is often better done once at the proxy or CDN than in every app instance. Compressing HTTPS responses that mix secrets with user input carries **BREACH** risk. Request timeouts (`UseRequestTimeouts`) cancel slow requests per endpoint policy.
 
-### 3.11 · Background work: hosted services, workers, channels and schedulers
+### 3.12 · Background work: hosted services, workers, channels and schedulers
 
 [Full chapter →](ch:background-work)
 
@@ -653,7 +691,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Choosing where work runs**: losable work goes to a channel and hosted service. Durable work within one service goes to Hangfire, Quartz or an outbox table with a worker. Work other services must react to goes to a message broker. Spiky or scale-to-zero work goes to Azure Functions or Container Apps jobs. Simple periodic work on a single instance goes to a `BackgroundService` with `PeriodicTimer`, plus a lock if it's replicated.
 - **Running a job once across replicas**: take a **distributed lock or lease** (SQL `sp_getapplock`, Redis `SET NX PX`, a Blob lease, the `DistributedLock` package) and skip the run if another instance holds it; deploy a dedicated single-replica scheduler; use a clustered scheduler (Hangfire, Quartz); use a platform scheduler (Kubernetes CronJob, Container Apps jobs, a Functions timer trigger, which is a singleton by default); or for continuous work, **competing consumers** on a queue, where each message goes to exactly one instance anyway. Fire-and-forget `Task.Run` in a controller is broken: untracked on shutdown, exceptions unobserved, and it uses disposed request services.
 
-### 3.12 · API design: REST, HTTP semantics, versioning and OpenAPI
+### 3.13 · API design: REST, HTTP semantics, versioning and OpenAPI
 
 [Full chapter →](ch:api-design)
 
@@ -675,7 +713,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Versioning is about not breaking promises.** Breaking changes: removing or renaming fields or endpoints, changing types or meaning, making optional input required, changing status codes clients branch on. Additive optional fields aren't breaking, *if* clients ignore unknown fields, so say that in your docs. Strategies: URL segment `/v2` (visible, most common), query string `?api-version=` (Azure's style), a header, or a media type. `Asp.Versioning.Http` implements them. Have a deprecation policy: announce it, send `Deprecation`/`Sunset` headers, monitor traffic per version, then remove.
 - **OpenAPI** is the machine-readable contract (endpoints, schemas, responses, auth) that enables interactive docs, client generation (Kiota, NSwag), contract tests, gateway import and **breaking-change detection in CI** by diffing specs. .NET 9+ builds it in (`AddOpenApi`, `MapOpenApi`) with Scalar or Swagger UI; Swashbuckle was the earlier default. **Code-first** generation dominates in .NET because `TypedResults` make the code an accurate, compiler-checked source of truth. **Design-first** writes the spec first and generates from it.
 
-### 3.13 · The other app models: gRPC, SignalR, MVC, Razor Pages and Blazor
+### 3.14 · The other app models: gRPC, SignalR, MVC, Razor Pages and Blazor
 
 [Full chapter →](ch:app-models)
 

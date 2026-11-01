@@ -402,6 +402,10 @@ It decouples the API contract from the database schema, prevents over-posting an
 ConfigureHttpJsonOptions (minimal APIs) or AddJsonOptions (controllers) to set naming policies, converters (JsonStringEnumConverter), ignore conditions and so on; attributes like [JsonPropertyName], [JsonIgnore] and [JsonPolymorphic]; custom JsonConverter&lt;T&gt;; and source-generated JsonSerializerContext for speed and AOT.
 :::
 
+:::tip Companion chapter
+Everything an endpoint reads and writes goes through System.Text.Json. Naming, enums, polymorphism, converters, streaming and source generation are in [JSON and System.Text.Json](ch:serialization).
+:::
+
 ## Next episode {b}
 
 A customer sees a stack trace, and the logs are unsearchable text. [Episode 7 · When it breaks at 2 a.m. →](ch:errors-logging)

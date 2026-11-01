@@ -782,6 +782,10 @@ Awaiting inside is fine now. Whichever thread resumes the method can carry on.
 
 More in [Threading & concurrency](ch:threading-concurrency).
 
+:::tip Companion chapter
+Files, streams and encodings, the IO that async exists for, have their own chapter: [Files, streams and text](ch:files-streams-io).
+:::
+
 ## Next episode {b}
 
 Kettle survived Black Friday. With async all the way down, a few dozen threads handled the whole rush. Then at **3 a.m.** the pager goes off: `NullReferenceException` in the shipping-label code. A customer with no delivery address got through, and `customer.Address.Postcode` blew up. Nothing warned anyone that `Address` could be null. While you're in there, you notice that every simple data class is 40 lines of boilerplate. Modern C# fixes both: [Episode 9 · Modern C# →](ch:modern-csharp)
