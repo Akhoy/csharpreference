@@ -12,18 +12,18 @@ next: big-picture, csharp-story
 ## How to use this page
 
 :::tip Prefer pictures?
-The [Kettle Storybook](story.html) covers the same ground as a short animated scene per chapter, each with one-line captions. Start there for the first pass, then use this page as your written summary.
+The [Kettle Storybook](story.html) covers the same ground as a short animated scene per chapter, each explained from the basics. Start there if you learn best visually, then use this page as your written summary.
 :::
 
-This page condenses the entire book, chapter by chapter, in reading order. It's meant to be read **top to bottom**: you get every topic at a useful depth first, and only then go deep where you need to. That's the opposite of reading chapter by chapter, where you can spend a week in one corner and never see the rest.
+This page is the whole book on one page, in reading order. Read it **top to bottom** to see every topic once before going deep anywhere.
 
-Three promises about what's here:
+Each section works the same way:
 
-- **Nothing is left out on purpose.** Every chapter's main ideas are here, including the internals, trade-offs and edge cases that staff-level interviews probe. If a chapter has a section, this page has at least a sentence on it.
-- **No bare claims.** Each point says what something is, *how* it works, and *why* it matters. If a sentence says "X is safe" or "X is faster", the reason is right next to it.
-- **Every heading links to its chapter.** When a point feels thin, follow the link to its full chapter. That's where the step-through diagrams, runnable code and interview questions are.
+1. **In plain words**: a short explanation with no assumed knowledge. Read these first; on their own they give you the whole map.
+2. **In depth**: a closed box holding the detailed summary, including the internals and trade-offs that staff-level interviews ask about. Open it when a topic matters to you, or on a second pass.
+3. **Full chapter →**: the complete chapter, with diagrams, runnable code and interview questions.
 
-Reading time is roughly four to five hours. If you have less, read each part's opening paragraph and the bold lead-ins.
+Reading only the plain-words boxes takes about an hour. Reading everything, including every "In depth" box, takes four to five.
 
 ## Reading tracks: start to finish
 
@@ -42,6 +42,11 @@ The book is ordered as a ladder: each chapter only assumes what came before it, 
 
 [Full chapter →](ch:big-picture)
 
+:::plain
+A backend is the program on a server that apps and websites talk to. Building one touches many separate subjects, so it helps to sort them into eight layers: the C# language, the .NET runtime that runs it, frameworks like ASP.NET Core, how code is organised, where data is stored, how programs talk to each other, where it all runs, and things like testing and security that touch every layer. When a new word confuses you, ask which layer it belongs to.
+:::
+
+:::more In depth: the detailed summary
 - **.NET is easiest to understand as eight layers**, each built on the one below: (1) the C# language, (2) the runtime and platform, (3) application frameworks like ASP.NET Core and EF Core, (4) application architecture, (5) data and state, (6) service communication, (7) hosting and infrastructure, and (8) cross-cutting concerns (testing, security, observability, performance) that apply to all of them. When a term confuses you, ask "which layer is this?" first. `Span<T>` is layer 1–2, `IOptionsMonitor` is layer 3, a saga is layer 6, a managed identity is layer 7. Once you know the layer, you know what it depends on and what it isn't.
 - **The same word means different things at different layers**, and that's the biggest source of confusion. "Service" in `AddScoped<IOrderService, OrderService>()` means "a class the DI container can build"; in "microservices" it means "a separately deployed application". "Context" can be `HttpContext` (one request), `DbContext` (one unit of work), `SynchronizationContext` (where async code resumes) or a DDD bounded context. "Scope" can be a variable's scope, a DI scope (one request) or a logging scope. "Pipeline" can be the middleware pipeline, a CI/CD pipeline or MediatR's behaviour pipeline.
 - **One HTTP request touches nearly every layer**, and tracing it is the classic "walk me through a request" question:
@@ -57,6 +62,7 @@ The book is ordered as a ladder: each chapter only assumes what came before it, 
   10. And before any of it shipped, unit and integration tests ran in CI.
 - **Microsoft names come in families**, and recognising the family tells you what something is for. The platform family: .NET (modern), .NET Framework (old, Windows-only), .NET Standard (an API contract, not a runtime), CLR, BCL, SDK, NuGet. The web family under ASP.NET Core: minimal APIs, controllers, Razor Pages, Blazor, SignalR, gRPC, with Kestrel as the server. The data family: ADO.NET at the bottom, then EF Core or Dapper on top. The cloud family: App Service, Container Apps, AKS and Functions to run code; Service Bus, Event Grid and Event Hubs for messaging; Key Vault, Entra ID and Application Insights around them.
 - **DI, configuration, options, logging and hosting are not ASP.NET Core features.** They live in the general-purpose `Microsoft.Extensions.*` libraries and work in any .NET app: workers, console apps, Azure Functions. `WebApplication.CreateBuilder` just wires them up for you. Knowing that resolves a lot of "where does this come from?" confusion.
+:::
 
 ## Part I · The .NET Platform
 
@@ -66,6 +72,11 @@ This part is layer 2: what actually runs your code, and the tools that build it.
 
 [Full chapter →](ch:what-is-dotnet)
 
+:::plain
+.NET is Microsoft's free platform for building programs, usually written in C#. It has a runtime that runs your program, a big library of ready-made code, and an SDK of tools to build it. The old .NET Framework only ran on Windows; modern .NET runs on Windows, Linux and macOS, and gets a new version every November. Long-term-support versions are the safe choice for production.
+:::
+
+:::more In depth: the detailed summary
 - **.NET is a platform, not a language.** It has four parts:
   - the **runtime (CLR)**, which loads and runs compiled code, JIT-compiles it, manages memory, threads and exceptions;
   - the **Base Class Library (BCL)**, thousands of ready-made types from `string` and `List<T>` to `HttpClient` and `JsonSerializer`;
@@ -91,11 +102,17 @@ This part is layer 2: what actually runs your code, and the tools that build it.
 
   A runtime identifier (RID) such as `linux-x64` or `linux-musl-arm64` says which platform a self-contained or native build targets.
 - **The BCL already has most of what you'd reach to NuGet for**: System.Text.Json, `HttpClient`, concurrent, immutable and frozen collections, `Channel<T>`, `PriorityQueue`, `System.IO.Pipelines` (the high-performance I/O that Kestrel uses), `Activity` and `Meter` for telemetry, cryptography, and source-generated `Regex`. Two habits matter in production code. Prefer `DateTimeOffset` or UTC over `DateTime`, because a `DateTime`'s `Kind` is often `Unspecified`, so you can't tell which time zone it means. And inject `TimeProvider` (.NET 8) instead of calling `DateTime.Now`, so time becomes a dependency your tests can control.
+:::
 
 ### 1.2 · Your first .NET app, end to end
 
 [Full chapter →](ch:first-app)
 
+:::plain
+Before any theory, learn the everyday loop. `dotnet new` creates a project, `dotnet run` builds and starts it, and `dotnet watch` re-runs it every time you save. A breakpoint pauses the running program so you can look at every value. Tests live in their own project and run with `dotnet test`. `dotnet publish` makes the folder you copy to a server.
+:::
+
+:::more In depth: the detailed summary
 - **One install, one command.** The **SDK** contains the compiler, the `dotnet` CLI, templates and a runtime; servers often need only the runtime. Several SDKs install side by side, and `global.json` pins which one a repository uses, so everyone builds with the same tools.
 - **A project is a `.csproj` plus `.cs` files**; it builds into one assembly. `dotnet new console|web|classlib|xunit` creates one, `dotnet run` restores packages, compiles to IL in `bin/` and runs it, and a **solution** groups projects. `bin/` and `obj/` are build output and never committed.
 - **`Program.cs` is the entry point.** **Top-level statements** let the file contain code directly; the compiler wraps it in a hidden `Main`, with `args`, `await` and return codes still available. A web app's `Program.cs` is the same thing: code that builds and runs a server.
@@ -104,11 +121,17 @@ This part is layer 2: what actually runs your code, and the tools that build it.
 - **Debugging**: breakpoint (F9), start (F5), then step over (F10), into (F11), out (Shift+F11), and inspect locals, watches and the call stack. Conditional breakpoints, logpoints and break-on-thrown-exception find the one bad case in thousands. Debug builds keep variables visible; Release builds optimise them away.
 - **Splitting code**: a class library holds logic that the app, tests and other apps share; project references go one way. Packages come from NuGet with `dotnet add package`; tests live in a test project run by `dotnet test`, arranged as arrange, act, assert.
 - **Publishing**: `dotnet publish -c Release` produces the deployable folder (optionally self-contained, single-file or a container image). It runs with `appsettings.json` and environment variables; `launchSettings.json` is for local development only.
+:::
 
 ### 1.3 · How your code runs: IL, the JIT and the CLR
 
 [Full chapter →](ch:how-code-runs)
 
+:::plain
+A computer's processor only understands machine code. .NET translates your C# in two steps: when you build, into a portable in-between form called IL, stored in a `.dll`; and while the program runs, the JIT compiler turns each method's IL into machine code for that exact computer. That's why the same `.dll` runs on any operating system.
+:::
+
+:::more In depth: the detailed summary
 - **Compilation happens twice, by two different programs, at two different times.** At build time, **Roslyn** compiles C# into **IL** (Intermediate Language, also called CIL or MSIL), a CPU-independent, stack-based bytecode, and writes it into an **assembly** (a `.dll`). At run time, the **JIT** (RyuJIT) turns each method's IL into real machine code for the exact CPU it's running on, the first time that method is called.
 - **Why split it?** Machine code only runs on one CPU family (x64 code won't run on Arm). Stopping at IL means one build runs anywhere, and the last translation happens on the machine that knows its own CPU. Three bonuses fall out of that:
   - the JIT can use instructions that CPU actually supports;
@@ -135,11 +158,17 @@ This part is layer 2: what actually runs your code, and the tools that build it.
   - `AssemblyLoadContext` replaced AppDomains for isolating and unloading plugins.
   - Two generated files drive loading: `.deps.json` lists every dependency and where to find it, and `.runtimeconfig.json` names the shared framework version and runtime settings such as Server GC.
   - **Roll-forward**: an app built for 8.0.x runs on the newest installed 8.0 patch automatically. Rolling to a new *major* version needs `<RollForward>Major</RollForward>`, because majors may contain breaking changes.
+:::
 
 ### 1.4 · Projects, the SDK, NuGet and the toolbox
 
 [Full chapter →](ch:projects-sdk-nuget)
 
+:::plain
+A project file (`.csproj`) says what to build and which libraries the project uses. Libraries come as packages from NuGet, the public package store, and are downloaded automatically. Building turns your code into a `.dll`; publishing collects everything needed to run it. Shared settings and package versions can be kept in one file for the whole repository so projects don't drift apart.
+:::
+
+:::more In depth: the detailed summary
 - **One `.csproj` builds one assembly.** A solution (`.sln`, or the newer XML `.slnx`) only groups projects for the IDE and the build. It has no effect on the output. **Project references** decide which assembly may use which, and that's how architecture rules ("the Domain project depends on nothing") get enforced physically: the compiler won't let you reference what isn't referenced.
 - **SDK-style project files are short because they're mostly defaults.** Old Framework projects listed every `.cs` file, so every new file edited the project and caused merge conflicts. SDK-style projects include every file in the folder by default and import defaults from the SDK. The csproj then lists only what's different: the SDK flavour (`Microsoft.NET.Sdk`, `.Web`, `.Worker`, `.Razor`), `TargetFramework`, `Nullable`, `ImplicitUsings` (common `using`s added as global usings), and the package and project references.
 - **MSBuild is the engine under `dotnet build`.** It evaluates **properties** (scalar settings) and **items** (lists of files and references), then runs **targets**: Restore → Compile → Copy → Publish. Properties can be passed on the command line (`-p:Version=1.2.3`) or made conditional (`Condition="'$(Configuration)' == 'Release'"`). Debug builds skip optimisation so code maps one-to-one to source. Release builds are optimised by the compiler and the JIT, so always benchmark and ship Release.
@@ -154,6 +183,7 @@ This part is layer 2: what actually runs your code, and the tools that build it.
   - **Package source mapping** in `nuget.config` maps ID prefixes to specific feeds. That blocks *dependency confusion*, where an attacker publishes a public package with your internal package's name and hopes your build picks it up.
 - **Code quality is enforced in the build, not by review comments.** Roslyn analyzers flag bugs and misuse (for example CA2016, "forward the `CancellationToken`"), `.editorconfig` sets style and each rule's severity, `dotnet format --verify-no-changes` runs in CI, and `TreatWarningsAsErrors` plus nullable warnings stop most null bugs reaching production. Third-party analyzers and SonarQube add quality gates on top.
 - **`launchSettings.json` is for your machine only.** It sets URLs and `ASPNETCORE_ENVIRONMENT=Development` for `dotnet run` and the IDE, it isn't deployed, and production ignores it. Real environments get settings from environment variables, App Service configuration or Kubernetes manifests. `.http` files committed next to a project give everyone runnable sample requests.
+:::
 
 ## Part II · The C# Language
 
@@ -163,12 +193,23 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 
 [Full chapter →](ch:csharp-story)
 
+:::plain
+Part II teaches C# by following Kettle, a small online tea shop, as its code grows. Each section starts from a real bug and then shows the language feature that prevents it. Learning the problem first makes the feature easy to remember.
+:::
+
+:::more In depth: the detailed summary
 - **Ten problems, ten tools.** A saved basket changes by itself (value vs reference types). An order gets a quantity of −3 (encapsulation). Three caches are copy-pasted (generics). The discount rule is hard-coded in checkout (delegates). Order lookup is slow (collections). Reports are 30-line loops (LINQ). One payment failure takes the site down (exceptions and `using`). Black Friday starves the thread pool (async). A 3 a.m. null crash happens (nullable types and pattern matching). And one long night needs spans, pools, `ref`, interop, reflection and source generators (advanced C#).
+:::
 
 ### 2.2 · Types: copied or shared?
 
 [Full chapter →](ch:type-system)
 
+:::plain
+Every value in C# is either copied or shared. A class is a reference type: the variable holds an arrow to an object, so copying the variable gives a second arrow to the same object. A struct is a value type: copying it copies the whole value. Mixing these up causes "I changed the copy and the original changed too" bugs.
+:::
+
+:::more In depth: the detailed summary
 - **The one idea underneath everything: what does `=` copy?** A **value type** variable *is* its data (`int`, `decimal`, `DateTime`, `Guid`, any `struct`, `enum` or tuple), so assigning it copies the data, like a photocopy. A **reference type** variable (any `class`, `string`, arrays, delegates, records) holds an **address**, an arrow to an object on the heap, so assigning it copies only the arrow. Both variables then point at **one** object. Kettle's bug: `var savedForLater = basket;` didn't copy the basket, it made a second name for the same basket, so "saved" items appeared in the live basket. The fix is to copy the contents on purpose.
 - **Why C# shares by default**: sharing is usually what you want for things with identity. The basket shown in the page, the header counter and checkout must be **the same** basket, and copying a 200-line order on every method call would be slow. Small values that *are* their data (a price, a date) are cheap to copy, and nobody expects `5` to change behind their back. Bugs come from thinking you have a copy when you have a share.
 - **Stack vs heap, precisely.** The **stack** is a per-thread scratch pad: each method call pushes a frame for its locals and returning pops it, so it's automatic and free. The **heap** is shared, long-term memory where objects live until nothing references them and the GC frees them. The precise rule is: reference-type **objects always live on the heap**; value types live **wherever their container lives**. A local `int` sits in the stack frame; an `int` field of a class sits inside that object on the heap; the `int`s of an `int[]` sit inside the array on the heap. And two common cases move locals to the heap: a local captured by a lambda goes into a closure object, and the locals of an `async` method live in its boxed state machine. So the defining difference is copy semantics, not location.
@@ -184,11 +225,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Every argument is passed by value, meaning as a copy.** For a class, the copy is a copy of the arrow. So a method can change the caller's *object* (through its copy of the arrow), but reassigning its parameter only moves its own copy and never reaches the caller. `ref` passes the variable itself, so reassignment does reach the caller. `out` means the method must assign it (the `TryParse` pattern). `in` passes a read-only reference, to avoid copying big structs.
 - **`var` vs `object` vs `dynamic`**: `var` is compile-time inference, so `var x = 5` compiles to exactly `int x = 5` and is fully typed. `object` is "any type", so you must cast to do anything with it. `dynamic` defers every member lookup to run time, so typos become exceptions in production and you lose IntelliSense and speed.
 - **Object layout**: every heap object carries a 16-byte header on 64-bit (8 bytes the runtime uses for locks and hashing, plus a pointer to its type) before your fields, and fields are padded for alignment. An empty object costs about 24 bytes, so a million tiny objects is about 24 MB of headers. An **array of structs** has one header and stores the data side by side: 1,000 orders as structs took about two-thirds of the memory of 1,000 objects in the browser runtime, and about half on a 64-bit server, with one object for the GC instead of 1,001. The runtime may reorder a class's fields, but structs keep declaration order, which matters for interop (`[StructLayout]`).
+:::
 
 ### 2.3 · Everyday types: numbers, text, dates and IDs
 
 [Full chapter →](ch:everyday-types)
 
+:::plain
+Ordinary-looking types hide traps. `double` can't store 0.1 exactly, so money must use `decimal`. Rounding 2.5 gives 2 by default, so say which rounding you want. Dates should be stored in UTC so time zones don't confuse comparisons. And text, numbers and IDs each have their own pitfalls worth knowing.
+:::
+
+:::more In depth: the detailed summary
 - **Integers have fixed ranges and wrap silently.** `int.MaxValue + 1` is `int.MinValue` unless you use `checked`. Integer division truncates toward zero. Use `int` by default and `long` for totals and IDs that may pass about 2.1 billion.
 - **`float`/`double` are binary**, so `0.1 + 0.2 != 0.3`: compare with a tolerance. **`decimal` is base ten and exact for money.** `Math.Round(2.5)` is **2** (banker's rounding): pass `MidpointRounding.AwayFromZero` for the school rule. A cast truncates. Parse and format data with `CultureInfo.InvariantCulture`.
 - **Strings are immutable**, which makes them safe to share and stable as keys, but `+=` in a loop copies everything each time. Use `StringBuilder`, `string.Join` or `string.Create`. `==` is chosen from declared types (`object` compares references) while `Equals` is virtual, so strings in `object` variables can be `!=` yet `Equals`. Literals are **interned**; interning user input leaks memory. Use ordinal comparison for identifiers. `Length` counts UTF-16 units, not visible characters.
@@ -197,22 +244,34 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Dates:** `DateTime` comparisons ignore `Kind`. Use UTC or `DateTimeOffset` for instants, `DateOnly`/`TimeOnly` for dates and clock times, `Stopwatch` for durations, and inject `TimeProvider` for testable time. Daylight saving creates missing and repeated local times.
 - **GUID keys** can be made anywhere, but random version 4 GUIDs fragment clustered indexes. Version 7 (`Guid.CreateVersion7()`) is time-ordered, but SQL Server sorts GUIDs by their last bytes, so use a SQL Server-ordered sequential generator there. GUIDs aren't secrets.
 - **`record struct`** is a copied value with generated, fast equality, but its positional properties are **mutable** unless `readonly record struct`. `record class` is a shareable, inheritable reference type.
+:::
 
 ### 2.4 · Operators, expressions and statements
 
 [Full chapter →](ch:operators-expressions)
 
+:::plain
+Operators are the symbols that combine values, like `+`, `==` and `&&`. A few behave in ways that matter: `&&` skips its right side when the left is false, `?.` stops safely at null, and `??` supplies a fallback. Some things, like the `!` operator and tuple names, only exist for the compiler and do nothing while the program runs.
+:::
+
+:::more In depth: the detailed summary
 - **Expressions produce values; statements do things.** Switch expressions must cover every case, so the compiler warns when you add an enum member. Switch statements don't fall through between sections.
 - **Precedence groups, evaluation runs left to right:** `*` before `+`, `&&` before `||`. Arithmetic on `int?` is lifted, so null in gives null out. Don't write `i++ + ++i`.
 - **`&&` and `||` short-circuit;** `&` and `|` evaluate both sides. Put cheap checks before expensive ones. `?.`, `??` and `??=` handle nulls. `!` only silences the compiler and checks nothing at run time.
 - **Operator overloading:** only for obvious meanings (money, vectors). Operators come in pairs; keep `==`, `Equals`, `GetHashCode` and `IEquatable<T>` consistent (records do it for you); make lossy conversions `explicit`. C# 11 added checked operators and C# 14 user-defined `+=`.
 - **Lowering:** `foreach` is `GetEnumerator`/`MoveNext`/`Current` in a `try/finally` (duck-typed, so struct enumerators and spans work; arrays become an indexed loop), `using` is `try/finally Dispose`, and `lock` is `Monitor.Enter/Exit` or `Lock.EnterScope`.
 - **Tuples** are mutable `ValueTuple` structs whose names vanish at run time (they serialise as `Item1`), with value `==`. **Anonymous types** are immutable classes with real names and value `Equals` but reference `==`. Use records for anything that crosses a boundary.
+:::
 
 ### 2.5 · Classes: objects that guard their own rules
 
 [Full chapter →](ch:oop)
 
+:::plain
+A class bundles data with the code that looks after it. Making the data private and changing it only through methods lets the class enforce its own rules, such as "no negative quantities". An interface is a contract listing what something can do, which lets you swap one implementation for another without changing the code that uses it.
+:::
+
+:::more In depth: the detailed summary
 - **Encapsulation is the fix for invalid state.** With public fields, any code can write `Quantity = -3` or mark an unpaid order shipped. Make the data private (`{ get; private set; }`) and expose **methods as the only doors**, each checking the rules (the **invariants**) before changing anything: the constructor refuses a quantity under 1; `Ship()` throws on an unpaid order; `Pay()` only works on a placed order. Why put the rule *in the object* rather than in the checkout page? Because there are many ways in (website, admin tool, CSV import, refund job), and the object is the only place every path must go through.
 - **Class members**: fields (raw storage, keep them private), properties (the public face, with accessors that can check values), methods (behaviour), constructors (build a valid object from the start), static members (belong to the type), indexers and operators, and events. **`const` is pasted into callers at compile time**: change a public `const` in a library and callers keep the old value until they're recompiled. `static readonly` is read at run time, so it doesn't have that problem.
 - **A property is two methods in disguise.** `tea.Stock = -1` compiles to a call to `set_Stock(-1)`, so the setter can reject bad values, and callers can't tell a property from a field, which means you can add rules later without breaking them. `init` makes a property settable only during object creation; `required` makes the compiler reject any `new` that doesn't set it; C# 14's `field` keyword lets an accessor use the compiler-generated backing field directly. Object initialisers run **after** the constructor, so a constructor can't see values set in `{ }`.
@@ -226,11 +285,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Access modifiers are rings of visibility.** `private` means this type only (the default for members). `protected` means this type and its subclasses, even in other assemblies. `internal` means anything in the same assembly (the default for top-level types). `public` means everyone. The rarer `protected internal` is "same assembly **or** subclass"; `private protected` is "subclass **and** same assembly"; `file` limits a type to one source file. Start small and widen only when needed, because making something less visible later breaks whoever used it. `internal` types aren't part of your public API, so you can change them freely; `[InternalsVisibleTo]` lets tests see them.
 - **`static`, `sealed`, `partial`.** A static class can't be created or inherited; it's for helpers and extension methods. Avoid **mutable static fields**: they're shared by every request and thread in the process (Kettle's static basket counter showed every shopper's header the total for everyone). `sealed` documents "not designed for inheritance" and enables devirtualisation, so seal by default. `partial` splits a class across files, mainly so source generators can add code to it.
 - **`System.Object`** gives every type `Equals`/`GetHashCode` (override together), `ToString` (override it for readable logs), `GetType` (the runtime type, the entry point to reflection) and a protected shallow `MemberwiseClone`.
+:::
 
 ### 2.6 · Generics: write it once, for any type
 
 [Full chapter →](ch:generics)
 
+:::plain
+Generics let you write code once for many types. A `Cache<T>` works for orders, customers or products, and the compiler still checks that you only put the right type in. Constraints say what the type must be able to do. Without generics you'd copy the same code for each type or lose type safety.
+:::
+
+:::more In depth: the detailed summary
 - **The problem generics solve**: three identical caches for orders, customers and products means every bug fix must be made three times (and Kettle missed one, so a customer's old address stayed cached). The pre-generics fix, one cache of `object`, loses type safety: anything can go in, every read needs a cast that can fail at run time, and value types get boxed.
 - **A generic type has a blank for a type**: `class Cache<T>`. `Cache<Order>` is a real, fully checked type in which every `T` is `Order`. So `Add` accepts only orders, `Get` returns an `Order` with no cast, and putting a customer in is a compile error. **Generic methods** have their own blank (`static T FirstOr<T>(IEnumerable<T> items, T fallback)`), and the compiler usually **infers** `T` from the arguments. `default(T)` is `null` for reference types and zero for value types.
 - **Constraints are a deal.** A bare `T` could be anything, so the compiler only lets you use what every type has. `where T : IEntity` limits which types may fill the blank, and in return lets you call `IEntity`'s members on `T`. The compiler checks both sides: at the use site (`Cache<string>` won't compile) and inside the code. Available constraints: `class`, `class?`, `struct`, `notnull`, `unmanaged`, `new()`, a base class, an interface, another type parameter, `default`, and `allows ref struct` (C# 13, which lets `T` be a span-like type).
@@ -238,11 +303,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Variance answers "is a box of cats a box of animals?"** A `List<Cat>` can't be used as a `List<Animal>`, because the list accepts writes: someone could `Add` a `Dog` through the `List<Animal>` view into what is really a cat list. That's **invariance**. **Covariance** (`out T`) is safe when `T` only comes **out**: `IEnumerable<Cat>` can be an `IEnumerable<Animal>`, since everything that comes out is a cat and every cat is an animal. **Contravariance** (`in T`) is safe when `T` only goes **in**: an `Action<Animal>` can be used as an `Action<Cat>`, because whatever handles any animal handles a cat. Variance only works on interfaces and delegates, only with reference types (an `IEnumerable<int>` would need boxing to be an `IEnumerable<object>`). Arrays are an old unsafe exception: `object[] o = new string[1]; o[0] = 1;` compiles and throws `ArrayTypeMismatchException`.
 - **Generic math** (C# 11): `+` and `Zero` belong to a *type*, not to a value, and interfaces used to describe only instance members. **Static abstract interface members** let `INumber<T>` require a static `Zero` and a `+` operator, so one `Sum<T>(…) where T : INumber<T>` works for every numeric type. You'll meet its cousin `IParsable<T>` when binding custom route and query types.
 - **Generics you already use everywhere**: `List<Order>` (what's stored), `Task<Order>` (what eventually comes back), `ILogger<OrderService>` (`T` is just a label, used via `typeof(T).Name` as the log category), `IOptions<PaymentOptions>`, `DbSet<Order>`. **Open generics** registered in DI, such as `AddScoped(typeof(IRepository<>), typeof(EfRepository<>))`, let the container build `IRepository<Order>`, `IRepository<Customer>` and any future entity on demand from one registration.
+:::
 
 ### 2.7 · Delegates: passing behaviour around
 
 [Full chapter →](ch:delegates-events)
 
+:::plain
+A delegate is a variable that holds a method, so behaviour can be passed around like data. A lambda (`x => x * 2`) is a short way to write a small method inline. Events build on delegates: one object announces that something happened, and any number of others can react without the first knowing who they are.
+:::
+
+:::more In depth: the detailed summary
 - **A delegate is a variable that holds a method.** Its type describes the method's shape: `Func<decimal, decimal>` means "decimal in, decimal out", and any method with that shape fits. Kettle's checkout stopped hard-coding promotions by taking a `Func<decimal, decimal> rule` and calling `rule(subtotal)`. The current promotion is just a value passed in, so checkout never changes again. A **lambda** (`s => s * 0.9m`) writes such a method inline. Delegates are fully type-checked: a method with the wrong shape won't fit.
 - **Ready-made delegate types**: `Func<…, TResult>` returns a value, and its **last** type argument is the return type; `Action<…>` returns nothing; `Predicate<T>` returns `bool`. A **method group** (`Console.WriteLine`, `int.Parse` without brackets) is the method itself and converts to a matching delegate, so `x => int.Parse(x)` can just be `int.Parse`. LINQ's `Where` takes a `Func<T, bool>`, so you've been passing delegates all along.
 - **Closures**: when a lambda uses a local variable from the surrounding method, it **captures** it, and the local outlives its method. The compiler moves that variable off the stack into a hidden heap object (a "display class", the backpack) that the delegate holds. Three consequences. Capturing **allocates** (the backpack plus the delegate). Captured variables are **shared, not copied**, so every lambda capturing `count` sees the same field. And the backpack lives as long as the delegate, so a long-lived delegate keeps everything it captured alive. A lambda that captures nothing allocates nothing, because the compiler caches one instance in a static field.
@@ -254,11 +325,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **The classic event leak**: subscribing stores a delegate that references the **subscriber** inside the publisher. A long-lived publisher (a singleton or static event) therefore keeps every subscriber alive, and the GC can't free closed pages that never unsubscribed. The demo showed a forgotten page still alive after a full GC, and an unsubscribed one freed. The fix is `-=` in `Dispose`, or weak events.
 - **ASP.NET Core is built from delegates.** Option configuration is `Action<TOptions>`, DI factories are `Func<IServiceProvider, T>`, endpoints are delegates, and the core pipeline type is `delegate Task RequestDelegate(HttpContext context)`. A **middleware** is a function that receives the *next* `RequestDelegate` and returns a new one that wraps it with before and after code. Building `Logging(Auth(endpoint))` composes the onion; a request runs Logging's "before", then Auth, then the endpoint, then back out through Logging's "after". It's the decorator idea again.
 - **The same lambda can become code or data.** Assigned to `Func<decimal, bool>`, it compiles to IL you can run but can't inspect. Assigned to `Expression<Func<decimal, bool>>`, the compiler builds an **expression tree**: objects describing the code (a `GreaterThan` node with the parameter on one side and the constant on the other). A provider like EF Core can walk that tree and write SQL. `IEnumerable.Where` takes the first kind; `IQueryable.Where` takes the second.
+:::
 
 ### 2.8 · Collections: pick the container that fits the question
 
 [Full chapter →](ch:collections)
 
+:::plain
+A collection holds many items, and each kind is built for a different question. A List keeps order and is good for going through items one by one. A Dictionary finds an item by its key almost instantly, however many items there are. Choosing by the question you ask most is what keeps code fast as data grows.
+:::
+
+:::more In depth: the detailed summary
 - **The data was fine; the container was wrong.** Finding 100 recent orders in a `List` of 100,000 took about 10 million comparisons, because `First(o => o.Id == id)` walks from the start every time. A `Dictionary` keyed by ID answers the same 100 lookups with about 100 comparisons. Pick the container whose shape matches the question you ask most.
 - **Big-O says how work grows with the number of items, *n*.** O(1) is the same at any size: `dict[key]`, `set.Contains`, `list[5]`. O(log n) halves the problem each step, about 18 steps for 200,000 items: sorted collections, binary search. O(n) looks at everything: `list.Contains`, `First`. O(n²) is everything × everything, typically `list.Contains` inside a loop over a list: 40 billion operations at 200,000 items.
 - **Hashing is how O(1) works.** The key's `GetHashCode()` produces a number, the number picks one small **bucket**, and only the one or two entries in that bucket are compared with `Equals`. So size doesn't matter, unless the hash is bad: a hash that always returns 0 puts everything in one bucket and you're back to O(n).
@@ -286,11 +363,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Ordinary collections are not safe for concurrent writes**: two threads adding to one `Dictionary` can corrupt it. Use `ConcurrentDictionary` (atomic `GetOrAdd`, `AddOrUpdate`, `TryRemove`), `ConcurrentQueue`/`ConcurrentStack`, or `Channel<T>` for async producer/consumer. The subtle bug is the **gap between check and act**: two requests both see "GB rates not cached", both load them, and the second overwrites the first. Each call was thread-safe on its own; the combination wasn't. `GetOrAdd` makes check-and-add one step. Under contention its factory may still run more than once, with only one result stored, so wrap expensive or side-effecting factories in `Lazy<T>` so only the winning one runs.
 - **Arrays, spans and collection expressions.** `[1, 2, 3]` (C# 12) builds arrays, lists or spans depending on the target type, and `..` spreads another collection in. `^1` indexes from the end. A **range** on an array (`a[1..3]`) makes a **copy**; a **span** (`a.AsSpan(1, 2)`) is a **window** onto the same memory, so writing through it changes the array. Return `[]` or `Array.Empty<T>()` rather than `null`, so callers can always `foreach`.
 - **Custom equality and ordering** can be supplied from outside the type: `EqualityComparer<T>.Create(equals, getHashCode)` for sets and dictionaries, and `Comparer<T>.Create` for sorted collections. The equals and hash functions must agree with each other.
+:::
 
 ### 2.9 · LINQ: ask for the result, not the loop
 
 [Full chapter →](ch:linq)
 
+:::plain
+LINQ lets you describe the result you want (filter these, sort by that, take five) instead of writing loops. A LINQ query doesn't run when you write it; it runs when you ask for the results. Against a database, the same code is translated into SQL and runs inside the database.
+:::
+
+:::more In depth: the detailed summary
 - **LINQ describes the result instead of the mechanics.** "Paid orders, grouped by customer, totalled, biggest first, top 3" is `Where → GroupBy → Select → OrderByDescending → Take(3)`, against 11 lines of temporary dictionary, `TryGetValue`, copy, backwards sort comparison and index loop. LINQ isn't compiler magic: it's a library of **extension methods** on `IEnumerable<T>`, each taking a delegate. `Where` is a plain `foreach` with an `if`, and your lambda is the test. Query syntax (`from p in prices where … select …`) compiles to exactly the method calls; many operators (`Take`, `Any`, `Distinct`) exist only as methods.
 - **Operators by job**:
   - filter: `Where`, `OfType`;
@@ -318,11 +401,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **`IEnumerable` vs `IQueryable` decides where the query runs.** `Enumerable.Where` takes a `Func` (compiled code) and runs in your process. `Queryable.Where` takes an `Expression<Func>` (a description) that a provider like EF Core translates to SQL and runs in the database. Which one you get depends **only on the declared type of the variable**. Typing `db.Orders` as `IEnumerable<Order>` fetches the **entire table** and filters it in memory, with no compiler warning. Four things silently cause this: assigning to an `IEnumerable` variable, `AsEnumerable()`, an early `ToList()`, or a repository method that returns `IEnumerable`. Keep queries as `IQueryable` until the last call, and `Select` only the columns you need.
 - **Expression trees are how C# becomes SQL.** The provider walks the tree: a `BinaryExpression` becomes `(left op right)`, a `MemberExpression` (`o.Total`) becomes a column, a `ConstantExpression` a value. A call to your own C# method is a node with no SQL equivalent, so EF Core throws "could not be translated" (since EF Core 3; older versions silently ran it in memory after fetching everything). Captured variables become **SQL parameters**, never text pasted into the SQL, which is why LINQ queries are naturally safe from SQL injection. Because an `IQueryable` is a tree waiting to grow, you can add `Where` clauses conditionally and still send one query.
 - **Performance.** LINQ to Objects allocates enumerators, delegates and closures, which is negligible in business code. In true hot paths a `for` loop over an array or span can be several times faster, so measure with BenchmarkDotNet first. `Any()` stops at the first match (101 items touched in the demo), while `Count() > 0` touches everything (10,000); in EF Core, `Any()` becomes `EXISTS`. Avoid `ToList()` in the middle of a chain. Newer .NET versions vectorise `Sum`/`Min`/`Max`, so upgrading is often a free speed-up.
+:::
 
 ### 2.10 · Exceptions and cleanup: failing safely
 
 [Full chapter →](ch:exceptions-disposal)
 
+:::plain
+An exception is how .NET reports that something went wrong and the current work can't continue. It jumps out of methods until something catches it. Resources like database connections must be released even when that happens, and `using` guarantees it. Expected problems, like a declined card, are better returned as results than thrown.
+:::
+
+:::more In depth: the detailed summary
 - **Kettle's outage**: a payment provider timed out, `ChargeCard` threw, and the line returning the database connection to the pool never ran. Each failed checkout leaked one connection; when the pool emptied, **every** page on the site timed out, including product pages and search. The database was fine; the cause was three calls away in code nobody was looking at.
 - **An exception climbs the call stack.** `throw` stops normal execution, creates an exception object, and the runtime **unwinds**: it walks back through the callers, frame by frame, looking for a `catch` whose type matches. Every `finally` it passes runs on the way, even though nothing has caught the exception yet, which is why cleanup goes in `finally`. The first matching `catch` handles it, and execution continues after that `catch`. If nothing catches it, ASP.NET Core's exception middleware turns it into a 500. Exception objects carry `Message`, `StackTrace`, `InnerException` and a `ToString()` that prints all of them, so **log the exception object, not just `.Message`**.
 - **Throw the type that says what went wrong**, because callers distinguish problems by type, not by message text. Bad argument: `ArgumentException`, `ArgumentNullException`, `ArgumentOutOfRangeException`. Wrong state ("ship an unpaid order"): `InvalidOperationException`. Used after dispose: `ObjectDisposedException`. Deliberately unsupported: `NotSupportedException`. Never throw or catch `NullReferenceException` on purpose, because it always signals a bug. One-line guards (`ArgumentNullException.ThrowIfNull`, `ArgumentException.ThrowIfNullOrWhiteSpace`, `ArgumentOutOfRangeException.ThrowIfNegativeOrZero`) throw the right type with the parameter name filled in.
@@ -344,11 +433,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
   - Disposing an injected service breaks everyone else who received it.
   - Holding a scoped disposable in a singleton keeps using it after the request disposed it.
   - Forgetting to dispose `CancellationTokenSource`, `Timer` or `SemaphoreSlim` leaks timers and handles.
+:::
 
 ### 2.11 · Async and await: don't hold a thread while you wait
 
 [Full chapter →](ch:async-await)
 
+:::plain
+Much of a server's time is spent waiting for databases and other services. `await` lets the thread that was waiting go and serve other requests, then carries on when the answer arrives. That's how one server handles thousands of requests. Blocking on async code with `.Result` undoes this and can freeze a busy server.
+:::
+
+:::more In depth: the detailed summary
 - **Black Friday: CPU at 5%, site frozen.** Every request thread was sitting blocked, waiting about 820 ms for SQL and a slow payment API. At 500 checkouts a second that's about 410 threads all waiting; the thread pool only adds roughly one thread per second under pressure, so requests queued for a free thread while existing threads did nothing. More threads isn't the fix (each costs about 1 MB of stack and OS scheduling); the problem is threads **doing nothing**.
 - **`await` frees the thread while you wait.** "Start this; if it isn't finished, give my thread back and run the rest of the method when the result arrives." During the wait **no thread is blocked**: the OS tells .NET when the network bytes arrive, and any free pool thread runs the rest. A handful of threads can then keep thousands of requests in flight. Async doesn't make one request faster (it adds slight overhead); it makes the server **scale**, and total latency drops when independent calls run concurrently.
 - **What `await` does, exactly.** If the awaited task is already complete, execution just continues synchronously. Otherwise the method saves its locals, records "resume here", and **returns an unfinished `Task` to its caller**. The rest of the method, the **continuation**, runs when the awaited task completes, possibly on a different thread. In the demo the output order was 1, 2, 4, 5: the method left in the middle and came back later, with its local `orderId` intact. `async` doesn't create threads; only `Task.Run` (or similar) explicitly queues work to the pool.
@@ -371,11 +466,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **`ValueTask<T>`** is a struct that can carry an already-known result with **no allocation**, while `Task<T>` is a class allocated on every call. It suits hot methods that usually complete synchronously, such as cache hits and buffered reads. Rules: await it **exactly once**, never concurrently, and call `.AsTask()` if you need to store it or await it twice. Default to `Task` everywhere else.
 - **Fire-and-forget inside a request is broken three ways**: its exceptions are never observed; it's killed if the app shuts down mid-way; and the scoped services it uses (like `DbContext`) are disposed when the request ends, possibly while it's still running. Hand the work to a background queue (`Channel<T>` plus a hosted service) or a durable message broker.
 - **You can't `await` inside `lock`.** A `Monitor` lock belongs to the **thread** that took it, and after an `await` the method may resume on a different thread, which would then try to release a lock it never acquired, so the compiler forbids it (CS1996). `SemaphoreSlim(1, 1)` counts permits instead of tracking an owner thread, offers `WaitAsync`, and must be released in a `finally`.
+:::
 
 ### 2.12 · Files, streams and text
 
 [Full chapter →](ch:files-streams-io)
 
+:::plain
+Files are bytes, and text is bytes read with an encoding such as UTF-8. Large files should be read and written as streams, a piece at a time, so memory use stays small. When writing a file someone else reads, write a temporary file and then rename it, so readers never see half a file.
+:::
+
+:::more In depth: the detailed summary
 - **A stream is a tap, not a bucket:** read or write a chunk at a time, so memory stays flat however big the data. `FileStream`, `MemoryStream`, network, `GZipStream` and `CryptoStream` all share one `Stream` API, and they **wrap** each other (file → decompress → `StreamReader`), the Decorator pattern.
 - **Bytes need an encoding to become text.** UTF-8 for files and HTTP; .NET strings are UTF-16 in memory. "£" is 2 UTF-8 bytes, an emoji 4. A wrong encoding shows `Â£`. `Encoding.UTF8` writes a 3-byte BOM; `File.WriteAllText` doesn't.
 - **"All" helpers load everything:** `ReadAllText`/`ReadAllLines`/`ReadAllBytes`. `File.ReadLines`, `Directory.EnumerateFiles` and `StreamReader` are lazy. Build paths with `Path.Combine`/`Join`.
@@ -383,11 +484,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
 - **Atomic writes:** write a temp file in the same folder, dispose it, then `File.Move(temp, final, overwrite: true)`, so readers never see half a file.
 - **Path traversal:** never use user input as a path. Store files under generated names, or check that `Path.GetFullPath(...)` still starts with the root. `Path.Combine` with a rooted second argument drops the first.
 - **Containers have temporary disks.** Persist to Blob Storage, which is stream-based too; use local temp files only for scratch work. `FileSystemWatcher` is a hint, not a guarantee.
+:::
 
 ### 2.13 · Modern C#: let the compiler catch it
 
 [Full chapter →](ch:modern-csharp)
 
+:::plain
+Recent C# versions remove a lot of repetitive code and catch more mistakes at compile time. Nullable reference types warn you before you use something that might be null. Records give you complete data classes in one line. Pattern matching tests the shape of data in one readable expression.
+:::
+
+:::more In depth: the detailed summary
 - **The theme: move mistakes from run time to compile time**, and cut boilerplate while you're at it. Kettle's 3 a.m. page was a `NullReferenceException` in the shipping-label job: one customer had no address, and because the job was one loop, one bad record stopped 400 labels from printing.
 - **Nullable reference types** (`<Nullable>enable</Nullable>`, the default in new projects) let the type say "might be missing". `Address` means never null; `Address?` means may be null. The compiler then does **flow analysis**: it follows your code line by line and warns (CS8602) wherever a maybe-null value is used without a check, and knows a value is safe after `if (x is null) return`. The null toolkit:
   - `?.` calls only if the value is non-null;
@@ -430,11 +537,17 @@ Part II follows one small online tea shop, **Kettle**, from its first bug to its
   - C# 12: primary constructors, collection expressions;
   - C# 13: `params` collections, `Lock`;
   - C# 14: extension members, `field`, null-conditional assignment (`a?.B = x`).
+:::
 
 ### 2.14 · Advanced C#: one long night at Kettle
 
 [Full chapter →](ch:advanced-csharp)
 
+:::plain
+Some code runs millions of times, and there every new object adds work for the garbage collector. Advanced features help here: `Span<T>` looks at existing memory without copying it, pools reuse buffers, and source generators write code at build time instead of doing slow work at run time. Use them only where measurements show it matters.
+:::
+
+:::more In depth: the detailed summary
 The theme of all seven acts: **pay a cost once, so you don't pay it millions of times at run time**. Reach for these tools after a profiler or a hard requirement says so, not before.
 
 - **Act 1, spans: look, don't copy.** Parsing a 2-million-line price file with `Split` creates a new array and four new strings per line, copying every character, which is about 10 million throwaway objects per night (2.9 MB of garbage for 20,000 lines in the demo). `ReadOnlySpan<char>` is a **window**, "start here, this long", over memory that already exists. Slicing it makes a smaller window, never a copy, and `decimal.Parse`, `int.Parse` and friends accept spans, so the parser allocated less than 1 KB. A span can view part of an array (writes go into the array), part of a string, or **stack** memory from `stackalloc`, which the GC never sees.
@@ -445,6 +558,7 @@ The theme of all seven acts: **pay a cost once, so you don't pay it millions of 
 - **Act 5, attributes and reflection: label once, enforce in one place.** Finance needs every refund and cancellation audited, and developers keep forgetting the logging call. An **attribute** (`[Audit("refund.issue")]`) is a passive label stored in the assembly's metadata; it does nothing by itself. **Reflection** reads metadata at run time (`GetTypes`, `GetMethods`, `GetCustomAttribute`, `MethodInfo.Invoke`), so one dispatcher can audit every labelled method, including ones written next year. That's how DI containers, serializers, ASP.NET Core (controllers, `[Authorize]`), EF Core and test runners work. Attributes are read by the compiler (`[Obsolete]`, nullability attributes), the runtime (`[StructLayout]`), frameworks through reflection, or source generators. **The bill**: `MethodInfo.Invoke` checks arguments, unpacks an `object[]` and boxes, typically 10–30× slower than a direct call. A rename compiles but fails at run time, because the lookup was a string. And the trimmer can't see members used only by name. Mitigate by reflecting once and creating a typed delegate (`CreateDelegate`), or avoid reflection altogether with a generator.
 - **Act 6, source generators: do the work at build time.** A serverless cold start took 2.4 s, mostly reflection discovering DTOs, attributes and regexes at startup, and Native AOT builds warned (IL2026) that reflection might break once trimmed. Everything reflection discovers was **already known when you compiled**. A source generator is a compiler plugin that reads your code during the build and **adds ordinary C# files**, which compile in with yours. At run time there's nothing left to discover: fast startup, no boxing, errors at build time (rename a method and the generated code stops compiling), and the trimmer sees everything, so Native AOT works. The recipe is a `partial` declaration with no body, plus an attribute saying what to generate: `[JsonSerializable]`, `[LoggerMessage]`, `[GeneratedRegex]`, `[LibraryImport]`. Kettle's cold start went from 2.4 s to about 80 ms.
 - **Act 7, building expression trees by hand.** An admin screen filters orders by any field chosen in dropdowns, and it must run as SQL. Gluing SQL strings is injection; writing a lambda per combination is impossible. So **build the tree yourself**: `Expression.Parameter`, `Expression.Property`, `Expression.Constant`, `Expression.GreaterThan`/`Equal`, joined with `Expression.AndAlso`, then `Expression.Lambda<Func<Order, bool>>`. It's the same tree the compiler would produce from a written lambda. Pass it to `IQueryable.Where`, and EF Core writes SQL with the user's values as **parameters**, because user input only ever becomes a constant node. Whitelist the filterable fields, because otherwise a crafted request could reach internal properties. `Compile()` turns a tree into a delegate, but it's expensive (milliseconds) and interpreted under Native AOT, so cache the result. Mappers and ORMs use the same trick: build a property-reading tree once per type, compile it and cache it, which turns reflection's per-call cost into a one-time cost.
+:::
 
 ## Part III · ASP.NET Core
 
@@ -454,6 +568,11 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 
 [Full chapter →](ch:aspnet-hosting)
 
+:::plain
+ASP.NET Core is .NET's framework for web apps and APIs. Your app is a normal program that contains its own web server, called Kestrel. `Program.cs` has two halves: first you register the services the app can use, then you set up how each request is handled, and finally `Run()` starts listening. The host also shuts the app down cleanly.
+:::
+
+:::more In depth: the detailed summary
 - **An ASP.NET Core app is a console program with a web server inside it.** There's no IIS or Apache process hosting your code from the outside. ASP.NET Core is a set of libraries (the `Microsoft.AspNetCore.App` shared framework), and your process contains **Kestrel**, its own web server. That's why one `Program.cs` both configures services and starts a server, why you can step from your handler straight into framework code, and why the whole thing fits in one small container image.
 - **The Generic Host owns everything**: the DI container, configuration, logging, the environment, hosted services (`IHostedService`, which it starts and stops) and lifetime. It isn't web-specific: a Worker Service uses the same host with no HTTP at all (`Host.CreateApplicationBuilder`). The web server is just one of its hosted services. `WebApplication` (.NET 6+, the "minimal hosting model") is both the host and the object you configure the pipeline on. Older code used `Startup.ConfigureServices` (phase 1) and `Startup.Configure` (phase 2): same shape, different syntax.
 - **`Program.cs` has two phases separated by `builder.Build()`.** Phase 1 is declarative: you add DI registrations, configuration sources and logging setup to a recipe list, and nothing is constructed yet. `Build()` turns the recipes into the real `IServiceProvider` and **freezes** them. Phase 2 adds middleware and endpoints, and the order you write them in becomes the order requests flow through. Three mistakes follow from this boundary:
@@ -486,11 +605,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 
   It's **not thread-safe** and is only valid during its request, so never capture it in background work. `IHttpContextAccessor` reaches it from services, but passing what you need explicitly is usually better.
 - **Hosting options**: Kestrel in a container (Kubernetes, Container Apps; the most common), App Service, IIS in-process, HTTP.sys, Azure Functions' isolated worker with ASP.NET Core integration, and `TestServer` (in-memory, for integration tests).
+:::
 
 ### 3.2 · Dependency injection in depth
 
 [Full chapter →](ch:dependency-injection)
 
+:::plain
+Dependency injection means a class asks for what it needs in its constructor instead of creating it. The DI container, set up in `Program.cs`, creates those objects and passes them in. That makes swapping implementations, and testing with fakes, easy. A lifetime says how long each object lives: the whole app, one request, or one use.
+:::
+
+:::more In depth: the detailed summary
 - **Why DI**: a class that `new`s its own `SqlOrderRepository` and `SmtpEmailSender` has four problems with one cause. It's welded to specific technologies, it can't be unit-tested without a real database and mail server, a connection string sits inside business code, and nobody owns its dependencies' lifetimes. With DI, the class only **declares** what it needs in its constructor (`OrderService(IOrderRepository repo, IEmailSender email)`) and something else supplies it. Tests pass fakes, and all four problems disappear together. Terms: the **Dependency Inversion Principle** is the design rule (depend on abstractions); **Inversion of Control** is the general idea (the framework creates objects and calls your code); **DI** is the technique; the **container** automates it.
 - **The container works in three moments.** Registration builds a list of recipes ("for `IOrderRepository`, use `EfOrderRepository`, scoped"). `Build()` turns them into an `IServiceProvider`. Resolution looks at a type's constructor (the one with the most parameters it can satisfy), resolves each dependency recursively, then constructs the type. You never write `new OrderService(...)`. Services also arrive through minimal-API handler parameters, `[FromServices]` on controller actions, middleware `InvokeAsync` parameters (per request), and `@inject` in Razor.
 - **Lifetimes answer "is this the same instance as last time?"**:
@@ -519,11 +644,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
   - An interface for every class, even where nothing is ever swapped.
   - Async work in constructors, which can't be async; use factories or a hosted service's startup instead.
 - **Internals.** Each registration becomes a **call site** describing how to build that type. The first resolution analyses the dependency graph and builds a plan. Hot services switch from reflection to compiled expression trees or IL emit, so later resolutions are cheap. Singletons are cached in the root, scoped instances in each scope's dictionary, and transients aren't cached, only tracked for disposal. `ActivatorUtilities.CreateInstance<T>(sp, args)` builds an **unregistered** type by mixing DI services with explicit arguments; that's how conventional middleware is constructed.
+:::
 
 ### 3.3 · Configuration, options and secrets
 
 [Full chapter →](ch:configuration-options)
 
+:::plain
+Settings such as connection strings and API keys must change between your laptop and production, so they live outside the code. ASP.NET Core reads them in layers (settings files, environment variables, secret stores), with later layers overriding earlier ones. Binding settings to a typed class and checking them at startup catches mistakes before customers do.
+:::
+
+:::more In depth: the detailed summary
 - **The same compiled binary must run everywhere with different settings.** Hard-coding a connection string means rebuilding per environment (so you no longer ship the binary you tested), and any secret is in git history forever. **Layered configuration** merges several sources into one flat `IConfiguration`, and **later sources override earlier ones key by key**. Your code never knows which layer a value came from.
 - **The default five layers, lowest priority first**: `appsettings.json` (defaults, committed, no secrets), `appsettings.{Environment}.json` (only the keys that differ), User Secrets (Development only), environment variables (how containers, App Service and Kubernetes inject settings), then command-line arguments. Key Vault or App Configuration added later override all of those. Because the merge is per key, a production file that only sets `Payments:BaseUrl` still inherits `TimeoutSeconds` from the base file, and the real connection string arrives as an environment variable, so it's never in the repo.
 - **Keys are flat strings with `:` for nesting** (`Payments:BaseUrl`) and indexes for arrays (`AllowedOrigins:0`). You read them with the indexer, `GetValue<int>(key, default)`, `GetConnectionString` and `GetSection(...).Get<T>()`. Environment variables can't contain `:`, so they use **`__`** (`Payments__BaseUrl`). A single underscore silently matches nothing, and the app quietly falls back to the JSON value. Keys are case-insensitive. The `ASPNETCORE_` and `DOTNET_` prefixes are reserved for host settings.
@@ -538,11 +669,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Secrets never go in committed files**, and that includes `appsettings.Development.json`. In development, **User Secrets** store JSON in your user profile, outside the repo, loaded only in Development. It isn't encrypted: it protects against `git add`, not against someone on your machine. In production use **Key Vault** through a managed identity (`Payments--ApiKey` becomes `Payments:ApiKey`), platform settings that can reference Key Vault, or Kubernetes secrets. Best of all is **no secret at all**: managed identity to Azure SQL, Storage or Service Bus leaves nothing to leak or rotate.
 - **Feature flags separate deploying from releasing.** With Azure App Configuration and `Microsoft.FeatureManagement`, you ship new code dark (deployed but switched off), enable it for 5% of users, watch error rates, and turn it off in seconds if something's wrong, with no redeploy. That makes gradual rollouts, A/B tests and instant kill switches possible.
 - **How precedence works internally**: each provider loads its source into a flat dictionary, and `IConfigurationRoot` asks the providers **in reverse order** (last added first) and returns the first value found. That single rule is the whole precedence system. `builder.Configuration` is a `ConfigurationManager`, so sources added during phase 1 are visible to later reads immediately. Other providers: INI, XML, in-memory (handy in tests), key-per-file (mounted Docker/Kubernetes secrets). Binding uses reflection unless you enable the configuration binding source generator.
+:::
 
 ### 3.4 · Middleware and the request pipeline
 
 [Full chapter →](ch:middleware)
 
+:::plain
+Middleware are small steps every request passes through in order, like checking who the user is or catching errors. Each step can act before and after the rest of the chain, and any step can stop the request early. Because each step only sees what earlier steps let through, the order you add them in matters.
+:::
+
+:::more In depth: the detailed summary
 - **Middleware is a chain every request walks through.** Each component can do work before the rest of the pipeline, call `next()` to continue, or **short-circuit** by writing the response itself, and then do work after `next()` returns. Cross-cutting concerns (errors, HTTPS, CORS, auth, compression, correlation IDs, rate limits) are written once, slotted into an explicit order, and switched on with one line. The pipeline is exactly what you wrote, unlike the old hidden `System.Web` pipeline.
 - **It's functions wrapping functions.** The core type is `delegate Task RequestDelegate(HttpContext)`, and a middleware is a `Func<RequestDelegate, RequestDelegate>`: given "the rest of the pipeline", it returns a new delegate that wraps it. `app.Use` only appends to a list. `Build()` composes them **in reverse**, starting from a terminal 404 delegate, giving `A(B(C(endpoint)))`, and Kestrel calls the outermost one per request. That's why "before" code runs in registration order and "after" code runs in reverse: each `await next()` is a nested call, still on the stack, waiting for the inner ones to return. It's not a special rule, just how nested calls unwind.
 - **Pipeline-building methods**: `Use` (may call next), `Run` (terminal; nothing after it runs), `Map("/path", …)` (branches by path prefix and never rejoins), `MapWhen` (branches on any condition), `UseWhen` (conditionally adds middleware, then rejoins). `app.Map` branches the middleware pipeline; `app.MapGet` registers a routing endpoint. They're unrelated, and you almost always want `MapGet`.
@@ -563,11 +700,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **The "response has started" trap.** Once headers are flushed (the body began writing), status and headers are read-only, and changing them throws `Headers are read-only, response has already started`. It only fails *sometimes*, because small responses may still be buffered when your after-`next()` code runs. `Response.OnStarting(callback)` runs at exactly the safe moment; check `Response.HasStarted` before writing an error response; `OnCompleted` runs after the response has gone, which is useful for metrics only. The request body is a forward-only stream, so to read it in middleware call `EnableBuffering()`, read, and reset `Position = 0`. Rewriting the response body means buffering the whole response in a `MemoryStream`, which costs memory and breaks streaming, so prefer built-in compression or caching, or a filter.
 - **Middleware vs filters.** Middleware sees raw HTTP (headers, a body stream) and runs for every request at its position. MVC filters and minimal-API **endpoint filters** run **after model binding**, so they see the typed arguments, action context and results. Use middleware for app-wide HTTP concerns, filters for endpoint-specific concerns that need typed inputs (validation, auditing, transactions).
 - **Middleware can read endpoint metadata**: after `UseRouting`, `context.GetEndpoint()?.Metadata.GetMetadata<T>()` exposes attributes and `.WithMetadata(...)`. That's how authorization, CORS, rate limiting and output caching know what each endpoint needs, and your own middleware can do the same (for example auditing endpoints marked `[Audit]`). Test middleware with `TestServer`, or by calling `InvokeAsync` directly with a `DefaultHttpContext` and a fake `next`.
+:::
 
 ### 3.5 · Routing and endpoints
 
 [Full chapter →](ch:routing)
 
+:::plain
+Routing decides which piece of your code handles a request, based on its URL and method. A route template like `/orders/{id}` matches URLs and pulls values out of them, which arrive as parameters in your handler. The chosen endpoint carries extra information, such as who may call it, that other steps can check.
+:::
+
+:::more In depth: the detailed summary
 - **Routing turns a method and path into an endpoint**: a `RequestDelegate` bundled with **metadata** (authorization policy, CORS, rate limits, cache policy, OpenAPI info) plus the **route values** extracted from the URL (`id = 42`).
 - **Endpoint routing is split in two on purpose.** `UseRouting` **selects** the endpoint and stores it on the `HttpContext`; the endpoint middleware at the end **executes** it. Everything in between (CORS, authentication, authorization, rate limiting, output caching) can read the selected endpoint's metadata before acting. In ASP.NET Core 2.x, MVC routed at the very end, so authorization and CORS couldn't know which action would run. Now one routing system serves controllers, minimal APIs, Razor Pages, SignalR, gRPC and health checks. `WebApplication` inserts `UseRouting` automatically; call it explicitly only to control what runs before matching.
 - **Route templates**: literals, `{id}` parameters (bound to handler arguments by name), constraints `{id:int}`, defaults `{page:int=1}`, optional `{term?}` and catch-all `{**path}`. Constraints include the primitive types, `guid`, `datetime`, `alpha`, length and range checks, `regex(...)`, `required` and custom `IRouteConstraint`s. **A failed constraint means "no match", so you get a 404, not a 400**: `/products/abc` against `{id:int}` is Not Found. Use constraints to **disambiguate** routes (`{id:int}` vs `{slug}`), and validate input inside the endpoint, returning 400 there.
@@ -576,11 +719,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Metadata is the shared vocabulary**: fluent calls and attributes are two spellings of the same objects. `RequireAuthorization`/`[Authorize]` is read by authorization; `RequireCors`/`[EnableCors]` by CORS; `RequireRateLimiting` by the limiter; `CacheOutput` by output caching; `WithName` by link generation; `WithTags`/`Produces` by OpenAPI; `WithRequestTimeout` by request timeouts; and `WithMetadata(obj)` by your own middleware.
 - **Precedence when several routes match**: literals beat parameters, constrained beat unconstrained, complex segments beat simple ones, catch-alls come last, and the HTTP method filters candidates. A true tie throws `AmbiguousMatchException` at run time, and the fix is to make one route more specific. Matching uses a **DFA** (a precompiled state machine built at startup), so cost barely grows with the number of routes.
 - **Generate links from route names**, not string concatenation, so URLs survive template changes: `LinkGenerator.GetUriByName(ctx, "GetOrder", new { id })`, plus `CreatedAtRoute`. `LinkGenerator` is a singleton, usable anywhere, including when building email links. `RouteOptions` controls lowercase URLs and trailing slashes, and route values are also available in `Request.RouteValues`.
+:::
 
 ### 3.6 · Building APIs: minimal APIs, controllers, binding, validation and filters
 
 [Full chapter →](ch:building-apis)
 
+:::plain
+An API endpoint receives a request, works out the inputs, runs your code and returns a response. ASP.NET Core fills your handler's parameters from the URL, query string, body and DI automatically. Validate input at the edge, accept only the fields you expect, and return precise status codes such as 201 Created or 400 Bad Request.
+:::
+
+:::more In depth: the detailed summary
 - **Minimal APIs and controllers are two syntaxes over the same machinery**: the same routing, DI, authentication and middleware. Minimal APIs map routes to functions with fluent configuration. They have less ceremony, are slightly faster, support **Native AOT** (through the request delegate generator) and are Microsoft's default for new APIs. Controllers are classes with attributes and offer a richer filter pipeline, extensible model binders and content negotiation (XML and custom formatters). A good interview answer: minimal APIs organised into feature-based route groups for new services, consistency in an existing controller codebase, and controllers when you need MVC filters, conventions, content negotiation or views.
 - **Handler shapes**: return a `string` (`text/plain`), any object (JSON), or an `IResult` for full control. Point at static methods (`OrderHandlers.Create`) so they're unit-testable. Keep `Program.cs` readable with `MapOrderEndpoints()` extension methods per feature; Carter and FastEndpoints push this into module or REPR-style (Request-Endpoint-Response) folders.
 - **Prefer `TypedResults` over `Results`.** Returning `Task<Results<Ok<OrderDto>, NotFound>>` makes the handler's return type a compiler-checked contract listing every possible response. OpenAPI generation reads it with no extra annotations, and unit tests can `Assert.IsType<Ok<OrderDto>>` instead of executing an opaque `IResult`. Controllers use `ActionResult<T>` with `Ok`, `NotFound`, `CreatedAtAction`, `Problem` and `ValidationProblem`.
@@ -598,11 +747,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **JSON uses System.Text.Json**: fast, UTF-8 based, with web defaults of camelCase, case-insensitive reading and numbers accepted as strings. Configure it with `ConfigureHttpJsonOptions` (minimal APIs) or `AddJsonOptions` (controllers). Common needs: `JsonStringEnumConverter`, ignore-null, `[JsonPropertyName]`, naming policies such as snake_case, `[JsonPolymorphic]`/`[JsonDerivedType]` for polymorphism, custom `JsonConverter<T>`, `JsonDocument`/`JsonNode` for unknown JSON, and a source-generated `JsonSerializerContext` for speed and AOT. Never serialize EF entities. Navigation properties create cycles (`Order → Customer → Orders → …`) or huge payloads, and `ReferenceHandler.IgnoreCycles` only hides the symptom while coupling your API to your schema. **Project to DTOs** with `Select`.
 - **Formats and streaming**: controllers honour `Accept` through output formatters, while minimal APIs return JSON unless you return another `IResult`. `Results.File` and `Results.Stream` serve files, and `PhysicalFile` adds HTTP range support. `IAsyncEnumerable<T>` streams a JSON array as items arrive instead of buffering everything. `TypedResults.ServerSentEvents` (.NET 10) streams one-way updates.
 - **Thin handlers**: an endpoint should only **bind → validate → delegate → map the result to HTTP**. Stock checks, pricing and order rules live in application and domain code that never sees `HttpContext` and can be tested without a web server.
+:::
 
 ### 3.7 · JSON and System.Text.Json
 
 [Full chapter →](ch:serialization)
 
+:::plain
+JSON is the text format APIs use to send data. System.Text.Json turns objects into JSON and back. The names and shapes in that JSON are a promise to whoever calls your API, so change them carefully. A few settings, like camelCase names and enums as strings, make the JSON friendlier.
+:::
+
+:::more In depth: the detailed summary
 - **Serialization is a contract:** the data, not the object, crosses the wire, and renaming a property silently breaks the other side.
 - **Defaults:** public properties only (not fields), C# names, case-sensitive reading, enums as numbers, records built through their constructor. **ASP.NET Core's Web defaults:** camelCase, case-insensitive reading, quoted numbers allowed. Configure them once with `ConfigureHttpJsonOptions`/`AddJsonOptions`.
 - **Shaping:** `[JsonPropertyName]`, `[JsonIgnore]`, `WhenWritingNull`, `JsonStringEnumConverter` (enums as strings are safer contracts), `[JsonRequired]`/`required`, `UnmappedMemberHandling.Disallow`, `[JsonExtensionData]`, naming policies including snake and kebab case.
@@ -611,11 +766,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Large payloads:** `SerializeAsync` to streams, `DeserializeAsyncEnumerable`, and `IAsyncEnumerable<T>` endpoints, instead of whole strings.
 - **Speed:** cache `JsonSerializerOptions` (they cache metadata; CA1869 flags per-call creation). **Source generation** (`JsonSerializerContext`, `[JsonSerializable]`) removes reflection and is required for Native AOT. **Safety:** `MaxDepth` 64, request size limits, cycles (prefer DTOs).
 - **Migrating from Newtonsoft:** case sensitivity, comments and trailing commas, quoted numbers, non-public members and `JObject` → `JsonNode` all differ.
+:::
 
 ### 3.8 · Error handling, ProblemDetails and logging
 
 [Full chapter →](ch:errors-logging)
 
+:::plain
+When something fails, the caller should get a clear, safe error message, and developers should get every detail in the logs. One exception handler turns unexpected errors into a standard error response. Structured logs store values as separate searchable fields, so you can find everything about one order in seconds.
+:::
+
+:::more In depth: the detailed summary
 - **One failure, two audiences.** The **client** needs a safe, consistent, machine-readable error: the right status, a predictable shape, and **no stack traces**, which help attackers and are useless to legitimate callers. **Developers** need full, searchable detail: the exception, context (user, order ID) and trace. ProblemDetails serves the first, `ILogger` the second. Never mix them up.
 - **The exception handler must be the outermost middleware.** Unhandled exceptions propagate outward through the middleware chain, so only the first-registered component can catch everything after it. `AddProblemDetails()`, then `AddExceptionHandler<T>()` for each handler, then `app.UseExceptionHandler()` first in the pipeline, plus `UseStatusCodePages()` so empty 4xx/5xx responses (like a routing 404) get bodies. Development shows the Developer Exception Page with the stack trace; production logs the exception and returns a generic 500.
 - **`IExceptionHandler`** (.NET 8) maps exception types to responses. Handlers are tried **in registration order**, and each returns `false` to say "not mine", so register specific handlers (domain → 409, not-found → 404) before a catch-all. Throwing for **expected** outcomes is expensive (stack capture) and hides control flow, so many teams return a Result from the application layer, map it to HTTP in the endpoint, and reserve exception handlers for the truly unexpected.
@@ -631,11 +792,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **High-performance logging**: every ordinary log call boxes value arguments into an `object[]` before checking whether anything will be written. **`[LoggerMessage]`** source-generates strongly typed methods that check `IsEnabled` first, avoid boxing and pre-parse the template, so a disabled level costs almost nothing (analyzer CA1848). For expensive arguments, wrap the call in `if (logger.IsEnabled(...))`.
 - **Destinations**: built-in console, debug and EventSource providers; **OpenTelemetry** (`WithLogging()`, exported over OTLP alongside traces and metrics); Application Insights through the Azure Monitor OpenTelemetry distro; **Serilog**, with rich sinks and enrichers, and NLog. In containers, log **JSON to stdout** and let the platform ship it, just as the app doesn't own its secrets on disk. `AddHttpLogging` logs requests, but choose fields deliberately, because headers and bodies contain tokens and personal data.
 - **What to log**: business events with IDs, exceptions *with the exception object*, external calls (target, duration, outcome), retries and circuit-breaker changes, and a non-secret startup summary. Never log passwords, tokens, keys, connection strings, card data, unnecessary PII, full bodies or `Authorization` headers. Log a failure **once**, where it's handled, not at every layer it passes through. Don't log cancellations as errors. Log IDs rather than whole objects. Use `Microsoft.Extensions.Compliance.Redaction` for classified data. Correlate across services with W3C trace context (`traceparent`), which flows automatically through `HttpClient` with OpenTelemetry.
+:::
 
 ### 3.9 · Authentication and authorization
 
 [Full chapter →](ch:auth)
 
+:::plain
+Authentication works out who is calling, usually by checking a signed token. Authorization decides whether that caller may do this. A 401 means "we don't know who you are"; a 403 means "we know, but you're not allowed". Always also check that the specific thing being accessed, such as an order, belongs to the caller.
+:::
+
+:::more In depth: the detailed summary
 - **Authentication asks "who are you?"; authorization asks "are you allowed?".** Authentication reads a cookie, bearer token, API key or certificate and produces a `ClaimsPrincipal` in `HttpContext.User`; failing it gives a **401** through a *challenge*. Authorization evaluates the user, the resource and the action; failing it gives a **403** through *forbid*. They run as separate middleware: authentication, then authorization (which reads the endpoint's policy metadata).
 - **A user is a bag of claims**: key/value facts from a trusted issuer (`sub`, `email`, `role`, `scope`, `tenant_id`) inside a `ClaimsIdentity`, inside a `ClaimsPrincipal`. A **role is just a claim** of type `role`. Because identity is a flat bag of claims, the rest of the app works identically whether they came from your cookie, an Entra ID JWT or your own API-key handler.
 - **Schemes are named handlers**, registered with `AddAuthentication(default).AddJwtBearer().AddCookie().AddOpenIdConnect().AddScheme<…>()`. Every handler implements up to five actions: **Authenticate** (build a principal from the request), **Challenge** (JWT: 401 with `WWW-Authenticate`; cookie: redirect to login; OIDC: redirect to the identity provider), **Forbid**, **SignIn** and **SignOut**. That's why "login" means different things for cookie apps and APIs.
@@ -655,11 +822,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Policies** name rules once (`"CanRefund"` = role `support` plus claim `refund_limit`), so endpoints refer to the name instead of copying role checks. A policy is a set of **requirements**, and all must pass. Custom requirements get `AuthorizationHandler<TRequirement>` implementations, which are ordinary DI services, so they can query the database. A requirement passes if **any** handler calls `Succeed`, and any handler calling `Fail` vetoes it.
 - **Resource-based authorization** handles rules that depend on *which row* ("your own orders only"): load the resource, then call `IAuthorizationService.AuthorizeAsync(user, order, requirement)` with an `AuthorizationHandler<TRequirement, Order>`. Return **404 instead of 403** for someone else's order, because a 403 confirms the order exists. This is the standard defence against **IDOR** (insecure direct object references), one of the most common real API vulnerabilities.
 - **Other schemes**: custom API-key handlers (`AuthenticationHandler<T>`; compare **hashed** keys in constant time), mTLS client certificates for service-to-service, managed-identity tokens for Azure-to-Azure, and **policy schemes** (`ForwardDefaultSelector`) to choose a scheme per request. **Claims transformation** (`IClaimsTransformation`) enriches the principal with app-specific permissions on **every** authentication, so it must be cheap or cached, or you've added a database call to every request.
+:::
 
 ### 3.10 · Calling other services: HttpClient and IHttpClientFactory
 
 [Full chapter →](ch:http-client)
 
+:::plain
+Apps often call other services over HTTP using `HttpClient`. Creating a new client for each call can run the server out of network connections, so use `IHttpClientFactory`, which manages them for you. Every outgoing call also needs a timeout and sensible retries, because other services will sometimes be slow or down.
+:::
+
+:::more In depth: the detailed summary
 - **`HttpClient` is a thin front end over a chain of message handlers.** Your `DelegatingHandler`s sit in the middle, and at the far end the **primary handler** (`SocketsHttpHandler`) owns the expensive parts: TCP connections, TLS and the **connection pool**. Both classic bugs come from misjudging which part is expensive.
 - **Bug 1: a new `HttpClient` per call means socket exhaustion.** Each instance brings a new handler and connection pool, so every call pays a fresh TCP and TLS handshake. Disposing doesn't free the socket immediately either: the closing side must sit in `TIME_WAIT` for about 2–4 minutes, so under load thousands of sockets pile up until ephemeral ports run out ("Only one usage of each socket address…").
 - **Bug 2: one static `HttpClient` forever means stale DNS.** Its connections are reused indefinitely and DNS is never re-resolved, so after a blue/green switch or failover it keeps calling the old IP.
@@ -669,11 +842,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Timeouts and cancellation.** `HttpClient.Timeout` defaults to **100 seconds**, far too long for most APIs. A timeout surfaces as `TaskCanceledException` with an inner `TimeoutException`, which is how you tell it apart from caller cancellation (`ct.IsCancellationRequested`). Always pass the incoming request's token. With a resilience handler, rely on its total and per-attempt timeouts, and raise `HttpClient.Timeout` so it doesn't compete with them.
 - **Response handling**: dispose every `HttpResponseMessage`, because with `ResponseHeadersRead` the connection only returns to the pool when you do. Use `ResponseHeadersRead` to stream large bodies. Switch on status codes (404 → `null`, 429 → honour `Retry-After`). Don't call `EnsureSuccessStatusCode` reflexively, because it throws away the `ProblemDetails` body the server sent.
 - **Generated clients**: Refit (an interface plus attributes, implemented by a source generator), Kiota and NSwag (generated from OpenAPI), and gRPC clients (from `.proto`). **Service discovery** (`https+http://inventory` with `Microsoft.Extensions.ServiceDiscovery`) resolves logical names at run time in Aspire and Kubernetes. **Testing**: construct the typed client with an `HttpClient` over a stub `HttpMessageHandler` (don't mock `HttpClient` itself), or run WireMock.Net for realistic HTTP.
+:::
 
 ### 3.11 · Caching, rate limiting, CORS and compression
 
 [Full chapter →](ch:caching-ratelimit-cors)
 
+:::plain
+Caching keeps a copy of data that's slow to fetch, so most requests skip the database. Rate limiting stops any one client from sending too many requests. CORS tells browsers which other websites may call your API from JavaScript. Compression makes responses smaller, and request timeouts stop slow requests tying up the server.
+:::
+
+:::more In depth: the detailed summary
 - **Every caching decision starts with "how stale can this be?"** A checkout price: seconds, or no cache at all. A product description: minutes to hours. A country list: days. Decide this per data type before picking a technology. Caching buys latency (microseconds instead of milliseconds), less load and resilience to slow dependencies; it costs staleness, invalidation logic, memory and cross-instance consistency.
 - **The layers**: browser and CDN (driven by `Cache-Control` and `ETag`), server **output caching** (whole responses), then app data caches.
   - **`IMemoryCache`** stores objects in-process: the fastest, but **per instance**. Three instances means three independent copies that can disagree, so a user can see a new price on one request and the old one on the next.
@@ -704,11 +883,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
   - `UseCors` after authentication 401s the credential-less preflight, which surfaces as a "CORS error";
   - a plain 500 without CORS headers *also* looks like a CORS error, so read the server logs first.
 - **Response compression** (Brotli, gzip) is often better done once at the proxy or CDN than in every app instance. Compressing HTTPS responses that mix secrets with user input carries **BREACH** risk. Request timeouts (`UseRequestTimeouts`) cancel slow requests per endpoint policy.
+:::
 
 ### 3.12 · Background work: hosted services, workers, channels and schedulers
 
 [Full chapter →](ch:background-work)
 
+:::plain
+Work the customer doesn't need to wait for, like sending emails, should run in the background. A request drops a job on a queue and returns straight away; a background service picks the job up. If several copies of the app run, make sure scheduled jobs run only once, and use a durable queue for work that must not be lost.
+:::
+
+:::more In depth: the detailed summary
 - **Work that shouldn't make a request wait** falls into three shapes: deferred (emails, PDFs, image resizing, slow third parties, usually answered with **202 Accepted** plus a status URL), scheduled (nightly cleanup, hourly syncs) and continuous (queue consumers, outbox processors).
 - **`IHostedService`** is the host's contract: `StartAsync` at startup and `StopAsync` at graceful shutdown. Kestrel itself is one of these. **`BackgroundService`** implements it for the common shape: write one `ExecuteAsync(stoppingToken)` loop, often with `PeriodicTimer.WaitForNextTickAsync(stoppingToken)`.
 - **Facts and the pitfalls they create**:
@@ -725,11 +910,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Durable job systems**: **Hangfire** (fire-and-forget, delayed, recurring cron jobs and continuations, SQL or Redis storage, a built-in dashboard, automatic retries, workers on any instance) and **Quartz.NET** (jobs plus triggers and calendars, clustered through database locks). Because retries are automatic, jobs **will** run more than once, so they must be **idempotent**: no duplicate invoices.
 - **Choosing where work runs**: losable work goes to a channel and hosted service. Durable work within one service goes to Hangfire, Quartz or an outbox table with a worker. Work other services must react to goes to a message broker. Spiky or scale-to-zero work goes to Azure Functions or Container Apps jobs. Simple periodic work on a single instance goes to a `BackgroundService` with `PeriodicTimer`, plus a lock if it's replicated.
 - **Running a job once across replicas**: take a **distributed lock or lease** (SQL `sp_getapplock`, Redis `SET NX PX`, a Blob lease, the `DistributedLock` package) and skip the run if another instance holds it; deploy a dedicated single-replica scheduler; use a clustered scheduler (Hangfire, Quartz); use a platform scheduler (Kubernetes CronJob, Container Apps jobs, a Functions timer trigger, which is a singleton by default); or for continuous work, **competing consumers** on a queue, where each message goes to exactly one instance anyway. Fire-and-forget `Task.Run` in a controller is broken: untracked on shutdown, exceptions unobserved, and it uses disposed request services.
+:::
 
 ### 3.13 · API design: REST, HTTP semantics, versioning and OpenAPI
 
 [Full chapter →](ch:api-design)
 
+:::plain
+A good API is predictable. URLs name things (`/orders/42`), HTTP methods say what to do, and status codes say what happened. Lists come in pages, not all at once. Retries must be safe, which idempotency keys make possible. Plan for versions from the start, and describe the API with OpenAPI so others can use it easily.
+:::
+
+:::more In depth: the detailed summary
 - **REST** means resources (nouns in URLs) manipulated through standard HTTP methods, with stateless requests (each carries its own auth and parameters), cacheable responses and negotiated representations. Strict REST also includes **HATEOAS** (responses link to the next possible actions), which few real APIs implement. The **Richardson Maturity Model** grades this: level 0 is RPC over one POST endpoint, level 1 adds resources, level 2 adds proper verbs and status codes (where good APIs sit), and level 3 adds hypermedia.
 - **Safe and idempotent are promises, and retries depend on them.** **Safe** (GET, HEAD, OPTIONS) means no state change, which is why browsers, crawlers and CDNs call GETs speculatively. **Idempotent** (GET, PUT, DELETE, plus the safe ones) means calling it N times has the same *effect* as calling it once, though the response may differ (a second DELETE may return 404). That's exactly what lets clients, proxies and resilience policies **retry automatically** after a timeout. POST and PATCH aren't idempotent by default, which is why POST needs idempotency keys.
 - **Status codes**:
@@ -747,11 +938,17 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **Long-running operations** return **202 Accepted** with a `Location` pointing at an operation resource and a `Retry-After`. The client polls until it gets 303 See Other to the result (or `status: succeeded` with a result URL). Webhooks, SignalR or SSE replace polling when it's too chatty.
 - **Versioning is about not breaking promises.** Breaking changes: removing or renaming fields or endpoints, changing types or meaning, making optional input required, changing status codes clients branch on. Additive optional fields aren't breaking, *if* clients ignore unknown fields, so say that in your docs. Strategies: URL segment `/v2` (visible, most common), query string `?api-version=` (Azure's style), a header, or a media type. `Asp.Versioning.Http` implements them. Have a deprecation policy: announce it, send `Deprecation`/`Sunset` headers, monitor traffic per version, then remove.
 - **OpenAPI** is the machine-readable contract (endpoints, schemas, responses, auth) that enables interactive docs, client generation (Kiota, NSwag), contract tests, gateway import and **breaking-change detection in CI** by diffing specs. .NET 9+ builds it in (`AddOpenApi`, `MapOpenApi`) with Scalar or Swagger UI; Swashbuckle was the earlier default. **Code-first** generation dominates in .NET because `TypedResults` make the code an accurate, compiler-checked source of truth. **Design-first** writes the spec first and generates from it.
+:::
 
 ### 3.14 · The other app models: gRPC, SignalR, MVC, Razor Pages and Blazor
 
 [Full chapter →](ch:app-models)
 
+:::plain
+ASP.NET Core can serve more than JSON APIs. Razor Pages and MVC build HTML pages on the server; Blazor builds interactive pages in C#; SignalR pushes live updates to browsers; gRPC makes fast calls between services. They all share the same host, configuration and security, so pick by who the client is.
+:::
+
+:::more In depth: the detailed summary
 - **One host, many endpoint types.** The same `WebApplication` (host, DI, middleware, routing) can serve JSON APIs, gRPC, SignalR hubs, Razor Pages, Blazor and health checks side by side, because they're all just endpoint types on the shared plumbing. Choose by job: public APIs and SPAs → REST; internal service calls and streaming → gRPC; server push → SignalR; server-rendered forms → Razor Pages or MVC; a rich interactive UI in C# → Blazor; client-shaped queries over a data graph → GraphQL (Hot Chocolate).
 - **gRPC** assumes both ends are code you control, so it can be **contract-first** (a `.proto` file generates server base classes and clients), **binary** (Protobuf: smaller and faster to parse than JSON), on **HTTP/2** with built-in client, server and bidirectional **streaming**. Browsers can't speak raw gRPC (it needs HTTP/2 trailers), so it stays internal, with gRPC-Web or **JSON transcoding** for browser access. The golden rule: **field numbers are the contract**, not names. Add fields with new numbers, never reuse or renumber, and mark removed ones `reserved`. Protobuf skips unknown fields, which is what lets old and new clients interoperate.
 - **SignalR** is for when the **server speaks first**: order shipped, new chat message, live dashboard. It negotiates the best transport (WebSockets, then Server-Sent Events, then long polling). **Hubs** expose methods to clients and can call methods on them; strongly typed hubs use `Hub<IOrderClient>`. You can address all clients, a connection, a **user** (all their tabs) or **groups**. Push from anywhere, such as a message consumer or background service, through `IHubContext<THub, TClient>`. **Scale-out problem**: each server only knows its own connections, so a message sent on server A can't reach a client connected to server B. Fix it with a **Redis backplane** or **Azure SignalR Service** (which holds all connections centrally); self-hosted WebSockets behind a load balancer also need sticky sessions.
@@ -764,6 +961,7 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 
   MAUI Blazor Hybrid reuses the same components in native apps. (A full part on MVC and Blazor is coming.)
 - **Others**: GraphQL via Hot Chocolate (exact-field queries over one endpoint; hard to cache over HTTP, needs query cost limits, and has an N+1 risk solved by DataLoaders), OData (`$filter`/`$select`/`$expand` over `IQueryable`), raw WebSockets, Server-Sent Events (`TypedResults.ServerSentEvents`, .NET 10) and health-check endpoints.
+:::
 
 ## Part IV · Web UI: MVC, Razor Pages and Blazor
 
@@ -771,17 +969,28 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 
 [Full chapter →](ch:razor-mvc)
 
+:::plain
+MVC and Razor Pages build complete HTML pages on the server and send them to the browser, so pages appear quickly and search engines can read them. A controller or page handler loads data, and a Razor template turns it into HTML, safely encoding anything users typed. Forms post back to the server and then redirect, so refreshing doesn't submit twice.
+:::
+
+:::more In depth: the detailed summary
 - **Server rendering** means the server builds finished HTML for each request; links and form posts ask for the next page. It gives a fast first paint, search-engine-friendly content and one project to build. It's the simplest tool for form-heavy sites like Kettle's admin.
 - **Razor** mixes C# into HTML with `@`. Every `@expression` is **HTML-encoded**, which blocks most XSS. `@Html.Raw` bypasses that, so use it only for HTML you produced yourself. Views compile to C# classes at build time, so typos are build errors.
 - **MVC:** a controller's action loads a **view model** and returns `View(vm)`. The view is found at `Views/{Controller}/{Action}.cshtml`, then `Views/Shared/`. Layouts wrap pages (`@RenderBody`); `_ViewStart` and `_ViewImports` apply to a whole folder. **Partials** format markup they're given; **view components** load their own data with DI. **Tag helpers** (`asp-action`, `asp-for`) build URLs from routes and inputs from model properties.
 - **Forms:** model binding fills an **input model**, never an entity, so attackers can't over-post fields. Check `ModelState.IsValid` yourself. **Antiforgery** tokens defend cookie-authenticated forms against CSRF; Razor Pages validate them automatically. **Post/Redirect/Get** stops a refresh from resubmitting, with `TempData` carrying a one-time message.
 - **Razor Pages** pair `Page.cshtml` with a `PageModel`: `OnGet`, `OnPost`, and named handlers like `OnPostRefund`. The route comes from the folder, `[BindProperty]` binds form fields, and `AuthorizeFolder` protects whole areas. It's usually simpler than MVC for page-shaped apps; both can coexist.
 - **Filters** run inside MVC in a fixed order: authorization → resource → action/page → exception → result. Unlike middleware, they see the action and its arguments. Use them for auditing and translating domain errors; use middleware for HTTP-level concerns.
+:::
 
 ### 4.2 · Blazor components
 
 [Full chapter →](ch:blazor-components)
 
+:::plain
+Blazor lets you build interactive pages from components written in C#. A component is a reusable piece of UI. When its data changes, Blazor works out what the page should look like and updates only the parts that changed. Parents pass data down to children, and children tell parents about events.
+:::
+
+:::more In depth: the detailed summary
 - **A component describes UI for its current state.** Each render produces a **render tree**; Blazor **diffs** it against the last one and applies only the changes. It re-renders after its own event handlers, when its parent passes parameters, or on `StateHasChanged`.
 - **Parameters** flow down, and **`EventCallback`** flows up. `EventCallback` also re-renders the parent, which a plain `Action` doesn't. A `Value`/`ValueChanged` parameter pair enables `@bind-Value`. **`RenderFragment`** passes UI as a value (child content, templates); `@typeparam` makes generic components.
 - **`@bind`** syncs inputs both ways, on `onchange` by default. `@bind:event="oninput"` updates per keystroke, and `@bind:after` runs code after the value is set.
@@ -789,28 +998,41 @@ Layer 3: the framework that turns a .NET process into a web server, and the shar
 - **`@key`** matches list items by identity, not position, so inserts don't re-render every row or move state to the wrong item. From timers and other threads, update with **`InvokeAsync(StateHasChanged)`**.
 - **Forms:** `EditForm` + `DataAnnotationsValidator` + `Input*` components. `OnValidSubmit` runs only when the data is valid. `FormName` and `[SupplyParameterFromForm]` make forms work under static rendering.
 - **DI scope depends on render mode:** one request (static), one **circuit** (Interactive Server, the whole session) or the whole app (WebAssembly). So a scoped `DbContext` in Interactive Server lives for the session: use `IDbContextFactory` instead.
+:::
 
 ### 4.3 · Render modes
 
 [Full chapter →](ch:blazor-render-modes)
 
+:::plain
+A render mode decides where a Blazor component's code runs. Static rendering builds the HTML on the server once and isn't interactive. Interactive Server keeps the component running on the server over a live connection. WebAssembly downloads .NET into the browser and runs it there. Use static where you can and interactive only where you need it.
+:::
+
+:::more In depth: the detailed summary
 - **Static SSR** (the default) renders HTML per request with no interactivity. **Streaming rendering** sends the page at once and streams slow parts into the same response. **Enhanced navigation and forms** patch the page instead of reloading it. Use it for content, SEO and anything without per-user state.
 - **Interactive Server:** after prerendering, a SignalR WebSocket **circuit** carries UI events to the server and diffs back. Strengths: fast start, direct server access, code stays private. Costs: a round trip per interaction, **memory per connected user**, a UI that pauses when the connection drops, and scale-out that needs sticky sessions or Azure SignalR Service.
 - **Interactive WebAssembly:** the .NET runtime runs in the browser, so interactions are instant, there's no per-user server memory and the app can work offline. Costs: a download and start-up time, all code inspectable (no secrets, and the API must enforce everything), and data over HTTP. AOT makes the download bigger and execution faster.
 - **Auto** starts on Server and switches to WebAssembly once cached. The component must work in both places, so put its data access behind an interface with a server and an HTTP implementation.
 - **Prerendering runs initialisation twice:** once for the HTML, once when the page becomes interactive. Persist state across the gap (`PersistentComponentState`, or `[PersistentState]` in .NET 10), disable prerendering for that component, or make the load cheap. JS interop isn't available during prerendering.
 - **Mixing rules:** a static parent can host interactive children; an interactive component's children share its mode; parameters crossing into an interactive component must be **serialisable** (no delegates or `RenderFragment`s); WebAssembly components live in the `.Client` project.
+:::
 
 ### 4.4 · Blazor in production
 
 [Full chapter →](ch:blazor-advanced)
 
+:::plain
+Running Blazor for real means calling JavaScript libraries safely, stopping one broken component from crashing the whole page, keeping long lists fast by drawing only what's visible, and avoiding needless re-renders. Server-side apps also need to manage memory per connected user and handle dropped connections.
+:::
+
+:::more In depth: the detailed summary
 - **JS interop:** import collocated `.razor.js` modules as `IJSObjectReference` in `OnAfterRenderAsync(firstRender)`. Make few, coarse calls, since in Server mode each is a round trip. JS calls .NET through a `DotNetObjectReference` to `[JSInvokable]` methods. Dispose both references, and never let JS edit DOM that Blazor renders.
 - **Auth:** an `AuthenticationStateProvider` supplies the user as a cascading `Task<AuthenticationState>`; `[Authorize]` protects pages and `<AuthorizeView>` hides UI. In Interactive Server the user is fixed for the circuit's life, so re-check sensitive operations. In WebAssembly, client checks are cosmetic: the API enforces everything, ideally behind a BFF.
 - **Performance** is mostly about **wasted renders**: mutable parameters, chatty events, changing cascading values and giant components. Use immutable parameters, `ShouldRender`, `@key`, `<Virtualize>` for long lists, and QuickGrid for tables.
 - **Errors:** an unhandled exception ends an Interactive Server user's **circuit**. Wrap risky UI in `<ErrorBoundary>`, which shows fallback content and logs. Catch exceptions in fire-and-forget tasks yourself.
 - **State that must survive** belongs in the URL, protected browser storage or the server, never only in a circuit.
 - **Testing:** bUnit renders components with fake services, navigation, auth and JS; Playwright handles a few end-to-end journeys.
+:::
 
 ## Part V · Data Access
 
@@ -820,6 +1042,11 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 
 [Full chapter →](ch:relational-fundamentals)
 
+:::plain
+A relational database stores data in tables of rows and columns, linked by keys. An index is a sorted lookup structure that lets the database find rows quickly instead of reading every one. A transaction groups several changes so they all happen or none do. These three ideas explain most database behaviour and most database performance problems.
+:::
+
+:::more In depth: the detailed summary
 - **Tables link through keys.** A primary key uniquely identifies a row; a foreign key references another table's primary key and enforces **referential integrity**; unique and check constraints enforce rules at the data level. Prefer **surrogate** primary keys (generated IDs) plus unique constraints on natural keys like email. One-to-many puts a foreign key on the "many" side; one-to-one uses a unique foreign key; many-to-many needs a **join table**.
 - **Normalisation stores each fact once**, so changing it is one `UPDATE`. Duplicating a customer's name across 500 order rows invites an update that misses one, leaving a contradiction. 1NF means atomic values; 2NF means every non-key column depends on the *whole* key; 3NF means no column depends on another non-key column. **Denormalisation** deliberately duplicates for read speed (a stored `Order.Total`, a read-model table) when reads vastly outnumber writes and you've decided how to keep the copies in sync. **Snapshot data isn't duplication**: an order line's price at purchase is a different fact from the product's current price.
 - **SQL you must be able to write**: filtering, sorting and paging (`OFFSET … FETCH`), `GROUP BY` with `HAVING`, CTEs, `CASE`, `COALESCE`, `EXISTS` vs `IN`, `UNION ALL` (which skips `UNION`'s duplicate-removing sort), and joins: inner, left (unmatched right side becomes NULL), full, cross (Cartesian product) and self joins.
@@ -863,11 +1090,17 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Locks and deadlocks.** Writers take exclusive locks and readers shared ones (row, page or table, escalating as needed). **Blocking** is waiting for a lock. A **deadlock** is a cycle: transaction A holds row 1 and wants row 2 while B holds row 2 and wants row 1. Waiting can never resolve it, so the database kills a victim (SQL Server error **1205**), which you **retry**. Prevent deadlocks by touching rows in a consistent order, keeping transactions short, indexing so updates lock fewer rows, using RCSI, and enabling automatic retries (EF Core's `EnableRetryOnFailure`). **Pessimistic locking** (`WITH (UPDLOCK, ROWLOCK)` or `SELECT … FOR UPDATE`) is for cases like seat reservation where no race is tolerable; web apps usually prefer **optimistic** version columns, which hold no locks across client round trips.
 - **Connection pooling**: opening a physical connection (TCP, TLS, authentication) is expensive, so providers keep a pool per connection string. `Open` borrows and `Dispose` returns, with a default maximum of 100 in SqlClient. "Timeout expired… obtaining a connection from the pool" comes from undisposed connections or contexts, long transactions, slow queries, sync-over-async holding connections while blocked, or more parallel work than the pool can serve. Open late, close early.
 - **SQL Server vs PostgreSQL**: SqlClient vs Npgsql drivers. Locking with optional row versioning vs MVCC by default. Columnstore, temporal tables and Query Store vs JSONB, arrays, `ON CONFLICT` and extensions like PostGIS and pgvector. Commercial vs open source. EF Core hides most differences for CRUD, but tuning details differ.
+:::
 
 ### 5.2 · ADO.NET and Dapper
 
 [Full chapter →](ch:ado-dapper)
 
+:::plain
+ADO.NET is .NET's basic way to talk to a database: open a connection, run SQL, read the rows. Dapper adds a thin layer that turns rows into C# objects. Always pass user input as parameters, never pasted into the SQL, so it can't be turned into an attack. Connections are pooled and reused, so close them promptly.
+:::
+
+:::more In depth: the detailed summary
 - **ADO.NET is the layer everything else sits on**: `DbConnection` (pooled), `DbCommand` (SQL or stored procedure plus parameters), `DbDataReader` (fast forward-only streaming), `DbParameter`, `DbTransaction` and, since .NET 7, `DbDataSource` (a connection factory). Each database provides implementations (`SqlConnection`, `NpgsqlConnection`). Use `Microsoft.Data.SqlClient`, not the legacy `System.Data.SqlClient`. `ExecuteReader` returns rows, `ExecuteScalar` returns one value, and `ExecuteNonQuery` returns rows affected.
 - **Always parameterise.** Concatenating input (`WHERE Email = '{email}'`) is SQL injection: `' OR 1=1 --` becomes part of the SQL. Parameters are sent as **data**, never parsed as SQL, and they let the database **reuse cached plans**, while concatenated literals compile a new plan for every value. Prefer typed `Add` over `AddWithValue` to avoid type-inference problems (and implicit conversions that kill seeks).
 - **Transactions**: `BeginTransactionAsync(isolationLevel)`, then pass the transaction to every command, commit, or roll back on failure. `TransactionScope` gives ambient transactions but **silently escalates to MSDTC distributed transactions** when more than one connection is involved, which most cloud setups can't use. With async code it needs `TransactionScopeAsyncFlowOption.Enabled`, or the transaction won't flow across `await`.
@@ -875,11 +1108,17 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Dapper is a micro-ORM**: extension methods on `IDbConnection` where **you write the SQL and Dapper maps rows to objects** (and anonymous objects to parameters), matching column names to properties or constructor parameters case-insensitively. Performance is near raw ADO.NET, with no change tracking, LINQ or migrations. **Multi-mapping** (`QueryAsync<Order, Customer, Order>(sql, map, splitOn: "Id")`) rebuilds nested objects from flat joined rows; `splitOn` says where the second object's columns begin, because a row carries no structure of its own. For one-to-many, de-duplicate parents with a dictionary. `QueryMultiple` reads several result sets in one round trip; `DynamicParameters` handles stored procedures and output parameters; type handlers map custom types such as strongly typed IDs.
 - **Connections in DI**: `AddNpgsqlDataSource` registers a singleton factory for pooled connections; for SQL Server, a small connection factory keeps code testable.
 - **Dapper vs EF Core is about the job, not popularity.** EF Core gives LINQ, change tracking, a unit of work, migrations, relationships and typed queries, at the cost of a steeper learning curve; the performance gap has shrunk a lot since EF Core 6–8. Dapper gives explicit SQL, a natural fit for CTEs, window functions and hints, and minimal overhead. The common pragmatic split follows CQRS: **EF Core for writes** (aggregates, rules, migrations) and **Dapper or EF raw SQL for reads** (flat DTO queries with no tracking). EF Core alone can do raw reads with `Database.SqlQuery<T>($"…")`, which is still parameterised because it's an interpolated-string handler.
+:::
 
 ### 5.3 · EF Core fundamentals
 
 [Full chapter →](ch:efcore-fundamentals)
 
+:::plain
+EF Core lets you work with C# objects while it writes the SQL. You describe your classes, it maps them to tables, and a DbContext loads data, remembers what you changed, and saves all changes together in one transaction. Migrations keep the database's structure in step with your classes as they evolve.
+:::
+
+:::more In depth: the detailed summary
 - **An ORM does four jobs** you'd otherwise hand-write for every entity: **mapping** classes to tables (and references to foreign keys), **querying** (LINQ to SQL, then rows materialised into objects), **change tracking** (remembering what you loaded and detecting changes) and **persistence** (`SaveChanges` generating INSERT/UPDATE/DELETE in one transaction). **Migrations** version the schema alongside the code. The cost is a learning curve and the risk of bad SQL if you don't understand what it generates.
 - **`DbContext` is one unit of work**: it holds the connection, the **model** (mapping metadata) and the **change tracker**, and each `DbSet<T>` is the entry point to one table. Register it **scoped** (one per request). `AddDbContextPool` reuses instances from a pool and resets their state, which saves setup cost at high throughput (but don't keep per-request state in fields). `AddDbContextFactory` suits background services, Blazor Server and parallel work. A context is **not thread-safe**: never share one across threads (no `Task.WhenAll` on one context), never make it a singleton, and never keep it alive for long, because its tracker only grows.
 - **Conventions infer most of the model**:
@@ -898,11 +1137,17 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
 - **Change tracking is snapshot diffing.** Every tracked entity has a state: `Added` (INSERT), `Unchanged`, `Modified` (UPDATE of only the changed columns), `Deleted` and `Detached`. When an entity is loaded, EF keeps a **snapshot** of its original values. `DetectChanges` (run by `SaveChanges`) compares every tracked entity's current values with its snapshot, property by property. Nothing told EF that `Price` changed; it found out by diffing. That's why tracking thousands of entities is expensive, and why read-only queries should use `AsNoTracking()` or projections. `SaveChanges` runs `DetectChanges`, orders commands to respect foreign keys, batches them, runs them in one transaction, propagates generated keys and resets states. **Disconnected updates** (a DTO arriving with nothing tracked): load and then update (safe, one extra read), attach a stub and mark specific properties modified, or use set-based `ExecuteUpdateAsync` (EF 7+), which loads nothing.
 - **Migrations** turn model changes into versioned schema changes. Each one has `Up`/`Down` methods plus an updated **model snapshot**, which the next migration diffs against. Applied migrations are recorded in `__EFMigrationsHistory`, so `database update` is safe to rerun. In production, generate an **idempotent SQL script** (reviewable) or a **migration bundle** in the pipeline. Calling `MigrateAsync()` at startup races across replicas, needs DDL permissions and slows startup. For zero-downtime deploys, old and new code run side by side, so migrations must be **backward-compatible** (**expand/contract**): add nullable columns, backfill, make them required a release later; rename by adding the new column, copying, switching the code and dropping the old one later. Database-first `scaffold` generates entities from an existing schema.
 - **Seeding**: `HasData` (reference data, part of migrations) and `UseSeeding`/`UseAsyncSeeding` (EF 9, development and test data). **Providers**: SQL Server, Npgsql, SQLite, Pomelo MySQL, Cosmos (a document database with very different query capabilities), Oracle. The InMemory provider is for testing only, and even there it's discouraged, because it isn't relational and hides real behaviour.
+:::
 
 ### 5.4 · EF Core querying and performance
 
 [Full chapter →](ch:efcore-querying)
 
+:::plain
+Most slow EF Core pages come from asking the database too many questions or for too much data. Loading a list and then each item's details one by one sends hundreds of queries; asking for exactly what the page needs sends one. For read-only screens, turn off change tracking and select only the columns you show.
+:::
+
+:::more In depth: the detailed summary
 - **Nothing runs until a terminating operator.** `Where`, `OrderBy` and `Select` build an expression tree; `ToListAsync`, `FirstOrDefaultAsync`, `CountAsync`, `AnyAsync`, `ExecuteUpdateAsync` or `await foreach` over `AsAsyncEnumerable()` compile it into parameterised SQL, execute it through ADO.NET and **materialise** the rows (tracked by default). Re-enumerating a query runs it again.
 - **See the SQL before tuning.** Use `LogTo` with `EnableSensitiveDataLogging` (parameter values, development only), the `Microsoft.EntityFrameworkCore.Database.Command` log category, `ToQueryString()` and `TagWith`. In production, OpenTelemetry EF instrumentation records every query as a span, and Query Store shows the slowest statements.
 - **Tracking vs no-tracking.** Tracking keeps snapshots so changes can be saved. `AsNoTracking()` skips them: fastest and least memory, for read-only queries, but duplicate rows become separate objects. `AsNoTrackingWithIdentityResolution()` shares instances within one query. Read-heavy apps can make no-tracking the context default and opt in with `AsTracking()`.
@@ -936,11 +1181,17 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
   8. Sync calls or `.Result`?
   9. Hot, stable data? Cache it.
   10. Bulk writes? Use set-based operations.
+:::
 
 ### 5.5 · EF Core advanced: concurrency, transactions, interceptors, filters
 
 [Full chapter →](ch:efcore-advanced)
 
+:::plain
+When two people edit the same record, the second save can silently overwrite the first. A version column lets EF Core detect this and refuse the stale save instead. EF Core also offers filters applied to every query (for example per customer account), bulk updates without loading rows, and hooks for cross-cutting behaviour.
+:::
+
+:::more In depth: the detailed summary
 - **Optimistic concurrency detects lost updates without locks.** Alice and Bob both load order 42. Alice saves a new address, then Bob saves a status change from his older copy and silently overwrites her address. A **version column** (`[Timestamp] byte[] RowVersion`, a SQL Server `rowversion` incremented by the database on every update; Postgres uses `xmin` or a manually incremented token) is added to the `UPDATE`'s `WHERE` clause: `WHERE Id = @id AND RowVersion = @original`. Bob's version no longer exists, so his update matches **zero rows**, and EF throws **`DbUpdateConcurrencyException`**. You then reload, merge, retry, or return 409/412 (the API's ETag is this same token). It also protects business invariants: two requests reserving the last unit of stock conflict on the product's version, so one retries and sees zero stock instead of overselling, without a pessimistic lock.
 - **`SaveChanges` is already one transaction.** Explicit transactions (`BeginTransactionAsync(isolationLevel)`) are for when several `SaveChanges` calls, `ExecuteUpdate` or raw SQL, or Dapper on the same connection must be atomic together, or you need a specific isolation level. Savepoints allow partial rollback. **`EnableRetryOnFailure`** retries transient errors (Azure SQL failovers, throttling, deadlock victims), but a retry must redo the *whole* unit of work, so manual transactions go inside `db.Database.CreateExecutionStrategy().ExecuteAsync(...)`.
 - **No distributed transactions across services.** A transaction covers one database connection. "Save the order, publish to Service Bus, call the payment API" can't be one atomic unit, because those systems share no commit protocol. The answer is the **outbox** and sagas.
@@ -963,11 +1214,17 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
   - **vector search** (EF 10 with SQL Server 2025 or Azure SQL: `SqlVector<float>`, `VECTOR_DISTANCE`);
   - read-replica contexts.
 - **Testing EF code**: avoid the **InMemory** provider, which isn't relational: no constraints or real transactions and different query semantics, so tests can pass while production fails. SQLite in-memory is real SQL but a different dialect. A **real database in a container (Testcontainers)** gives the highest fidelity and is recommended for repositories and queries. Mock repository interfaces only when unit-testing application logic.
+:::
 
 ### 5.6 · NoSQL, Redis and choosing a data store
 
 [Full chapter →](ch:nosql-redis)
 
+:::plain
+Not all data fits tables well. Document databases store whole records as JSON and spread them across servers by a partition key, which makes reads by that key fast. Redis keeps data in memory for very fast caching, sessions and counters. Choose a data store by how you read and write the data, not by fashion.
+:::
+
+:::more In depth: the detailed summary
 - **"NoSQL" is a set of families, each optimised for one access pattern**:
   - **key-value** (Redis, Table Storage): ultra-fast lookup by key, useless for anything else;
   - **document** (Cosmos DB, MongoDB): aggregates read and written whole, flexible schema, horizontal scale; weak at joins and multi-document transactions;
@@ -999,6 +1256,7 @@ Layer 5: where data lives and how to get it efficiently. Most real performance p
   - A lock's TTL can expire while the work is still running, letting a second holder start, so use **fencing tokens** or idempotent work. Acquire with `SET NX PX` and release only if your token still matches.
 - **Search and vectors are projections**: keep the source of truth in SQL or Cosmos, and project into Azure AI Search or Elasticsearch through the change feed or events, for full-text, facets, synonyms, semantic ranking and hybrid vector search. Vector stores include Azure AI Search, Cosmos DB, pgvector, SQL Server 2025, Redis and Qdrant, accessed through `Microsoft.Extensions.VectorData` and `Microsoft.Extensions.AI`.
 - **Choosing a store**: relational for business data; documents for whole aggregates and global scale; Redis for caches, sessions, counters, locks, leaderboards and limits; **Blob Storage** for files (store the URL in the database, never the file); search indexes for relevance; Event Hubs or Kafka for high-volume replayable streams; Data Explorer for telemetry; graph databases for path queries. Don't use a cache as the system of record, and don't pick NoSQL to dodge migrations: schema-on-read still needs versioning (a `schemaVersion` field plus code that handles old shapes).
+:::
 
 ## Part VI · Architecture and Design
 
@@ -1008,6 +1266,11 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 
 [Full chapter →](ch:design-principles)
 
+:::plain
+Design principles help keep code easy to change. Give each class one job; depend on interfaces rather than specific implementations; and add new behaviour by adding new code rather than editing working code. The aim is parts that are focused inside and loosely connected to each other. Apply the principles where code actually changes, not everywhere.
+:::
+
+:::more In depth: the detailed summary
 - **Every principle exists to make change cheap**, meaning a requirement change touches as few places as possible without breaking unrelated things.
 - **S, Single Responsibility**: a module has **one reason to change**, meaning it answers to one actor (one source of requirements). An `OrderService` that prices (sales), persists (DBA) and emails (marketing) is edited by three teams for unrelated reasons, which brings merge conflicts and cross-breakage. Warning signs: names with Manager/Helper/Utils, 2,000-line services, 10+ constructor dependencies. SRP is about **cohesion around a reason to change**, not one method per class; over-splitting scatters logic.
 - **O, Open/Closed**: add behaviour by adding code, not by editing working code. A carrier `switch` must be edited for every new carrier, risking the existing ones; an `IShippingRate` per carrier makes FedEx a new class plus one registration line. ASP.NET Core is built this way: middleware, DI registrations, filters, interceptors, `DelegatingHandler`s and configuration, logging and authorization providers are all extension points.
@@ -1042,11 +1305,17 @@ Layer 4: how you organise your own code so that change stays cheap as the system
   - a shared `Customer` class across billing, shipping and marketing, coupling three teams.
 
   The test is whether the abstraction **pays for itself** through testability, a real variation point, or isolating something volatile (I/O, third parties, time). If not, keep it concrete and refactor later, which is cheap when tests exist.
+:::
 
 ### 6.2 · Design patterns: the GoF catalogue in modern .NET
 
 [Full chapter →](ch:design-patterns)
 
+:::plain
+Design patterns are named, well-known solutions to problems that keep coming up, such as swapping an algorithm (Strategy) or wrapping a service to add caching (Decorator). Their main value is a shared vocabulary for designs and their costs. You already use several: ASP.NET Core middleware is one.
+:::
+
+:::more In depth: the detailed summary
 - **A pattern is a named shape for a recurring problem**, and knowing the name lets you predict unfamiliar framework code ("that's a Decorator") without reading it. The Gang of Four catalogued 23 in three groups: **creational** (how objects are made), **structural** (how they're composed) and **behavioural** (how they collaborate). Modern C# and DI absorb many of them: a delegate replaces a one-method Strategy, `yield` *is* Iterator, and the container replaces hand-written Singletons and Factories. To answer "tell me about a pattern you used", give the problem, the pattern, the .NET example and the trade-off.
 - **Creational**:
   - **Factory Method / simple factory**: a method decides which concrete type to create, so callers depend on an abstraction. Examples: `IHttpClientFactory`, `ILoggerFactory`, `IDbContextFactory`, DI factory lambdas; keyed services often replace hand-written factories.
@@ -1072,11 +1341,17 @@ Layer 4: how you organise your own code so that change stays cheap as the system
   - **State**: each state is a class, so `Placed.Pay()` returns `Paid`, instead of status `if`s everywhere. Simpler lifecycles use an enum plus a transition table, or the Stateless library; MassTransit sagas are state machines across services.
   - **Iterator** is built in (`IEnumerable`, `yield`, `IAsyncEnumerable`). **Visitor** adds operations to a hierarchy through double dispatch (`ExpressionVisitor` is how EF translates queries; Roslyn syntax visitors); pattern matching often replaces simple visitors. **Memento** captures and restores state; **Interpreter** evaluates small languages.
 - **Architecture-scale patterns** live in other chapters: DI and Service Locator, Options, Repository, Unit of Work and Specification, CQRS and Result, Aggregate and Value Object, Outbox, Inbox and Saga, Retry and Circuit Breaker, API Gateway, BFF and Strangler Fig, Cache-Aside.
+:::
 
 ### 6.3 · Application architectures: layered, Clean, hexagonal, vertical slice, modular monolith
 
 [Full chapter →](ch:app-architectures)
 
+:::plain
+Architecture here means how a codebase is split into parts and which parts may depend on which. Layered designs split by technical role; Clean Architecture keeps business rules independent of databases and frameworks; vertical slices group code by feature; a modular monolith keeps clear boundaries inside one app. Choose by how your code really changes.
+:::
+
+:::more In depth: the detailed summary
 - **At solution scale, architecture is about which parts may depend on which.** Good architecture keeps **business rules independent of delivery** (HTTP, UI, messages) **and infrastructure** (databases, queues, vendors). Logic is then testable without a server or database, frameworks can be swapped with local changes, teams don't collide, and the structure says what the system *does* (orders, payments), not what it's built with.
 - **Classic layered (n-tier)** stacks presentation → business → data access → database. It's simple and familiar, but **business logic depends on data access**: rules couple to persistence, entities get shaped by tables, testing needs the data layer, and one feature is scattered across every layer. It tends toward anemic models with all the logic in "service" classes.
 - **Onion (Palermo), Hexagonal / Ports & Adapters (Cockburn) and Clean (Uncle Bob) are one fix with three names**: put the **domain at the centre** and make **every compile-time dependency point inward**. Inner layers define the interfaces they need (ports: `IOrderRepository`, `IPaymentGateway`); outer layers implement them (adapters: `EfOrderRepository`, a Stripe adapter). Hexagonal distinguishes **driving** adapters (HTTP, CLI and tests call the core) from **driven** ones (the database and email, called by the core). It's DIP applied to the whole solution.
@@ -1091,11 +1366,17 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 - **A modular monolith** is one deployable split into strongly separated **modules**, one per bounded context, each with its own domain, its own schema or `DbContext`, and a small public API. Modules talk only through public contracts or integration events, never through another module's tables or internal classes. It delivers most of microservices' boundary benefits (clear ownership, independent evolution) **without** network failures, distributed transactions or many deployments. A module can be extracted into a service later with little rework, because the boundary already exists. Many teams now treat it as the **default starting architecture**.
 - **Enforce boundaries, or they erode within a sprint**: project references (the compiler rejects undeclared dependencies, the strongest guarantee), `internal` by default, **architecture tests** (NetArchTest, ArchUnitNET: "Domain must not depend on EF Core", "modules must not reference each other's internals") in CI, analyzers, and **ADRs** (Architecture Decision Records) documenting why.
 - **Choosing**: small CRUD → minimal APIs plus EF directly, in feature folders. Rich rules on a long-lived product → Clean with a DDD domain and CQRS reads. Many features and a fast team → slices over a shared domain. Several bounded contexts and few teams → modular monolith. Independent scaling, many teams and mature DevOps → microservices, often extracted from a modular monolith.
+:::
 
 ### 6.4 · CQRS, the mediator pipeline and the Result pattern
 
 [Full chapter →](ch:cqrs-mediator-result)
 
+:::plain
+Code that changes data and code that reads data have different needs, so CQRS separates them. A mediator sends each request to its handler and runs shared steps like validation around it. The Result pattern returns expected failures, like "out of stock", as values instead of throwing exceptions.
+:::
+
+:::more In depth: the detailed summary
 - **CQS → CQRS.** CQS (Meyer) is a method rule: change state or return data, never both, so asking a question never changes the answer. **CQRS** (Greg Young) scales it to architecture: **separate models and code paths for writes and reads**. Their needs differ. Writes need rich behaviour and invariants (load an aggregate, apply rules, save atomically). Reads need speed and shape (flat DTOs per screen, joins across aggregates, no tracking, caching). One model serving both ends up mediocre at both, with UI fields polluting entities and N+1 queries. Reads usually outnumber writes 10–100×, so splitting lets each side scale and optimise separately.
 - **CQRS is a spectrum.**
   - Level 0: one model for everything.
@@ -1110,11 +1391,17 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 - **Do you need a library?** MediatR has needed a commercial licence for larger organisations since v13 (2025); Mediator (source-generated, MIT, very fast); Wolverine (mediator plus messaging plus outbox); Brighter; or **no library**: inject handlers directly and use decorators or endpoint filters, which keeps it explicit and makes "go to definition" work. The honest trade-off: indirection that hides call graphs ("service locator in disguise" when overused) and ceremony in small apps, vs a uniform pipeline and a repeatable per-use-case structure that scales with the number of use cases.
 - **The Result pattern makes expected failure part of the contract.** "Not found", "insufficient stock", "already registered" and "card declined" are normal outcomes. As exceptions they're **invisible in the signature** (`Task<Order> PlaceAsync()` hides five ways to fail), expensive under load, turn control flow into distant `try/catch`, and are easy to forget. A `Result<T>` is either a success value or a typed `Error(Code, Message, Type)`. Implicit conversions let handlers simply `return order.Id;` or `return OrderErrors.PaymentDeclined;`. Map Results to HTTP **once** at the edge (`ToHttp`, `ToProblem`), so every endpoint agrees on what "not found" means. Libraries: ErrorOr, FluentResults, Ardalis.Result, OneOf, CSharpFunctionalExtensions; "railway-oriented programming" chains them with `Map`/`Bind`. C# still has no built-in discriminated unions, which is why these exist.
 - **Exceptions vs Results**: exceptions for bugs and broken invariants, infrastructure failures (database down, timeouts), things the caller can't meaningfully handle, and constructors or framework callbacks. Results for business rejections, validation failures and anything the caller is *expected* to branch on. Both coexist, with a global `IExceptionHandler` as the backstop for the unexpected.
+:::
 
 ### 6.5 · Domain-Driven Design
 
 [Full chapter →](ch:ddd)
 
+:::plain
+Domain-driven design means modelling complex business logic in the business's own language. A bounded context is an area where each word has one meaning. An aggregate is a group of objects changed together, guarded by one root that enforces the rules. Contexts communicate through events rather than sharing tables.
+:::
+
+:::more In depth: the detailed summary
 - **DDD's premise**: in complex domains (insurance, logistics, banking, healthcare, large e-commerce), the hardest problem is understanding and encoding the business correctly, not the technology. Rules scattered across controllers, services and SQL get duplicated, contradict each other and become impossible to change safely. DDD concentrates them in one explicit **domain model** built *with* domain experts, in their language. **Strategic DDD** splits a big system into parts (bounded contexts, language, subdomains, context maps) and shapes teams and service boundaries. **Tactical DDD** gives building blocks inside one part (entities, value objects, aggregates, events).
 - **Ubiquitous language**: the same precise vocabulary in conversation, documents and code. If the business says a policy is "bound", the code says `policy.Bind()`, not `SetStatus(3)`, and when the language changes, the code changes.
 - **Bounded contexts**: an explicit boundary within which a model and its language are consistent. The **same word legitimately means different things** in different contexts. "Product" is name and images in Catalog; prices and discounts in Pricing; stock and locations in Inventory; weight in Shipping; a snapshot of SKU, name and price in Ordering. One shared `Product` class for all five becomes a battleground where a Pricing change breaks Shipping. Give each context its own small model, connected by IDs, APIs and events.
@@ -1144,11 +1431,17 @@ Layer 4: how you organise your own code so that change stays cheap as the system
 - **Rich vs anemic models**: in an anemic model, `Order` is a bag of public setters and the rule lives in `OrderService.Cancel`. Anyone can still write `order.Status = "Cancelled"` and bypass it, and in a big codebase someone will. Fowler calls this an anti-pattern: you pay for extra types and get none of the protection. Rich models put behaviour with data (`order.Cancel(reason)`), which is Tell, Don't Ask.
 - **Persisting with EF Core** without polluting the model: Fluent API configuration, value converters for strongly typed IDs, `CustomerId` mapped as a plain property (enforcing "reference by ID" at the persistence layer), private setters, private constructors, backing fields, and owned or complex types. The purest alternative is separate persistence models plus mapping: more code, zero coupling.
 - **When DDD is overkill**: tactical DDD costs types, mapping, a learning curve and eventual consistency, so use it for **complex core domains with rich, changing rules**. For CRUD and supporting subdomains, a simple EF model with validation is better. **Strategic DDD** (contexts and language) pays off almost everywhere.
+:::
 
 ### 6.6 · Monoliths, microservices and distributed architecture
 
 [Full chapter →](ch:microservices)
 
+:::plain
+A monolith is one app deployed as one unit; microservices split a system into many independently deployed apps, each owning its data. Splitting helps when teams or scaling needs differ, but adds network calls, distributed data and operational work. Done badly, you get a distributed monolith that's harder to run than the original.
+:::
+
+:::more In depth: the detailed summary
 - **One spectrum, not old vs new.**
   - A **monolith** has one deployable, often weak internal boundaries, one database and ACID everywhere.
   - A **modular monolith** has one deployable, **strong** modules with data owned per module, and events between modules.
@@ -1192,6 +1485,7 @@ Layer 4: how you organise your own code so that change stays cheap as the system
   - no observability;
   - microservices first (a new product, one team, 15 services).
 - **Readiness checklist**: CI/CD and infrastructure as code per service, containers and an orchestrator or PaaS, centralised logs, metrics and **distributed tracing**, resilience on every outbound call, a broker with outbox and idempotency practices, API versioning and contract tests, health checks with autoscaling and graceful shutdown, service-to-service identity (managed identity, client credentials, mTLS) and clear on-call ownership.
+:::
 
 ## Part VII · Testing
 
@@ -1201,6 +1495,11 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 [Full chapter →](ch:unit-testing)
 
+:::plain
+A unit test runs one small piece of logic and checks the answer, in milliseconds. Slow or unpredictable things, like the clock or a payment provider, are replaced with fakes. Hundreds of tests can run on every change, catching mistakes immediately. Test what the code does, not how it does it, so refactoring doesn't break tests.
+:::
+
+:::more In depth: the detailed summary
 - **What is "one unit"?** The **classical** (Detroit) school says a unit is a *behaviour*: use real collaborators and replace only shared or out-of-process ones (database, network, clock). The **mockist** (London) school says a unit is *one class*, with every collaborator mocked: precise failure locations, but tests coupled to implementation. Current guidance (Khorikov) leans classical, because when you refactor internals without changing behaviour, behaviour tests survive and mock-everything tests break.
 - **FIRST**: Fast (milliseconds), Isolated (no order dependence or shared state), Repeatable (no real time, randomness or network), Self-validating (pass or fail, no inspection), Timely (written with the code).
 - **xUnit** (v3 is current) is the mainstream framework. `[Fact]` is a single test; `[Theory]` with `InlineData`, `MemberData`, `ClassData` or `TheoryData` is parameterised. Setup is the **constructor**, teardown is `Dispose` or `IAsyncLifetime`. xUnit creates a **new instance per test**, so leftover state can't leak between tests by construction. `IClassFixture` shares expensive setup across a class, and collection fixtures share across classes (a database container). Collections run in parallel; tests within one run sequentially. NUnit and MSTest v3 are equally fine; consistency matters most.
@@ -1211,11 +1510,17 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Test data builders** (the Builder pattern in tests) provide valid defaults, so each test states only what matters to it (`new OrderBuilder().Placed().Build()`). AutoFixture and Bogus generate anonymous or realistic data.
 - **What's worth testing**: domain logic (invariants, calculations, state transitions), handlers' decision logic with fakes at the edges, algorithms, parsers, mappers with logic, edge cases and error paths, and regression tests for bugs. Not worth it: trivial properties, pass-through code, framework behaviour, private methods (test them through public behaviour). **Coverage is a diagnostic, not a goal**: a test can run every line and assert nothing. **Mutation testing** (Stryker.NET flips `>` to `>=` and checks a test fails) measures whether tests actually catch bugs.
 - **TDD**: **Red** (a failing test for the next small behaviour) → **Green** (the simplest code that passes) → **Refactor** (improve the design under the tests' safety net), in minutes-long cycles. You get tests by construction and usage-driven, testable APIs. It can feel slow during exploratory design and is awkward around heavy framework code, so many teams use it selectively for domain logic and bug fixes, where the failing reproduction test is both the diagnosis and the regression guard. **BDD** (Given-When-Then, Reqnroll) writes executable specifications with business stakeholders.
+:::
 
 ### 7.2 · Integration, end-to-end testing and strategy
 
 [Full chapter →](ch:integration-testing)
 
+:::plain
+Integration tests run the real app with real parts, such as a real database in a throwaway container, to prove the pieces fit together. End-to-end tests check a few complete user journeys. A healthy test suite has many fast unit tests, a solid set of integration tests, and only a handful of slow end-to-end tests.
+:::
+
+:::more In depth: the detailed summary
 - **Integration tests catch what unit tests structurally can't**, because those bugs live *between* components: wrong middleware order (everything returns 401), missing DI registrations or captive dependencies, route and binding mismatches, JSON casing and enum differences, EF mapping errors, missing migrations, LINQ that can't translate or is slow in real SQL, unapplied authorization policies, and configuration binding failures.
 - **Pyramid vs trophy vs honeycomb.** The classic pyramid (many unit, fewer integration, very few E2E tests) made sense when higher-level tests were slow and flaky. **Containers and in-memory hosting changed that calculation**: many .NET teams now put **most confidence in integration tests** for APIs, keep unit tests for complex domain logic and run a few E2E smoke tests. The real rule was always confidence per minute of effort. Also in the mix: **contract tests** (Pact, OpenAPI diffing, schema registries), **E2E** (Playwright; highest confidence but flaky and costly) and **load tests** (k6, NBomber, Azure Load Testing).
 - **`WebApplicationFactory<Program>`** boots your **real `Program.cs`** in memory on a `TestServer` (no ports) and hands you an `HttpClient` wired into the pipeline. Configuration, DI, middleware order, routing, binding, validation, filters, serialization and ProblemDetails all run for real. Add `public partial class Program;` so the test project can see the generated `Program` class.
@@ -1231,6 +1536,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Contract and architecture tests**: **consumer-driven contracts** (Pact) record what each consumer requests and expects, and the provider's CI verifies it still honours every contract, catching breaking changes without deploying both services together. Lighter options are OpenAPI diffing or schema-registry compatibility checks. **Snapshot** the generated OpenAPI document or message types with Verify so contract changes show up in review. Architecture tests enforce layering.
 - **E2E, smoke, load and chaos**: keep E2E tests **few**, on critical paths (sign-up, checkout), and tolerant of async processing (poll with timeouts, never fixed sleeps). Run **smoke tests** after each deploy to gate promotion. Use load tests to set p50/p95/p99, throughput and error-rate baselines against production-like data. Chaos testing (Azure Chaos Studio, Polly chaos strategies) injects faults to verify resilience.
 - **Tests in CI**: unit tests on every commit, integration tests on every PR (GitHub-hosted Ubuntu runners have Docker, so Testcontainers just works). Quarantine and fix **flaky tests** immediately, because they destroy trust in the whole suite. Keep the suite fast with parallel collections, shared containers and Respawn. Publish results and coverage, and make the test run a required merge check.
+:::
 
 ## Part VIII · Distributed Systems
 
@@ -1238,6 +1544,11 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 [Full chapter →](ch:messaging-events)
 
+:::plain
+Instead of calling every other service directly and waiting, a service can publish a message, such as "order placed", to a broker and carry on. Each interested service gets its own copy whenever it's ready. Messages can arrive twice, so handlers must cope with duplicates, and the outbox pattern makes sure no message is lost when saving data.
+:::
+
+:::more In depth: the detailed summary
 - **What a broker buys you.** With synchronous HTTP the caller waits, so a slow or down callee becomes the caller's failure, and latency adds up along the chain. A **broker** in the middle lets the sender hand off a message and move on. You get:
   - **temporal decoupling**: producer and consumer needn't be up at the same time;
   - **load levelling**: a spike of 10,000 orders queues up, and consumers work through it at their own pace;
@@ -1293,11 +1604,17 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - projections are eventually consistent.
 
   Tools: Marten (on PostgreSQL), EventStoreDB/KurrentDB, Cosmos DB change feed. Use it where history *is* the product (ledgers, compliance), not as a default.
+:::
 
 ### 8.2 · Resilience
 
 [Full chapter →](ch:resilience)
 
+:::plain
+Anything over a network sometimes fails, usually only briefly. Retrying after a short, growing pause fixes most of these failures. A circuit breaker stops calling a service that keeps failing, giving it time to recover. Timeouts stop requests waiting forever. Retry in one place only, or retries multiply and make things worse.
+:::
+
+:::more In depth: the detailed summary
 - **Failure is normal in the cloud**: deployments restart instances, networks blip, databases fail over, dependencies throttle you (429) and noisy neighbours add latency. The goal is to turn a 2-second blip into a degraded experience, not an outage. **Match the response to the fault type**:
   - **transient** (timeouts, resets, 503, 429, 408, deadlock victims, SQL failover): **retry** with backoff;
   - **prolonged** (a dependency down for minutes): **stop calling** (circuit breaker), fall back and degrade;
@@ -1342,11 +1659,17 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Timeouts and idempotency everywhere**.
 - **Liveness vs readiness.** **Liveness** asks "is the process stuck?" and failing it **restarts** the instance. **Readiness** asks "can it serve traffic now (dependencies reachable, warm-up done)?" and failing it **removes the instance from the load balancer** without restarting it. Tag checks (`"live"` and `"ready"`) and map `/health/live` and `/health/ready` with predicates. **Never put dependencies in liveness**: if the database blips, the orchestrator restarts *every* instance and a hiccup becomes a full outage.
 - **Chaos engineering** proves the strategies work before an outage does. **Polly chaos strategies** (v8.3+: `AddChaosLatency`, `AddChaosFault`, `AddChaosOutcome`, `AddChaosBehavior`) are switched on by configuration in test environments. **Azure Chaos Studio** injects platform faults (VM shutdown, network latency, AKS pod chaos). **Game days** are planned exercises to watch alerts and recovery.
+:::
 
 ### 8.3 · Observability and .NET Aspire
 
 [Full chapter →](ch:observability-aspire)
 
+:::plain
+Observability is seeing what a running system is doing. Metrics are numbers over time that show something is wrong. Traces follow one request across every service and show where the time went. Logs explain why. OpenTelemetry is the standard way .NET produces all three, and Aspire shows them locally in one dashboard.
+:::
+
+:::more In depth: the detailed summary
 - **Monitoring vs observability.** Monitoring answers questions you **knew to ask in advance** (CPU above 80%? error rate above 1%?) and drives dashboards and alerts. Observability lets you answer **new** questions from the data the system already emits, without shipping code ("why is checkout slow for mobile users in Germany since 14:05?"). When one click touches 8 services, nobody can pre-build a dashboard for every incident question, so you need both.
 - **Three signals, correlated.**
   - **Logs**: detailed, structured, discrete events. They tell you *what happened*.
@@ -1399,6 +1722,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   5. The service's runtime metrics show GC, thread pool, CPU and pool state.
   6. **Mitigate first** (roll back, scale, fail over, flip a feature flag), then find the root cause and hold a blameless post-mortem.
   7. Add the signal or alert you wished you'd had.
+:::
 
 ## Part IX · Microservices
 
@@ -1406,17 +1730,28 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 
 [Full chapter →](ch:ms-boundaries)
 
+:::plain
+The first decision in splitting into services is where to cut. Good boundaries follow business capabilities, so most changes stay inside one service owned by one team. Cutting per database table instead makes every feature span several services. Extract one capability at a time, starting with something simple and well understood.
+:::
+
+:::more In depth: the detailed summary
 - **A good boundary keeps changes on one side.** Things that change together belong in one service: high cohesion. Things on either side should know little about each other: loose coupling. Test candidates against last quarter's real changes.
 - **Name the coupling.** Deployment (released together), domain (knowing another's rules), temporal (needing another to be up), data (reading another's tables) and contract (breaking on another's schema). A split pays off only if it removes more deployment, domain and data coupling than the temporal coupling the network adds.
 - **Find boundaries from the business:** capabilities (take payments, ship parcels), refined by bounded contexts where words change meaning, and explored with **event storming**. Check that one team can own it, it owns its data, most changes stay inside, it tolerates neighbours being down, and it scales differently.
 - **Anti-patterns:** entity services (CRUD per table), shared databases, chatty synchronous chains (availability multiplies down), technical-layer services, shared libraries holding business rules, and splitting before the domain is understood. Together they make a **distributed monolith**.
 - **Conway's law:** systems mirror team communication. Give each service one owning team, design teams alongside boundaries, and have a platform team supply the shared plumbing.
 - **Extract, don't rewrite.** Make the module clean inside the monolith first, then use branch by abstraction behind a feature flag, move and sync the data, make the new service the only writer, shift traffic gradually and delete the old path. At the edge, a gateway implements the **strangler fig**. Start with a valuable, peripheral capability, not the core.
+:::
 
 ### 9.2 · Communication between services
 
 [Full chapter →](ch:ms-communication)
 
+:::plain
+Once code is split into services, method calls become network calls that can be slow or fail. Clients go through one gateway. Use a direct call when you need the answer right now, and a message otherwise, so one service being down doesn't stop the others. Change contracts between services only in compatible ways.
+:::
+
+:::more In depth: the detailed summary
 - **A network call can be slow, fail, or succeed without you knowing.** After a timeout the outcome is unknown, so calls that change state need idempotency keys.
 - **Sync or async?** Synchronous only when the caller needs the answer to respond, typically queries. Commands and notifications go through messages, which decouple availability: four services at 99.9% in one synchronous chain give about 99.6%.
 - **REST or gRPC?** gRPC has `.proto` contracts with generated clients, binary payloads over HTTP/2, streaming and built-in deadlines, and evolves safely by adding fields with new numbers. REST/JSON is universal and easy to debug. A common split is gRPC inside, REST at the edge.
@@ -1424,11 +1759,17 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Gateway:** one front door for routing, TLS, token checks, rate limits and CORS, hiding the internal layout. **YARP** builds one as an ASP.NET Core app; API Management is the managed option. A **BFF** is a gateway shaped for one client and owned by its team.
 - **Discovery:** platform DNS on Kubernetes and Container Apps, `Microsoft.Extensions.ServiceDiscovery` with logical names, wired by Aspire.
 - **Contracts:** only backward-compatible changes (add optional fields, endpoints and message types); run v1 and v2 side by side for breaking ones; tolerant readers. **Consumer-driven contract tests** (Pact) prove compatibility in the provider's build.
+:::
 
 ### 9.3 · Data across services
 
 [Full chapter →](ch:ms-data)
 
+:::plain
+Each service owns its own database, so there are no joins or transactions across services. Pages that need data from several services read from a combined read model kept up to date by events. Processes that span services become sagas: a chain of steps with undo steps if something later fails.
+:::
+
+:::more In depth: the detailed summary
 - **Each service owns its data.** Others use its API or events, never its tables. A shared schema is an unowned contract that breaks independent change. Separate databases can still share a server.
 - **No distributed transactions:** two-phase commit holds locks across participants, couples availability and isn't supported by most brokers and cloud databases. Use local transactions, the outbox, idempotent consumers and sagas instead.
 - **Reading across services:** **API composition** (parallel, batched calls; fresh but needs every service up) or **read models** built from events (fast and resilient, slightly stale, rebuildable, version-aware against out-of-order events).
@@ -1437,11 +1778,17 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Sagas:** decide orchestration vs choreography, give every state a timeout, put irreversible steps last, and show honest intermediate states.
 - **Reporting:** stream events or CDC into an analytics store; never let reports query service databases.
 - **UX for eventual consistency:** honest states, read-your-own-writes from responses, push updates when they land, and idempotent actions.
+:::
 
 ### 9.4 · Running microservices
 
 [Full chapter →](ch:ms-operations)
 
+:::plain
+Running many services means doing everything per service: separate pipelines, tracing that follows requests across all of them, services proving their identity to each other, and tests on the contracts between them. A shared template, or "paved road", gives every team these basics for free.
+:::
+
+:::more In depth: the detailed summary
 - **Independent deployability is the test.** Every service gets its own pipeline triggered by its own changes (monorepo with path filters, or polyrepo). Images are tagged by commit SHA. Shared packages hold contract types only. Release the provider first, then consumers, then remove old paths.
 - **Observability across services:** OpenTelemetry propagates one trace ID through HTTP, gRPC and message headers, alongside structured logs with service name and version, a baseline RED dashboard per service plus queue and dead-letter metrics, and alerts on user-facing symptoms.
 - **Zero trust between services:** each service has its own identity and calls with client-credentials tokens checked for roles. Pass the user's identity on with token exchange where it matters. A mesh can add mTLS. Least privilege per service.
@@ -1449,6 +1796,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Platform team and paved road:** a service template, shared pipelines, self-service infrastructure through IaC, and ServiceDefaults.
 - **Sidecars:** a **service mesh** gives mTLS, retries, traffic splitting and telemetry without code changes, at an operational cost. **Dapr** offers portable building blocks (pub/sub, state, invocation, workflows). Libraries suit .NET-only systems. One owner per concern.
 - **.NET Aspire** describes the system in an AppHost (`AddProject`, `WithReference`), runs it all locally with a dashboard, and can generate deployment assets. Study **eShop** as a reference.
+:::
 
 ## Part X · Hosting in Production
 
@@ -1458,46 +1806,75 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
 
 [Full chapter →](ch:request-journey)
 
+:::plain
+Between a customer and your code sit several hops: DNS finds the server's address, an encrypted HTTPS connection is set up, and a CDN, load balancer and reverse proxy pass the request along to your app. Each hop can fail or change the request. Knowing them lets you work out which one caused an error such as 502, 503 or 504.
+:::
+
+:::more In depth: the detailed summary
 - **A request crosses several hops**, each of which can fail, add latency or change it: DNS turns the name into an address, TCP and TLS set up a private verified connection, a CDN or WAF may answer from the edge, a load balancer picks a healthy instance, a reverse proxy forwards to Kestrel, and only then does your middleware run.
 - **TLS is usually ended before your app**, so Kestrel sees plain HTTP from the proxy's IP. The proxy passes the originals in `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host`, and **`UseForwardedHeaders` must run first**, trusting only known proxies (`KnownProxies`/`KnownNetworks`, `ForwardLimit`). Get it wrong and every user has the same IP (breaking rate limits), HTTPS redirects loop, and generated links say `http://`. Trusting any sender lets attackers forge their IP.
 - **Timeouts stack**: each layer's timeout must be shorter than the one in front of it, so the innermost gives up first with a clear error instead of the proxy returning a vague 504 while work continues behind it.
 - **Reading errors by hop**: **502** means the proxy got a bad or no response (app crashed, wrong port, closed keep-alive connection); **503** means nothing healthy to send to (all instances failing readiness, overloaded); **504** means the upstream didn't answer in time. Correlate with the request ID that the proxy and the app both log.
+:::
 
 ### 10.2 · nginx in front of ASP.NET Core
 
 [Full chapter →](ch:reverse-proxy-nginx)
 
+:::plain
+nginx is a web server often placed in front of ASP.NET Core apps on Linux. It handles HTTPS certificates, size limits, compression and spreading load, and forwards each request to your app, which listens only on the local machine. The app must be told to trust nginx's information about the original visitor.
+:::
+
+:::more In depth: the detailed summary
 - **nginx does the jobs Kestrel shouldn't do alone on the internet**: TLS with certificates, HTTP-to-HTTPS redirects, buffering slow clients, request size limits, compression, static files, rate limiting and load balancing, with Kestrel bound to `127.0.0.1` so only nginx can reach it.
 - **Config is nested blocks**: `http` → `upstream` (the Kestrel instances, with `keepalive` connections that need `proxy_http_version 1.1` and an empty `Connection` header) → `server` (one per site and port, plus a default server that returns 444 to stray hostnames) → `location` (per path, with `proxy_pass` and `proxy_set_header` for the forwarded headers).
 - **The inheritance trap**: `proxy_set_header` and `add_header` in a `location` *replace* all those from the level above, rather than adding to them, so a location that sets one header silently loses the rest.
 - **Limits must agree**: nginx's `client_max_body_size` defaults to **1 MB** and Kestrel's body limit to ~28.6 MB, so uploads fail at the proxy with 413 first. **WebSockets** (SignalR, Blazor Server) need the `Upgrade`/`Connection` headers mapped and a long `proxy_read_timeout`.
 - **Change safely**: `nginx -t` then `reload`, which starts new workers with the new config while old ones finish their requests; `restart` drops connections. Logs should include `$request_time`, `$upstream_response_time` and a request ID.
+:::
 
 ### 10.3 · Caddy, Traefik, YARP, IIS and managed front doors
 
 [Full chapter →](ch:other-proxies)
 
+:::plain
+Other tools do the same job as nginx. Caddy sets up HTTPS certificates automatically. Traefik configures itself from your containers. YARP lets you build the proxy in C#. IIS is the Windows option. In the cloud, managed services usually play this role. Pick by where and how your app runs.
+:::
+
+:::more In depth: the detailed summary
 - **Caddy** gets and renews certificates automatically and proxies with a three-line config: the least to run on a small server.
 - **Traefik** reads routes from Docker labels or Kubernetes objects, so containers that come and go are routed without editing config; the Docker socket it reads is root-equivalent, so protect it.
 - **YARP** is a reverse-proxy *library* for ASP.NET Core: routing, active health checks, load balancing and transforms (such as a BFF swapping a cookie for a bearer token) written in C#, with the whole middleware toolbox. You own and deploy it like any app.
 - **IIS** hosts ASP.NET Core through the **ASP.NET Core Module**: in-process by default (inside `w3wp.exe`, no Kestrel, fastest) or out-of-process (IIS proxies to Kestrel). Install the Hosting Bundle, use a "No Managed Code" app pool, deploy with `app_offline.htm`, and read startup failures (500.30, 502.5) in the Event Log.
 - **Managed front doors** (Front Door, Application Gateway, App Service, Container Apps ingress, AWS ALB, Cloudflare, Kubernetes ingress) do the proxy's job on a platform. Two rules: **lock the origin** so it only accepts traffic from the front door, and configure forwarded headers for the exact number of proxies in front.
+:::
 
 ### 10.4 · Deploying to a Linux server, end to end
 
 [Full chapter →](ch:linux-deploy)
 
+:::plain
+Deploying to a Linux server means: lock the server down, copy the published app to it, run it as a service that restarts if it crashes, put nginx in front with a free HTTPS certificate, and deploy new versions by starting them alongside the old one, then switching over. Back up the database every night to somewhere else.
+:::
+
+:::more In depth: the detailed summary
 - **Harden first**: SSH keys only, no root login, a firewall allowing 22/80/443, automatic security updates, a dedicated service user, UTC and time sync.
 - **Publish** framework-dependent (small; `apt` patches the runtime for all apps) or **self-contained** (carries its runtime; nothing to install; patched by redeploying). Build once and deploy the same artifact everywhere.
 - **systemd runs the app**: `Type=notify` with `AddSystemd()` so it's marked active only when started, `Restart=always`, a dedicated `User`, secrets from a root-owned `EnvironmentFile`, sandboxing (`ProtectSystem=strict`, `PrivateTmp`, `NoNewPrivileges`), and **`TimeoutStopSec` longer than `HostOptions.ShutdownTimeout`** so graceful shutdown isn't cut off. Logs go to journald (`journalctl -u`).
 - **Certificates**: certbot proves domain control through an HTTP challenge on port 80, renews from a timer, and needs a deploy hook to reload nginx, or the new certificate never gets used.
 - **Zero-downtime deploys**: run two instances (blue/green) on two localhost ports; start the new one, wait for its readiness check, switch nginx's upstream and reload, let the old one drain, then stop it. Rollback is switching back. Migrations must be **expand/contract** so old and new code share the database safely.
 - **State that must survive**: Data Protection keys (otherwise every deploy logs everyone out), uploads, and the database, backed up off the server nightly, with an alert if a backup doesn't run and a restore tested regularly. One server is a single point of failure: know your RTO and script the rebuild.
+:::
 
 ### 10.5 · Docker and containers
 
 [Full chapter →](ch:docker)
 
+:::plain
+A container image packages your app with everything it needs, so it runs the same on a laptop and in production. Images are built in layers from a Dockerfile, usually in two stages: build with the full SDK, then copy just the output into a small runtime image. The same image then runs on any platform that supports containers.
+:::
+
+:::more In depth: the detailed summary
 - **A container is an isolated process that shares the host's kernel.** **Namespaces** give it its own filesystem, network and process view, and **cgroups** cap its CPU and memory. Because there's no guest OS or kernel, it's MBs not GBs, starts in seconds or less, and packs hundreds to a host. The same fact explains the weakness: isolation is good but **weaker than a VM's**, since a kernel exploit crosses containers. Why containers won: **one immutable image** runs identically on a laptop, in CI and in prod. Dependencies are explicit, rollback means redeploying the previous tag, and every platform accepts the image, which becomes the contract between dev and ops.
 - **Image, layer, container, registry.**
   - An **image** is a read-only stack of **layers** (filesystem diffs, one per `FROM`/`COPY`/`RUN`, **cached** and shared between images) plus metadata: entrypoint, env, ports, user.
@@ -1534,28 +1911,40 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - With a memory limit, the **GC heap hard limit defaults to 75%** of the container limit (`DOTNET_GCHeapHardLimitPercent`). The rest is left for native memory, thread stacks and the runtime.
   - **Server GC** is the ASP.NET Core default, and it used to make one heap per core and be memory-hungry in small containers. **.NET 9+ enables DATAS** (Dynamic Adaptation To Application Sizes), which grows and shrinks the heap count with load.
   - Set realistic Kubernetes **requests and limits**: too low gives **OOMKilled** restarts. `DOTNET_PROCESSOR_COUNT` overrides the detected CPU count.
-
+:::
 
 ### 10.6 · Containers in production on one host
 
 [Full chapter →](ch:containers-single-host)
 
+:::plain
+Docker Compose describes a whole app (proxy, API, worker, database) in one file, so one command starts or updates everything. In production you add health checks, restart rules, storage that survives updates, secrets passed as files, and resource limits. Deploying means changing the image version; rolling back means changing it back.
+:::
+
+:::more In depth: the detailed summary
 - **The server runs only Docker**; the whole stack (proxy, API, worker, database) is described in a `compose.yaml` in git, identical on staging and production, so environments stop drifting.
 - **Production compose adds what local compose skips**: images by version tag from a registry (never `build:` or `:latest`), health checks with `depends_on: condition: service_healthy`, `restart: unless-stopped`, named volumes for data, certificates and Data Protection keys, secrets mounted as files (read with `AddKeyPerFile`), resource limits, log rotation, and a `stop_grace_period` longer than the 10-second default.
 - **Only the proxy publishes ports.** Docker's published ports bypass `ufw` on many setups, so a published database port can be open to the internet.
 - **Deploy** by pulling the new tag, running migrations as a one-off container, and `docker compose up -d --wait`; roll back by redeploying the previous tag. Compose recreates rather than rolls, so there's a brief gap unless you run two copies or use a platform with rolling updates.
 - **Outgrow it** when you need failover, rolling updates or scaling across machines: the same images then run on Container Apps or Kubernetes.
+:::
 
 ### 10.7 · Production configuration and choosing where to host
 
 [Full chapter →](ch:prod-config)
 
+:::plain
+Production needs settings that don't matter on a laptop. Check configuration at startup, limit request sizes and times, give the platform separate health checks for "restart me" and "send me traffic", and let shutdowns finish cleanly. Then choose hosting by how much server management you want to do yourself.
+:::
+
+:::more In depth: the detailed summary
 - **Fail fast at startup**: `ValidateOnStart` for options and `ValidateOnBuild`/`ValidateScopes` for DI, so a misconfigured release fails its deploy instead of its first real request.
 - **Bound everything**: Kestrel body, header and timeout limits; the request-timeouts middleware (which only works if cancellation tokens are passed down); timeouts and resilience on every outgoing call.
 - **Health checks have three jobs**: **liveness** (restart me; no dependencies in it, or a database blip restarts every instance), **readiness** (send me traffic; checks what requests need), **startup** (still booting).
 - **Shutdown timeouts must nest**: app < supervisor (systemd, Docker's 10 s default) < platform; in Kubernetes add a `preStop` delay because endpoint removal and SIGTERM happen in parallel.
 - **Runtime**: Server GC with **DATAS** by default from .NET 9; memory limits set; thread-pool starvation (high latency, low CPU) comes from blocking on async; UTC everywhere, and chiseled images lack ICU and tzdata unless you use the `-extra` variants; connection pools sized to the database's limit; readiness gated on warm-up.
 - **Where to host** is a trade of money and control against operational work: one VM, VM plus Compose, App Service, Container Apps, Kubernetes or serverless. Choose the least operations that meets real needs, and move when a real need appears. The chapter ends with a go-live checklist.
+:::
 
 ## Part XI · Cloud and DevOps
 
@@ -1563,6 +1952,11 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
 
 [Full chapter →](ch:cloud-azure-overview)
 
+:::plain
+The cloud means renting servers, databases and other services from a provider like Azure instead of running your own. The more the provider manages, the less work for you. To handle more traffic you add more copies of your app behind a load balancer, which only works if no copy keeps important data only in its own memory.
+:::
+
+:::more In depth: the detailed summary
 - **What "cloud" means**: renting compute, storage, databases and managed services **on demand, paying for what you use**. NIST names five characteristics: self-service (a database in minutes from code), broad network access, multi-tenant **resource pooling**, **rapid elasticity** and **measured service**.
 - **Service models are a line of responsibility.** Read the stack from the top down (application, data, runtime, OS, virtualisation, hardware) and see where your job ends:
   - **IaaS** (VMs): you own the OS and everything above it, including patching.
@@ -1627,11 +2021,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - **Cost Optimization**: right-sizing, autoscale, reservations, tiering, tags.
   - **Operational Excellence**: IaC, CI/CD, observability, runbooks, safe deployments (slots, canaries).
   - **Performance Efficiency**: scale-out, caching, CDN, async processing, partitioning, load tests.
+:::
 
 ### 11.2 · Azure compute: App Service, Functions, Container Apps, AKS
 
 [Full chapter →](ch:azure-compute)
 
+:::plain
+Azure offers several places to run code, from virtual machines you manage completely, through Kubernetes and Container Apps, to App Service and Functions where Azure manages almost everything. Each step towards "managed" means less control and much less operations work. Most teams should start with the most managed option that fits.
+:::
+
+:::more In depth: the detailed summary
 - **It's one spectrum: control versus operations work.** VMs (any software, you patch everything) → **AKS** (full Kubernetes; high ops) → **Container Apps** (serverless containers on managed K8s + KEDA + Envoy; low-medium) → **App Service** (classic managed web hosting; low) → **Functions** (event-driven code; lowest). Choose by how much operational burden you want, not by which sounds most powerful.
 - **App Service.** It hosts web apps, APIs and WebJobs from code or a container, on Windows or Linux. An **App Service plan** is the shared compute (VM size × instance count) that one or more apps run on, and its tier sets the features. Free and Shared are dev only; **Basic** has no slots or autoscale; **Standard and Premium v3** add autoscale, **slots**, VNet integration and (Premium) zone redundancy; **Isolated v2** (an App Service Environment) is single-tenant and network-isolated.
 - **Deployment slots.** A slot is a **live app with its own hostname** (`kettle-api-staging.azurewebsites.net`) on the same plan. Deploy to `staging`, **warm it up** and smoke-test, then **swap**: production traffic moves to already-warm instances, so there are no cold-start errors. Rollback is swapping back. Mark settings **slot-specific ("sticky")**, like a staging connection string, so they stay with the slot and don't travel in the swap.
@@ -1678,11 +2078,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - **Container Apps vs AKS**: hidden Kubernetes (no cluster upgrades, no K8s API) vs the full API with full responsibility.
   - **Functions vs Container Apps**: a trigger/binding programming model with per-execution billing vs any container with KEDA scaling.
   - **Consumption vs Premium**: scale to zero with cold starts and time limits vs pre-warmed instances, VNet and always paying for the minimum.
+:::
 
 ### 11.3 · Azure data and messaging services
 
 [Full chapter →](ch:azure-data-messaging)
 
+:::plain
+Azure has managed versions of every data service: SQL databases, document databases, file storage and Redis. It has three messaging services for different jobs: Service Bus for important business messages, Event Grid for short "something happened" notices, and Event Hubs for huge streams of data such as clicks.
+:::
+
+:::more In depth: the detailed summary
 - **These are managed versions of things covered earlier.** What changes in Azure is operations: HA, backups, scaling, identity and networking are configuration you set, not work you do yourself.
 - **Azure SQL deployment options.**
   - **Single database**: the default.
@@ -1747,11 +2153,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - They're async throughout, with `CancellationToken`, and page with `AsyncPageable<T>` (`await foreach`).
 
   Aspire integrations (`AddAzureServiceBusClient("bus")`) wire all of this up with health checks.
+:::
 
 ### 11.4 · Azure identity and secrets
 
 [Full chapter →](ch:azure-identity-secrets)
 
+:::plain
+Passwords in configuration end up leaked. A managed identity lets Azure vouch for your app, so it gets short-lived tokens instead of using a password. Role-based access control then gives that identity only the access it needs. `DefaultAzureCredential` makes the same code work on your laptop and in Azure.
+:::
+
+:::more In depth: the detailed summary
 - **The order of preference.** Secrets leak: they get committed, logged, pasted in chat and rarely rotated.
   1. **No secret at all**: the app authenticates **as an identity** that Entra issues (a managed identity), and access is granted by RBAC.
   2. If a secret is unavoidable (a third-party API key), put it in **Key Vault**, read it via managed identity and rotate it.
@@ -1792,11 +2204,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   4. The API validates issuer and audience with `AddMicrosoftIdentityWebApi`, and a policy accepts **either** `scp` contains `orders.read` **or** the role `Orders.Reader`.
 
   To call another API **as the service**, use client credentials via managed identity: `GetTokenAsync(new(["api://inventory-api/.default"]))`. `.default` means "all application permissions granted to me".
+:::
 
 ### 11.5 · CI/CD and infrastructure as code
 
 [Full chapter →](ch:cicd-iac)
 
+:::plain
+CI builds and tests every change automatically; CD releases changes through test environments to production. Build the deployable once and promote that same artifact everywhere. Release gradually to a small share of users first. Describe infrastructure in code (Bicep or Terraform) so it's reviewed and repeatable like application code.
+:::
+
+:::more In depth: the detailed summary
 - **CI, continuous delivery, continuous deployment.**
   - **Continuous integration**: merge to main at least daily, and every push builds and tests; a broken build is fixed immediately.
   - **Continuous delivery**: every passing change *is releasable*, but going to production is a **business decision** (an approval).
@@ -1837,11 +2255,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - **Terraform**: multi-cloud plus SaaS providers, HCL, and a **state file** you must store remotely with locking (an Azure Storage backend). `plan` then `apply`; there's some provider lag, which AzAPI bridges.
   - **Pulumi**: IaC in **C#** or another general-purpose language.
 - **azd and GitOps.** **azd** ties templates, IaC and deploy together: `azd up` provisions and deploys, and `azd pipeline config` generates CI with federated credentials. For Aspire, it **generates the infrastructure from the AppHost model**. **GitOps** (Argo CD, Flux) makes a Git repo the source of truth for cluster state. CI only bumps the image tag in the config repo; an in-cluster agent **pulls** and reconciles, which gives drift correction, an audit trail and rollback by `git revert`.
+:::
 
 ### 11.6 · Kubernetes
 
 [Full chapter →](ch:kubernetes)
 
+:::plain
+Kubernetes runs containers across a group of machines. You declare what you want, such as three copies of this image, and it keeps reality matching: if a copy dies, it starts another. A Service gives the copies one stable address. Health checks tell it when to send traffic to a copy and when to restart it.
+:::
+
+:::more In depth: the detailed summary
 - **Desired state plus reconciliation.** You declare "3 replicas of kettle-api:1.4.2, 0.5 CPU each, reachable at orders.kettle.com", and **controllers** loop forever (observe → compare with desired → act) to make it true. That loop handles:
   - **scheduling** onto nodes with capacity;
   - **self-healing**: restart crashed containers, replace pods on dead nodes, kill pods failing liveness;
@@ -1904,6 +2328,7 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - **Observability**: Container Insights, managed Prometheus/Grafana.
   - **Security**: Defender for Containers, Azure Policy for Kubernetes.
   - **Mesh**: an Istio-based mesh add-on.
+:::
 
 ## Part XII · Performance and Internals
 
@@ -1911,6 +2336,11 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
 
 [Full chapter →](ch:memory-gc)
 
+:::plain
+In .NET you don't free memory yourself; the garbage collector removes objects your code can no longer reach. It sorts objects into generations, because most die young and checking young objects is cheap. A memory leak in .NET is something you no longer need that's still referenced, like a list that only grows.
+:::
+
+:::more In depth: the detailed summary
 - **Why a GC.** In C and C++ you free memory by hand, which gives you **leaks**, **use-after-free** (a security hole) and **double free** (memory corruption). The .NET GC frees an object once it can **prove nothing can reach it**, so the last two bug classes essentially disappear. The price is CPU time and **pauses**. The thread running through all .NET performance work: **allocation rate drives GC frequency, and GC frequency drives latency**. Tuning usually means allocating less, not making the GC faster.
 - **Stack vs managed heap.**
   - The **stack** belongs to one thread (about 1 MB on Windows, 8 MB for Linux's main thread) and holds method frames: locals, parameters, return addresses. It's freed the instant the method returns. Overflowing it gives `StackOverflowException`, which **you can't catch**; the process dies.
@@ -1986,11 +2416,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - `FrozenDictionary` and `ObjectPool<T>`.
 
   Most business code is I/O-bound, so **measure first**. And **don't call `GC.Collect()`** in production: it promotes objects before they've earned it, wastes CPU and pauses at a moment you didn't choose. The only legitimate uses are tests, benchmarks and after a one-off huge batch cleanup.
+:::
 
 ### 12.2 · Threading and concurrency
 
 [Full chapter →](ch:threading-concurrency)
 
+:::plain
+Servers run many requests at once on different threads. When two threads change the same data at the same moment, updates can be lost without any error: a race condition. Fix it with operations that can't be interrupted, or with locks, taken in a consistent order to avoid deadlocks.
+:::
+
+:::more In depth: the detailed summary
 - **Three different words.**
   - **Concurrency**: several things *in progress* at once, possibly interleaved.
   - **Parallelism**: several things *executing at the same instant* on different cores, to speed up CPU work (`Parallel`, PLINQ).
@@ -2053,11 +2489,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - `lock` sections short, with no awaits or external calls;
   - background work bounded;
   - cross-instance coordination through distributed locks or the database, never a C# `lock`.
+:::
 
 ### 12.3 · Performance engineering
 
 [Full chapter →](ch:performance-engineering)
 
+:::plain
+Measure before optimising: profilers and traces show where time really goes, and it's usually the database or a network call, not your loops. Fix the biggest cost first. Look at the slowest requests (percentiles), not the average, because averages hide the users who wait longest.
+:::
+
+:::more In depth: the detailed summary
 - **Measure, don't guess.**
   1. Set a concrete goal: "p95 of GET /products < 150 ms **at 500 RPS**", not "faster".
   2. Measure a baseline in a production-like environment with production-like data.
@@ -2126,6 +2568,7 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - **load tests in the pipeline** with pass/fail criteria;
   - **canaries** with automated latency comparison;
   - review checklists: async all the way, no N+1, projections, timeouts, pagination limits, no per-request large allocations.
+:::
 
 ## Part XIII · Security
 
@@ -2133,6 +2576,11 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
 
 [Full chapter →](ch:web-security)
 
+:::plain
+Attackers change URLs, edit requests and send odd input. The most common serious bug is not checking that the record being accessed belongs to the caller. Others include SQL injection (prevented by parameters), cross-site scripting (prevented by encoding output) and cross-site request forgery (prevented by tokens and cookie settings). Never trust input.
+:::
+
+:::more In depth: the detailed summary
 - **Principles.** Security is principles you've already met, now organised around attacks.
   - **Defence in depth**: independent layers (WAF + authentication + authorization + parameterised SQL + a least-privileged DB user + encryption), so one failure isn't fatal.
   - **Least privilege**: `db_datareader`/`db_datawriter`, never `db_owner`; data roles scoped to one container.
@@ -2215,11 +2663,17 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - OIDC instead of stored CI secrets, SHA-pinned actions, secret scanning.
   - Unsafe deserializers: no `BinaryFormatter`, and **no Newtonsoft `TypeNameHandling.All`**, which lets the payload pick which type to instantiate (gadget chains → remote code execution). XML with DTDs disabled (XXE; .NET's defaults are safe).
 - **Security logging.** Log authentication failures, access denials, privilege changes and rate-limit hits with user and correlation IDs, and alert on spikes. **Never log** passwords, tokens, keys, card numbers or sensitive personal data; use `Microsoft.Extensions.Compliance.Redaction`. Protect the log store with RBAC and retention. **Defender for Cloud** handles posture management and threat detection.
+:::
 
 ### 13.2 · OAuth 2.0, OpenID Connect and identity
 
 [Full chapter →](ch:oauth-oidc-identity)
 
+:::plain
+Instead of storing passwords, let an identity provider handle sign-in. With OpenID Connect, your app sends the user to the provider, gets back a one-time code, and swaps it for tokens. The API checks every access token before trusting it. In browser apps, keeping tokens on the server and giving the browser only a cookie is safest.
+:::
+
+:::more In depth: the detailed summary
 - **What OAuth solves.** Before OAuth, a printing app wanting your photos asked for your **photo-site password**: full access, forever, revocable only by changing the password. **OAuth 2.0** is **delegated authorization**: the app gets a **limited (scoped), revocable token** to act on your behalf **without seeing your password**. **OIDC** adds **authentication** on top: an **ID token** saying *who* signed in. **OAuth alone is not a login protocol.** An access token says "the bearer may call this API", and using it as proof of identity enables **token substitution**: a token issued to a *different* app for the same user would "log you in". You always use OIDC and OAuth together.
 - **Roles and client types.** There's the **resource owner** (the user), the **client** (an SPA, a web app, a worker), the **authorization server** or IdP (Entra ID, Auth0, Okta, Keycloak, Duende), and the **resource server** (your API). **Confidential clients** (server-side apps, workers) can keep a secret, certificate or federated credential. **Public clients** (SPAs, mobile, desktop) can't, because anyone can extract a secret from JavaScript or a binary, so they rely on **PKCE**.
 - **Three tokens, three jobs.**
@@ -2287,6 +2741,7 @@ This part is layer 7 in practice: how a request reaches your app, the proxy in f
   - checking only scopes → add resource-based authorization;
   - **hand-rolled HS256 JWTs with a shared key**, where *any service holding the key can mint tokens* → asymmetric keys at a real IdP;
   - sensitive data in claims (readable by anyone holding the token) → minimal claims, details looked up server-side.
+:::
 
 ## Part XIV · Building Real Projects
 
@@ -2296,51 +2751,81 @@ Every earlier part taught a technology. This part is the practice of putting the
 
 [Full chapter →](ch:project-foundations)
 
+:::plain
+Before building features, set up the project so good habits are automatic: shared build settings, every package version in one place, warnings treated as errors, a consistent code style checked by the build, and CI on every change. Then deploy a tiny end-to-end version to production first, so deployment problems surface early.
+:::
+
+:::more In depth: the detailed summary
 - **Conventions are cheap at the start and expensive to retrofit**, so set them before the first feature.
 - **Shared settings live in one place**: `Directory.Build.props` (target framework, nullable, analyzers, warnings as errors, deterministic builds, lock files), `Directory.Packages.props` (central package management: every version once, enforced by `NU1008`), `.editorconfig` (style), `global.json` (SDK).
 - **Make the build the referee**: `TreatWarningsAsErrors` keeps the warning count at zero; `AnalysisLevel` turns on the analyzers; `EnforceCodeStyleInBuild` runs style rules in CI. Gotchas: the `:warning` suffix is editor-only (use `dotnet_diagnostic.IDExxxx.severity`), IDE0005 needs `GenerateDocumentationFile`, and naming rules also match constants. Break each gate on purpose once to prove it works.
 - **A walking skeleton first**: one thin slice through every layer, deployed by the real pipeline with health checks and telemetry, so the hard integration problems surface on day three, not launch week.
 - **CI is the definition of "it works"**: locked restore, format check, build, tests, a vulnerable-package check, publish once; least-privilege tokens, timeouts, cancellation of stale runs; branch protection on `main`.
 - **Decision records** keep the *why* for expensive-to-reverse choices. Start as a **modular monolith** with written triggers for evolving it.
+:::
 
 ### 14.2 · Delivering large projects
 
 [Full chapter →](ch:delivering-work)
 
+:::plain
+Big projects fail when problems are found late. Build small features that go through every layer, merge them every day, and hide unfinished work behind feature flags. Do the riskiest part first. Replace live code by running new and old side by side before switching. Keep a clear definition of "done".
+:::
+
+:::more In depth: the detailed summary
 - **Big projects fail at the end**, when pieces meet for the first time, so remove "the end": slice vertically, merge daily, deploy continuously.
 - **Vertical slices** go through every layer and are demoable: happy path first, then by workflow step, rule or data variation. **Do the riskiest part first** with time-boxed spikes; estimate in ranges; track throughput; cut scope, not quality.
 - **Trunk-based development with feature flags** separates deploying from releasing. A **percentage** filter re-rolls on every evaluation, so one user flips between versions; use **targeting** for consistent per-user rollouts. Flags need owners, removal dates and tests of both states.
 - **Change live code in parallel**: branch by abstraction, shadow runs that compare old and new on real input, gradual switch-over, then delete the old path; the strangler fig does the same for whole systems; expand/contract does it for data.
 - **Definition of done** includes observable, secure, migration-safe and deployed. **Review** design and correctness before style, with labelled comments and fast turnaround. **Tech debt** is made visible with its delivery cost and paid down where you're working.
+:::
 
 ### 14.3 · Seeing it through: running what you built
 
 [Full chapter →](ch:production-ownership)
 
+:::plain
+After launch, the team runs what it built. Set reliability targets from the user's point of view, alert only when they're really threatened, and write runbooks for each alert. In an incident, restore service first and investigate later, then write a blameless review with actions that actually get done.
+:::
+
+:::more In depth: the detailed summary
 - **You build it, you run it.** A readiness review before launch asks whether the team can operate the service, not just whether it works.
 - **SLIs and SLOs** define "working" from the user's side; the **error budget** (43.2 minutes a month at 99.9%) makes reliability a shared numeric decision. **Burn-rate alerts** (14.4× over an hour = 2% of the month's budget) page for real threats and ignore blips.
 - **Alerts** are on symptoms, actionable and urgent, each linked to a **runbook** that starts with mitigation. On-call is small, regular, prepared with game days, and measured.
 - **Incidents**: declare early, one commander, **mitigate first** (rollback, flag off), communicate on a schedule, keep a timeline. **Blameless postmortems** find contributing factors and produce owned, dated actions.
 - **Versioning and deprecation**: semantic versions for things others depend on; `Deprecation` and `Sunset` headers and usage tracking before removing an API. The **DORA metrics** (deployment frequency, lead time, change failure rate, time to restore) show speed and stability improve together.
+:::
 
 ### 14.4 · Working as a staff engineer
 
 [Full chapter →](ch:staff-engineer)
 
+:::plain
+A staff engineer works across several teams, mostly through other people: writing design documents, making and recording decisions, setting technical direction, leading big migrations to the finish, and growing other engineers. Influence comes from trust and good judgement rather than authority.
+:::
+
+:::more In depth: the detailed summary
 - **The output is better decisions and stronger teams** across several teams, achieved mostly through influence, documents and other people.
 - **Design docs**: problem and goals first, explicit non-goals, honest alternatives, trade-offs, rollout and operability. Match rigour to **reversibility**: decide two-way doors fast, take care over one-way doors.
 - **Strategy** is a diagnosis, a guiding policy and a few coherent actions, and it says what you won't do. **Migrations** need a business case, a pilot, tooling that makes them easy, visible progress, and someone who finishes the long tail and turns the old system off.
 - **Influence** comes from trust, talking to people before the meeting, and framing proposals in each audience's terms; with executives, lead with the conclusion and the decision needed.
 - **Staff interviews** test scope, judgement and ownership through stories: prepare five or six, told as situation, task, action and result, focused on your reasoning.
+:::
 
 ### 14.5 · Capstone: Kettle Wholesale from zero to production
 
 [Full chapter →](ch:capstone-wholesale)
 
+:::plain
+This brings everything together on one project: understand the problem, set up foundations, deploy a skeleton, build in small slices, harden for real traffic and failures, launch gradually, then operate and improve. Start with the simplest architecture that works, and write down what would make you change it.
+:::
+
+:::more In depth: the detailed summary
 - **Seven phases with exit criteria**: discovery (real users, risks, scope line), foundations, walking skeleton, core slices, hardening (load, failure and security tests, SLOs and runbooks), gradual launch behind flags, and operating and evolving.
 - **Derive rough numbers first** (users, traffic, data size, consistency, availability): they rule out most complexity before any debate.
 - **The architecture**: a modular monolith on Container Apps with managed Postgres, Front Door, managed identity, an outbox for reliable side effects, optimistic concurrency and idempotency keys for orders, and written triggers for extracting services.
 - **Every failure mode maps to a phase** that prevents it, and the self-test checks you could run such a project yourself.
+:::
 
 ## Part XV · Interview Preparation
 
@@ -2348,6 +2833,11 @@ Every earlier part taught a technology. This part is the practice of putting the
 
 [Full chapter →](ch:system-design)
 
+:::plain
+A system design interview asks you to design a large system in about 45 minutes. Clarify what's needed, estimate the scale, sketch the main parts, go deep on the hardest part, and explain the trade-off behind every choice. The building blocks are the ones this page has already covered.
+:::
+
+:::more In depth: the detailed summary
 - **What's being tested** is process, not a single right answer:
   1. **clarify** ambiguous requirements;
   2. structure the design from high level to detail;
@@ -2431,11 +2921,17 @@ Every earlier part taught a technology. This part is the practice of putting the
   5. Write real C# for the core.
 
   The classic **LRU cache** pairs a `Dictionary<K, LinkedListNode<(K, V)>>` with a `LinkedList`, for O(1) get and put. On a hit, move the node to the front. On insert past capacity, evict `_order.Last` and remove its key from the map. Guard the whole thing with a `Lock`, because both structures must change together, so `Interlocked` isn't enough.
+:::
 
 ### 15.2 · Study plan and resources
 
 [Full chapter →](ch:study-plan-resources)
 
+:::plain
+Reading once gives familiarity, not memory. Go deep one part at a time, explain each topic aloud from memory afterwards, and revisit it a few days later. Build a small version of Kettle yourself: the bugs you fix become the best interview stories.
+:::
+
+:::more In depth: the detailed summary
 - **How to make it stick.** Rereading tests *recognition*, but interviews test *recall*.
   - **Active recall**: close the page and explain it; answer drill questions **before** revealing them.
   - **Spaced repetition**: revisit at 1 day, 3 days, 1 week and 2 weeks, and repeat misses more often.
@@ -2504,3 +3000,5 @@ Every earlier part taught a technology. This part is the practice of putting the
   - Alex Xu's *System Design Interview*.
 
   Free: Microsoft Learn, Stephen Toub's yearly performance posts, Andrew Lock's blog, SharpLab (see the IL, JIT asm and lowered C#), the OWASP Cheat Sheets and the Azure Architecture Center.
+:::
+
