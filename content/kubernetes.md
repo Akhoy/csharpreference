@@ -29,6 +29,10 @@ Kettle deploys from a pipeline. Then, at 3 a.m., a server dies, and someone has 
 
 ## What Kubernetes does {i}
 
+:::plain
+You tell Kubernetes what should be running, and it keeps making it so: placing containers, restarting failed ones and rolling out new versions.
+:::
+
 **Kubernetes (K8s)** is an open-source system for **running containerised applications across a cluster of machines**. You **declare the desired state** ("3 replicas of kettle-api:1.4.2, each with 0.5 CPU, reachable at orders.kettle.com") and Kubernetes **continuously reconciles** reality to match — the whole system is built around that single loop, running forever in the background:
 
 - **Scheduling**: places containers on nodes with enough resources.
@@ -44,6 +48,10 @@ It gives a **standard, portable platform** for running many services with consis
 :::
 
 ## Architecture {i}
+
+:::plain
+A control plane stores the desired state and runs controllers that act on it. Worker nodes run your containers.
+:::
 
 ```text
 ┌───────────────────────── Control plane (managed for you in AKS) ─────────────────────────┐
@@ -66,6 +74,10 @@ Everything is an **API object** described in YAML (or JSON), submitted with `kub
 
 ## The core objects {i}
 
+:::plain
+Pods run containers, Deployments manage pods and their updates, Services give pods a stable address, and ConfigMaps and Secrets hold settings.
+:::
+
 | Object | What it is | .NET-app relevance |
 |---|---|---|
 | **Pod** | The smallest unit: one or more containers sharing network (localhost) and volumes; ephemeral, with its own IP | Usually one app container (+ optional sidecars) |
@@ -84,6 +96,10 @@ Everything is an **API object** described in YAML (or JSON), submitted with `kub
 | **ServiceAccount** | Pod identity for the K8s API and **workload identity** to Azure | Passwordless Azure access |
 
 ## A complete manifest for an ASP.NET Core API {i}
+
+:::plain
+One YAML file can describe a whole API deployment: how many copies, which image, how much CPU and memory, its health checks, and how to reach it.
+:::
 
 ```yaml
 apiVersion: apps/v1
@@ -226,6 +242,10 @@ spec:
 - **Progressive delivery**: Argo Rollouts / Flagger for canaries with automated metric analysis.
 
 ## Day-to-day kubectl {i}
+
+:::plain
+kubectl is the command-line tool for inspecting and changing the cluster: list pods, read logs, describe failures and roll back.
+:::
 
 ```bash
 kubectl config use-context aks-kettle-prod

@@ -29,6 +29,10 @@ Kettle's contexts are clear. Three teams still deploy one application, and they 
 
 ## Three ways to structure a system, and the real spectrum between them {b}
 
+:::plain
+A system can be one deployable, one deployable with strict modules inside, or many independently deployed services. Most systems belong somewhere in the middle.
+:::
+
 | | Monolith | Modular monolith | Microservices |
 |---|---|---|---|
 | Deployable units | One | One | Many (one per service) |
@@ -43,6 +47,10 @@ Kettle's contexts are clear. Three teams still deploy one application, and they 
 The modular monolith column, revisited from [App architectures](ch:app-architectures#the-modular-monolith-most-of-microservices-benefits-none-of-), is really the midpoint of this table — most of the boundary discipline of microservices, none of the network. A **monolith is not bad**. A *big ball of mud* is bad. Many successful products (Shopify, Stack Overflow, Basecamp) run well-structured monoliths at large scale.
 
 ## Why microservices, and what they genuinely cost {i}
+
+:::plain
+Separate services let teams deploy and scale independently. In exchange you get network failures, data spread across databases, and much more to operate.
+:::
 
 **Benefits** (when they're real):
 
@@ -73,6 +81,10 @@ A strong answer: "It depends on the problem, not the trend. Microservices solve 
 
 ## Finding service boundaries {i}
 
+:::plain
+Cut along business capabilities, where most changes stay inside one service, never along technical layers or tables.
+:::
+
 :::tip The full treatment
 This chapter decides *whether* to split. Part IX shows *how*: [boundaries](ch:ms-boundaries), [communication](ch:ms-communication), [data](ch:ms-data) and [running many services](ch:ms-operations).
 :::
@@ -90,6 +102,10 @@ Good boundaries:
 **Granularity:** start coarse. Splitting later is easier than merging chatty nano-services — a mistake in the "too big" direction is a refactor; a mistake in the "too small" direction is a rewrite of how dozens of services talk to each other.
 
 ## Data ownership: database per service {i}
+
+:::plain
+Each service owns its own data, and others reach it only through the service's API or events. A shared database ties services back together.
+:::
 
 Each service **owns its data exclusively**. Others access it **only through the service's API or events**, never by querying its tables directly.
 
@@ -113,6 +129,10 @@ How to answer queries across services, now that a join across two services' tabl
 Notice the second row is really the CQRS "separate stores" level from [CQRS & Result](ch:cqrs-mediator-result#levels-of-cqrs-a-spectrum-not-a-binary-choice), applied across a service boundary rather than within one service — the same eventual-consistency tradeoff, just at a larger scale.
 
 ## Communication: synchronous vs asynchronous {i}
+
+:::plain
+A synchronous call waits for an answer, so the caller depends on the callee being up. An asynchronous message lets the caller carry on and the receiver catch up later.
+:::
 
 | | Synchronous (HTTP/REST, gRPC) | Asynchronous (messages/events via broker) |
 |---|---|---|
@@ -172,6 +192,10 @@ Rewriting everything at once ("big bang") is notoriously risky — all the busin
 Supporting patterns: **anti-corruption layer** (translate between the old and new models, the same DDD pattern from [DDD](ch:ddd#strategic-ddd-ubiquitous-language-and-bounded-contexts)), **change data capture** (stream database changes, e.g. Debezium or SQL Server CDC), **branch by abstraction**, and **feature flags** for switching traffic.
 
 ## Anti-patterns {i}
+
+:::plain
+Most failed microservice projects share the same mistakes: services per table, shared databases, chatty call chains and splitting too early.
+:::
 
 | Anti-pattern | Symptoms |
 |---|---|

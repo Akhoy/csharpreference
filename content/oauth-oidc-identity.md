@@ -29,6 +29,10 @@ Kettle's holes are closed. It still stores passwords itself, though, and the mob
 
 ## The problem OAuth solves {i}
 
+:::plain
+OAuth lets an app act for a user with a limited, revocable token, without ever seeing the user's password. OpenID Connect adds a standard way to learn who signed in.
+:::
+
 Before OAuth, if a printing app wanted your photos from a photo site, you gave it your **photo-site password**. The app then had full access to everything, forever, and the only way to revoke it was to change your password — a crude, all-or-nothing arrangement with no way to grant anything less than complete access.
 
 **OAuth 2.0** (RFC 6749) is a framework for **delegated authorization**: an app gets a **limited, revocable token** to access specific resources **on behalf of a user** (or on its own behalf), **without ever seeing the user's password**.
@@ -41,6 +45,10 @@ An OAuth **access token** says "the bearer may call this API with these scopes".
 
 ## Roles {i}
 
+:::plain
+Four parties take part: the user, the app asking for access, the identity provider that issues tokens, and the API that accepts them.
+:::
+
 | Role | Who | Example |
 |---|---|---|
 | **Resource owner** | The user who owns the data | Ana |
@@ -52,6 +60,10 @@ An OAuth **access token** says "the bearer may call this API with these scopes".
 
 ## Tokens {i}
 
+:::plain
+An access token is for calling APIs, an ID token tells the app who signed in, and a refresh token gets new access tokens without asking the user again.
+:::
+
 | Token | For | Format | Lifetime | Notes |
 |---|---|---|---|---|
 | **Access token** | The **API** (resource server) | Often a **JWT**; can be opaque | Short: 5–60 min | Contains `aud` (which API), `scp`/`roles`, `sub`, `exp`. Sent as `Authorization: Bearer …` |
@@ -60,6 +72,10 @@ An OAuth **access token** says "the bearer may call this API with these scopes".
 | Authorization code | The token endpoint (one-time) | Opaque | ~1–10 min, single use | Intermediate artefact in the code flow |
 
 ## Authorization code flow with PKCE, step by step {i}
+
+:::plain
+The app sends the user to the identity provider, gets back a one-time code, and swaps it, together with a secret only it knows, for tokens.
+:::
 
 The **recommended flow for any app with a user**: web apps, SPAs (via a BFF ideally), mobile and desktop. **PKCE** (Proof Key for Code Exchange, RFC 7636) is now required for all clients in OAuth 2.1 and current best practice.
 
@@ -118,6 +134,10 @@ Notice this registers **both** a cookie scheme and an OIDC scheme, with the cook
 
 ## Client credentials flow {i}
 
+:::plain
+When a service calls another service on its own behalf, with no user involved, it gets a token using its own identity.
+:::
+
 **Service-to-service**, no user involved: a background worker, a daemon, or one microservice calling another **as itself**.
 
 ```http
@@ -137,6 +157,10 @@ var token = await credential.GetTokenAsync(new TokenRequestContext(["api://inven
 ```
 
 ## Refresh tokens {i}
+
+:::plain
+Access tokens expire quickly to limit damage if stolen. A refresh token quietly gets new ones, and is replaced each time it's used.
+:::
 
 Access tokens are short-lived because they can't be revoked once issued (a JWT is valid until `exp`) — exactly the tradeoff [Auth](ch:auth#jwt-bearer-authentication-traced-claim-by-claim) named when it explained why access-token lifetimes stay short. Refresh tokens give a good user experience without long-lived access tokens:
 

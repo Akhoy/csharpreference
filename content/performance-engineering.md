@@ -29,6 +29,10 @@ Kettle's counters are correct. A developer rewrote a parser with spans to speed 
 
 ## The method: measure, don't guess {i}
 
+:::plain
+Find where the time actually goes before changing anything, fix the biggest cost, measure again, and stop when the goal is met.
+:::
+
 Every other technique in this chapter — profilers, benchmarks, the optimisation catalogue — only pays off once you've committed to one discipline: find out where time is *actually* going before changing anything. The alternative, guessing based on intuition about what "feels slow," reliably sends people optimising the wrong 95% of the code while the real bottleneck sits untouched.
 
 ```text
@@ -44,6 +48,10 @@ Every other technique in this chapter — profilers, benchmarks, the optimisatio
 
 ## Latency, throughput and percentiles {i}
 
+:::plain
+Latency is how long one request takes, throughput is how many you handle per second, and percentiles show how slow the slowest requests are, which averages hide.
+:::
+
 | Metric | Meaning |
 |---|---|
 | **Latency** | Time for one operation (request duration) |
@@ -54,6 +62,10 @@ Every other technique in this chapter — profilers, benchmarks, the optimisatio
 **Use percentiles, not averages.** Here's a concrete illustration of why: out of 100 requests, if 98 take 50 ms and 2 take 5,000 ms, the *average* is about 148 ms — already looks bad, but still hides what's going on — while the p99 is 5,000 ms, the number that actually describes the experience of the unluckiest 2% of users. (Source: this is just `latency[⌈p·N⌉ − 1]` on the sorted array — verified below.) At real traffic volumes, that 2% is thousands of people, and a user loading a page that fires ten API calls hits that unlucky tail on nearly every page load, not just rarely. **Little's Law** links the three core metrics precisely: concurrency = throughput × latency (so 500 RPS × 0.2 s = 100 concurrent requests in flight) — a formula worth keeping handy when sizing a thread pool or a connection pool, since it tells you exactly how many requests you need to support *simultaneously*, not just per second.
 
 ## Where time goes in a .NET backend {i}
+
+:::plain
+Most slowness is the database or calls to other services, then blocked threads, then serialization and allocations. Pure CPU work is rarely the problem.
+:::
 
 Typical request time, in order of how often it's actually the culprit — notice this ordering is itself a product of experience across many real investigations, and it's worth checking top-down rather than jumping straight to whichever cause feels most interesting:
 

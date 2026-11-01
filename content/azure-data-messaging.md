@@ -28,6 +28,10 @@ Kettle's code runs in Azure. Its database, files, cache and broker are still sel
 
 ## The map {b}
 
+:::plain
+Each data and messaging technology from earlier chapters has a managed Azure version, where backups, patching and scaling are configuration rather than work.
+:::
+
 Every concept in this chapter is something earlier chapters already explained from first principles — relational databases, NoSQL, Redis, message brokers. What follows is specifically the **managed, Azure-hosted** version of each one, and what's different about operating it there.
 
 | Need | Service | One-line description |
@@ -47,6 +51,10 @@ Every concept in this chapter is something earlier chapters already explained fr
 | Analytics | Fabric / Synapse, Data Explorer | Big data and telemetry analytics |
 
 ## Azure SQL Database {i}
+
+:::plain
+Azure SQL is SQL Server run for you, with high availability, backups and point-in-time restore built in. Expect brief failovers, and enable retries.
+:::
 
 ### Deployment and purchasing models
 
@@ -91,9 +99,17 @@ ALTER ROLE db_datawriter ADD MEMBER [app-kettle-api-prod];
 
 ## Azure Database for PostgreSQL {i}
 
+:::plain
+The managed PostgreSQL service, with high availability, read replicas, built-in connection pooling and popular extensions.
+:::
+
 **Flexible Server**: managed PostgreSQL with zone-redundant HA, read replicas, PgBouncer built in (connection pooling), extensions (**pgvector**, PostGIS, pg_cron), Entra authentication, private networking, and burstable/general-purpose/memory-optimised tiers, plus stop/start for dev. With Npgsql + EF Core, it's a first-class option for .NET, often cheaper than SQL Server licensing.
 
 ## Azure Cosmos DB {i}
+
+:::plain
+Cosmos DB is a globally distributed document database. You choose a partition key and pay for throughput in request units.
+:::
 
 Covered conceptually in [NoSQL & Redis](ch:nosql-redis#partitioning-the-one-modelling-decision-you-cant-easily-undo). The Azure-specific essentials:
 
@@ -112,6 +128,10 @@ Covered conceptually in [NoSQL & Redis](ch:nosql-redis#partitioning-the-one-mode
 Use the **singleton `CosmosClient`**, prefer **point reads** (id + partition key) over queries, log `RequestCharge` to understand costs, and handle **429 (rate limited)**, which the SDK retries automatically within limits.
 
 ## Storage accounts: Blob, Queue, Table, Files {i}
+
+:::plain
+A storage account holds files of any size (Blob), simple queues, simple tables and network file shares, cheaply and at huge scale.
+:::
 
 A **Storage account** is a namespace providing several services, with redundancy options: **LRS** (3 copies, one datacentre), **ZRS** (across zones), **GRS/RA-GRS** (geo-replicated to the paired region, optionally readable), **GZRS/RA-GZRS**.
 
@@ -169,9 +189,17 @@ public sealed class InvoiceStorage(BlobServiceClient blobs)
 
 ## Azure Managed Redis {i}
 
+:::plain
+Azure's managed Redis, used as a cache, session store, rate-limiter backend or SignalR backplane.
+:::
+
 Managed Redis (built on Redis Enterprise) succeeds Azure Cache for Redis (the classic Basic/Standard/Premium tiers are on a retirement path). Use it for `IDistributedCache`/`HybridCache` L2, sessions, rate limiting, SignalR backplane and output cache storage. Connect with **Entra ID authentication** (managed identity) via `Microsoft.Azure.StackExchangeRedis`, use private endpoints, pick tiers by memory and throughput, enable zone redundancy for production, and set eviction policies and TTLs ([NoSQL & Redis](ch:nosql-redis#redis-an-in-memory-data-structure-server-not-just-a-cache)).
 
 ## Service Bus vs Event Grid vs Event Hubs {i}
+
+:::plain
+Service Bus carries business messages that must be processed reliably. Event Grid announces that something happened. Event Hubs ingests huge streams of events.
+:::
 
 The classic Azure interview question. They solve **different problems** — picking between them is really picking between the Command/Event/Query distinction from [Messaging & events](ch:messaging-events#commands-events-and-queries-three-different-conversations) and a question of volume:
 

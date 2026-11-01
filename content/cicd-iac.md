@@ -28,6 +28,10 @@ Kettle's infrastructure is secure. Releases are still a monthly, manual, all-han
 
 ## CI, CD and CD {b}
 
+:::plain
+Continuous integration builds and tests every change automatically. Continuous delivery keeps every change ready to release. Continuous deployment releases each one automatically.
+:::
+
 | Practice | Definition | Gate |
 |---|---|---|
 | **Continuous Integration (CI)** | Everyone integrates into the main branch **frequently** (at least daily); **every push triggers an automated build and tests** | A broken build is fixed immediately |
@@ -40,6 +44,10 @@ Small, frequent, automated releases are **less risky** than big, rare, manual on
 
 ## Branching strategies {b}
 
+:::plain
+Keep branches short-lived and merge to main often, hiding unfinished work behind feature flags, so integration problems surface while they're small.
+:::
+
 | Strategy | How | Fits |
 |---|---|---|
 | **Trunk-based development** | Short-lived branches (hours to a day) or direct commits to `main`; **feature flags** hide unfinished work | CI/CD, high-velocity teams (recommended by DORA research) |
@@ -51,6 +59,10 @@ PR hygiene: branch protection on `main` (required reviews, required status check
 
 ## Anatomy of a .NET pipeline {i}
 
+:::plain
+A pipeline restores, builds, tests and scans the code, builds one image, then promotes that same image through each environment.
+:::
+
 ```text
  push/PR ─▶ CI ───────────────────────────────────────────────────────────▶  merge to main ─▶ CD ───────────────────────────────────────────▶
            restore → build (warnings as errors) → unit tests → integration      build image once → push to ACR (tag = git SHA)
@@ -61,6 +73,10 @@ PR hygiene: branch protection on `main` (required reviews, required status check
 **Build once, deploy many**: the same artefact (container image digest or zip) is promoted through environments; only **configuration** differs — exactly the "promote the same image" principle from [Docker](ch:docker#configuration-secrets-and-storage-in-containers), now the organising idea for the whole pipeline rather than just one chapter's advice.
 
 ## GitHub Actions: a complete example {i}
+
+:::plain
+GitHub Actions runs workflows written in YAML, triggered by pushes and pull requests, on hosted machines.
+:::
 
 ```yaml
 # .github/workflows/kettle-api.yml
@@ -151,6 +167,10 @@ Notice `deploy-staging` runs the EF migration bundle and `curl`s the readiness e
 
 ## Azure DevOps Pipelines {i}
 
+:::plain
+Azure DevOps Pipelines does the same job, organised as stages, jobs and steps, and is common in enterprises.
+:::
+
 Many enterprises use **Azure DevOps** (Boards, Repos, **Pipelines**, Artifacts, Test Plans). YAML pipelines are structured as **stages → jobs → steps**, with **tasks** instead of actions, **service connections** (use workload identity federation), **environments** with approvals and checks, **variable groups** (optionally linked to Key Vault) and **templates** for reuse.
 
 ```yaml
@@ -187,6 +207,10 @@ stages:
 
 ## Deployment strategies {i}
 
+:::plain
+Ways to release with less risk: replace instances gradually, switch all traffic at once to a warmed-up copy, or send a small share of traffic to the new version first.
+:::
+
 | Strategy | How | Rollback | Azure implementation |
 |---|---|---|---|
 | **Recreate** | Stop old, start new | Redeploy old | Simple; causes downtime |
@@ -216,6 +240,10 @@ Schema changes are the hardest part of continuous deployment, because **old and 
 - **Supply chain security**: SBOM generation, signed images and provenance (SLSA), pinned action versions (by SHA for third-party actions), least-privilege workflow `permissions`, and secret scanning (GitHub push protection).
 
 ## Infrastructure as Code {i}
+
+:::plain
+Describe your cloud resources in versioned files, such as Bicep or Terraform, and let a tool create or update them, instead of clicking in a portal.
+:::
 
 **IaC** defines infrastructure (resource groups, App Service plans, Container Apps environments, SQL servers, Key Vaults, role assignments, networking) in **versioned code**, reviewed in PRs and applied by pipelines.
 

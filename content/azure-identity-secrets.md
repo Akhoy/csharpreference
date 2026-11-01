@@ -28,6 +28,10 @@ Kettle runs on managed services. Then a security scan finds the production datab
 
 ## The problem: secrets everywhere {b}
 
+:::plain
+Passwords and keys get copied, committed and leaked. The best fix is to need no secret at all.
+:::
+
 Traditional apps authenticate to their dependencies with **secrets**: SQL passwords in connection strings, storage account keys, API keys, client secrets. Secrets get **committed to Git**, pasted in chat, **logged**, copied to laptops, and are rarely **rotated**. A leaked secret is a breach — and recall from [Configuration](ch:configuration-options#secrets-the-layer-systems-hardest-case) that "no secret at all" was already flagged as the best entry in that chapter's table. This chapter is entirely about how Azure actually delivers on that promise.
 
 The modern Azure answer, in order of preference:
@@ -37,6 +41,10 @@ The modern Azure answer, in order of preference:
 3. Never in source control, images, or plain configuration files.
 
 ## Microsoft Entra ID concepts {b}
+
+:::plain
+Entra ID is Microsoft's identity service. It knows your users and applications, and issues the tokens that prove who they are.
+:::
 
 **Microsoft Entra ID** (formerly **Azure Active Directory / Azure AD**) is Microsoft's cloud identity provider: it authenticates users and applications and issues tokens (OAuth 2.0 / OpenID Connect) — exactly the kind of identity provider [Auth](ch:auth#jwt-bearer-authentication-traced-claim-by-claim) warned against building yourself.
 
@@ -60,6 +68,10 @@ Two kinds of permissions are often confused, and keeping them distinct is worth 
 
 ## Managed identities: the mechanism that makes "no secret" actually work {b}
 
+:::plain
+Azure gives your app its own identity and hands it tokens on request. The app never sees a password, so there's nothing to leak.
+:::
+
 A **managed identity** is an identity in Entra ID that Azure creates and manages **for a resource** (App Service, Functions, Container Apps, AKS workloads, VMs…). Your code asks the platform's local endpoint for a token; Azure handles the credentials and rotates them automatically. **There's no secret to store, leak or rotate** — not "a secret that's harder to steal," genuinely none exists for an attacker to find.
 
 | | **System-assigned** | **User-assigned** |
@@ -80,6 +92,10 @@ az role assignment create --assignee <principalId> --role "Key Vault Secrets Use
 Services supporting Entra (managed identity) auth include Azure SQL, PostgreSQL, Storage (Blob/Queue/Table), Service Bus, Event Hubs, Event Grid, Cosmos DB (data-plane RBAC), Key Vault, App Configuration, Managed Redis, Azure OpenAI, ACR and more.
 
 ## DefaultAzureCredential and Azure.Identity: one line of code, two environments {i}
+
+:::plain
+DefaultAzureCredential tries several ways to sign in, so the same code uses your developer login on a laptop and the managed identity in Azure.
+:::
 
 The `Azure.Identity` library provides **`TokenCredential`** implementations that every Azure SDK client accepts. **`DefaultAzureCredential`** tries a chain in order and uses the first that works:
 
@@ -108,6 +124,10 @@ The chain is convenient but can be **slow to fail** (trying each option) and can
 
 ## Azure RBAC in practice {i}
 
+:::plain
+Role-based access control grants an identity a role, such as 'can read blobs', on a specific resource. Give each app only the roles it needs, on the narrowest scope.
+:::
+
 A **role assignment** = **security principal** (user, group, service principal, managed identity) + **role definition** (a set of allowed actions) + **scope** (management group, subscription, resource group, resource, or even a sub-resource like a blob container) — notice this is the exact same scope hierarchy from [Cloud fundamentals](ch:cloud-azure-overview#azures-resource-hierarchy), with roles inheriting downward through it.
 
 | Plane | Roles control | Examples |
@@ -118,6 +138,10 @@ A **role assignment** = **security principal** (user, group, service principal, 
 The control-plane-vs-data-plane distinction matters more than it looks: *Contributor* on a storage account lets you reconfigure the account itself but says nothing about reading the blobs inside it — that's a separate data-plane role entirely, and granting an app's managed identity `Contributor` when it only ever needs to read blobs is a textbook least-privilege violation. Principles: **least privilege** (data roles, not Contributor; the narrowest scope); **groups** for humans, managed identities for apps; **separate identities per app and environment**; **PIM** (Privileged Identity Management) for just-in-time elevation of admin roles; review assignments regularly.
 
 ## Azure Key Vault {i}
+
+:::plain
+Key Vault stores the secrets you can't avoid, plus encryption keys and certificates, and lets only authorised identities read them.
+:::
 
 **Key Vault** securely stores and controls access to:
 

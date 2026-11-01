@@ -29,6 +29,10 @@ Kettle's relational data is solid. Shopping carts, though, change constantly, ar
 
 ## The NoSQL families: optimised for an access pattern, not a feature list {b}
 
+:::plain
+NoSQL stores give up joins and flexible queries in exchange for speed and scale on one access pattern. Each family suits a different pattern: documents, key-value, wide-column, graphs.
+:::
+
 "NoSQL" is really a negative definition — "not (only) relational tables" — which hides how different the actual families are from each other. Each one made a deliberate trade to get extremely good at one access pattern, usually at the cost of the general-purpose flexibility a relational table gives you for free:
 
 | Family | Data model | Examples | Good at | Weak at |
@@ -47,6 +51,10 @@ Relational databases are the right default for business data: strong consistency
 
 ## CAP, PACELC and consistency models: the trade-off a distributed store can't avoid {i}
 
+:::plain
+When a store's copies can't talk to each other, it must choose between refusing requests and giving possibly stale answers. Even without a failure, it trades waiting for agreement against speed.
+:::
+
 **CAP theorem**, in plain terms: imagine two servers holding the same data, and the network link between them breaks (a **P**artition). Networks genuinely do this — it's not a hypothetical edge case. While they're cut off from each other, each server must pick one of two bad options: refuse to answer, or guarantee correctness (**C**onsistency), or answer anyway and risk giving out stale data, but stay responsive (**A**vailability). You can't have both *during that break* — that's the whole theorem. Once the network heals, both are possible again.
 
 **PACELC** asks the question CAP doesn't: what do you trade when there's *no* partition at all (the **E**lse case)? Even then, you trade **L**atency against **C**onsistency — because waiting for every replica to confirm a write (strong consistency) is always slower than writing to one and letting the others catch up later (eventual consistency, with a small window where they disagree).
@@ -64,6 +72,10 @@ Consistency models, in practice, form a spectrum from strongest to weakest, and 
 Cosmos DB lets you choose any of these five per account (and relax per request) — which is a useful thing to know specifically because it means the consistency decision isn't locked in once at the infrastructure level; it's a knob you can turn per query based on what that particular read actually needs.
 
 ## Document databases: modelling by access pattern, not by normal form {i}
+
+:::plain
+In a document database you store together what you read together, such as a whole order as one JSON document. You design around your queries, not around avoiding duplication.
+:::
 
 The relational instinct, drilled into you by [Relational fundamentals](ch:relational-fundamentals#normalisation-and-when-to-break-it), is to normalise: store each fact once, join at read time. Document modelling runs in the opposite direction on purpose: **design for the access pattern** — store together whatever gets *read* together, even if that means the same fact appears in more than one document.
 
@@ -134,6 +146,10 @@ The **change feed** streams every insert and update, in order, per partition, an
 
 ## Redis: an in-memory data-structure server, not just a cache {b}
 
+:::plain
+Redis keeps data in memory and offers ready-made structures: strings, hashes, lists, sets, sorted sets and streams. That makes it fast for caches, counters, leaderboards, locks and queues.
+:::
+
 **Redis** is often introduced purely as "a cache," which undersells what it actually is: an in-memory data-structure server offering sub-millisecond operations, optional persistence (RDB snapshots, an AOF log), replication, and clustering. On Azure: **Azure Managed Redis** (successor of Azure Cache for Redis). Client: **StackExchange.Redis**. Open-source forks and alternatives include **Valkey** and **Garnet** (Microsoft's Redis-compatible server written in C#).
 
 ### Data structures
@@ -200,6 +216,10 @@ Databases, relational or document, are poor at relevance-ranked full-text search
 - **Vector search** powers AI features (semantic search, RAG): store embeddings next to documents in Azure AI Search, Cosmos DB, PostgreSQL **pgvector**, SQL Server 2025/Azure SQL vector type, Redis, Qdrant. .NET's **Microsoft.Extensions.VectorData** abstractions and **Microsoft.Extensions.AI** give provider-neutral APIs.
 
 ## Choosing a data store {i}
+
+:::plain
+Start with a relational database unless you have a specific reason not to. Add another store for a specific access pattern it serves much better.
+:::
 
 ```text
 Business data with relationships, transactions, reporting?          → SQL Server / PostgreSQL (default)

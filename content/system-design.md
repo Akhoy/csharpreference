@@ -28,6 +28,10 @@ You've built Kettle, end to end. Now an interviewer asks you to design a checkou
 
 ## What interviewers are looking for {i}
 
+:::plain
+Interviewers watch how you think: clarifying the problem, reasoning with numbers, choosing components with reasons, and handling failure.
+:::
+
 A system design interview isn't about the "right" answer. It tests whether you can:
 
 1. **Clarify** ambiguous requirements and identify what matters.
@@ -40,6 +44,10 @@ A system design interview isn't about the "right" answer. It tests whether you c
 For .NET backend roles, interviewers also like hearing **concrete .NET and Azure choices** (EF Core vs Dapper, Service Bus vs Event Hubs, Container Apps vs AKS) and **code-level patterns** (outbox, idempotency, caching strategy) — exactly the vocabulary the rest of this book has spent dozens of chapters building up. This chapter is where all of it gets exercised at once, under time pressure, on a whiteboard.
 
 ## A repeatable framework (45 minutes) {i}
+
+:::plain
+Clarify requirements, estimate scale, sketch the API and data, draw the system, then go deep on the hardest parts.
+:::
 
 | Step | Time | What you do |
 |---|---|---|
@@ -54,6 +62,10 @@ For .NET backend roles, interviewers also like hearing **concrete .NET and Azure
 Step 2 is placed right after requirements and before any architecture on purpose: the estimates **drive** the decisions that follow, they don't just decorate the answer. A read:write ratio of 100:1 points straight at caching and read replicas; a ratio closer to 1:1 points at write-optimised storage instead. Skip the estimate and jump straight to architecture, and you're guessing at exactly the number that should have decided it.
 
 ## Back-of-the-envelope numbers {i}
+
+:::plain
+A few remembered numbers, such as requests per day to per second and how slow each kind of call is, let you size a design quickly.
+:::
 
 | Quantity | Rough value |
 |---|---|
@@ -70,6 +82,10 @@ Step 2 is placed right after requirements and before any architecture on purpose
 **Example:** 10M daily active users, each making 20 reads and 1 write per day → reads ≈ 200M/day ≈ 2,300 RPS average (~10k peak); writes ≈ 10M/day ≈ 115 RPS average. That's a **read-heavy** system, so caching and read replicas matter more than write sharding.
 
 ## Building blocks and their .NET/Azure choices {i}
+
+:::plain
+Most designs combine the same blocks: a CDN, a gateway, stateless services, a cache, a database, a queue and workers. Know a concrete choice for each.
+:::
 
 | Building block | Purpose | .NET / Azure options |
 |---|---|---|
@@ -202,6 +218,10 @@ Notice the parenthetical on the three channel queues — "bulkheads + independen
 Each row in this table is a decision this book has already made once, explicitly, in some earlier chapter — naming the trade-off out loud in an interview is really just demonstrating that you understand *why* that earlier decision was made, not merely that you remember the answer.
 
 ## Code-level design questions {i}
+
+:::plain
+Some interviews ask you to design classes rather than systems. Find the entities and rules, apply the principles and patterns, then write a little real code.
+:::
 
 Many .NET interviews include "low-level design": design a parking lot, a rate limiter, an LRU cache, a library system, or "how would you structure this API?". Approach:
 

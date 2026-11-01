@@ -42,6 +42,10 @@ Kettle is moving to the cloud. The first deploy failed, because production had a
 
 ## What a container is {b}
 
+:::plain
+A container is your app plus everything it needs to run, packed into one unit that runs the same everywhere. It shares the host's operating system kernel, which makes it light and fast to start.
+:::
+
 A **container** is an isolated process (or group of processes) with **its own filesystem, network and process space** — packaged with everything it needs: your app, the .NET runtime, OS libraries. One detail explains both its biggest strength and its biggest limit: a container shares the **host's kernel** instead of running its own. That's why it starts in milliseconds and barely costs anything to run — but it's also why its isolation is weaker than a full virtual machine's.
 
 | | Virtual machine | Container |
@@ -57,6 +61,10 @@ A **container** is an isolated process (or group of processes) with **its own fi
 :::
 
 ## Images, layers, containers and registries {b}
+
+:::plain
+An image is the packed, read-only template, built in layers. A container is a running copy of an image. A registry stores images so servers can pull them.
+:::
 
 | Term | Meaning |
 |---|---|
@@ -78,6 +86,10 @@ az acr login -n kettleacr && docker push kettleacr.azurecr.io/kettle-api:1.4.2
 
 ## .NET container images {i}
 
+:::plain
+Microsoft publishes official images for building (the SDK) and for running (ASP.NET, runtime, runtime-deps), in several sizes. Build with the big one, ship the small one.
+:::
+
 Official images are published on **mcr.microsoft.com/dotnet/**:
 
 | Image | Contains | Use |
@@ -94,6 +106,10 @@ Official images are published on **mcr.microsoft.com/dotnet/**:
 Since .NET 8, ASP.NET Core images **listen on port 8080** by default (`ASPNETCORE_HTTP_PORTS=8080`), not 80, and include a non-root **`app`** user (UID 1654).
 
 ## A production-grade Dockerfile {i}
+
+:::plain
+A good Dockerfile restores packages before copying source so builds are cached, compiles in one stage, ships only the output in a small final stage, and runs as a non-root user.
+:::
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -148,6 +164,10 @@ Key techniques:
 
 ## Building images without a Dockerfile {i}
 
+:::plain
+The .NET SDK can build a container image directly with dotnet publish, with sensible defaults and no Dockerfile at all.
+:::
+
 The .NET SDK can build OCI images directly, with no Docker daemon needed for the build:
 
 ```bash
@@ -170,6 +190,10 @@ Great for standard apps and CI; use a Dockerfile when you need custom OS package
 
 ## Configuration, secrets and storage in containers {i}
 
+:::plain
+Containers get their settings from environment variables, never secrets baked into the image, and anything they write to their own disk vanishes when they're replaced.
+:::
+
 - **Configuration via environment variables** (`ConnectionStrings__Kettle`, `ASPNETCORE_ENVIRONMENT`), set by the platform at runtime, **never baked into the image** — exactly the layered-configuration discipline [Configuration](ch:configuration-options#the-five-layers-lowest-priority-to-highest) covered, applied at the container level. The same image is promoted through all environments.
 - **Secrets**: never `COPY` them into images or pass them as build args (they persist in layers). Use the platform's secret store (Key Vault references, Kubernetes Secrets, Container Apps secrets) or **managed identity** so there's nothing secret to inject.
 - **Filesystem is ephemeral**: anything written inside a container is lost when it's replaced. Use Blob Storage or a database; mount **volumes** only for genuinely needed persistent paths.
@@ -178,6 +202,10 @@ Great for standard apps and CI; use a Dockerfile when you need custom OS package
 - **Health endpoints** for the orchestrator's probes ([Resilience](ch:resilience#health-checks)).
 
 ## docker compose for local development {b}
+
+:::plain
+Compose starts your app and its dependencies, such as a database and a broker, together on your laptop from one file.
+:::
 
 Run the API with its dependencies locally:
 

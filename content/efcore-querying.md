@@ -29,6 +29,10 @@ EF Core does the busywork. Then the order list page goes slow, and the SQL log s
 
 ## From LINQ to SQL, and the one moment it actually runs {b}
 
+:::plain
+A LINQ query against a DbSet is only a description until you enumerate it, for example with ToListAsync. At that moment EF Core turns it into SQL and runs it.
+:::
+
 ```csharp
 var recent = await db.Orders
     .Where(o => o.CustomerId == customerId && o.CreatedAt >= since)
@@ -54,6 +58,10 @@ Here's the detail worth holding onto for the rest of this chapter: nothing above
 
 ## See the SQL first — you can't tune what you can't see {b}
 
+:::plain
+Before tuning a slow query, look at the SQL EF Core actually generated. Logging or ToQueryString shows it.
+:::
+
 ```csharp
 // 1. Log SQL (development)
 builder.Services.AddDbContext<KettleDb>(o => o.UseSqlServer(cs)
@@ -73,6 +81,10 @@ In production, **OpenTelemetry EF Core instrumentation** ([Observability](ch:obs
 
 ## Tracking vs no-tracking: paying for a feature you often don't need {b}
 
+:::plain
+Tracking makes EF Core remember every loaded entity so it can save changes later. For read-only queries that's wasted work, so turn it off.
+:::
+
 Recall from [EF Core fundamentals](ch:efcore-fundamentals#change-tracking-and-savechanges-how-ef-core-knows-what-to-wr) that tracking means keeping a snapshot of every loaded entity so `SaveChanges()` can detect what changed. For a query that's purely reading data to send to a client — never going to be saved back — that snapshot is pure overhead:
 
 | | Tracking (default) | `AsNoTracking()` | `AsNoTrackingWithIdentityResolution()` |
@@ -91,6 +103,10 @@ You can flip the default for an entire context instead of annotating every query
 
 ## Projection: the single biggest win in this chapter {b}
 
+:::plain
+Select only the fields a screen needs into a small DTO. The database then sends fewer columns, and EF Core skips building and tracking full entities.
+:::
+
 ```csharp
 // ✘ Loads EVERY column of Orders, Customer AND Lines, tracks them all, then the API maps to a DTO
 var orders = await db.Orders.Include(o => o.Customer).Include(o => o.Lines).ToListAsync(ct);
@@ -105,6 +121,10 @@ var dtos2 = await db.Orders
 Notice everything the second version gets for free, just by moving the `Select` earlier: fewer columns actually travel over the wire, nothing gets tracked (projections into plain DTOs are never tracked at all), and — this is the part worth sitting with — **navigations referenced inside a `Select` get translated into joins or subqueries by EF Core itself**, which sidesteps the N+1 problem the next section covers entirely, without you having to think about `Include` at all. **Projecting with `Select` into DTOs** should be the default for every read endpoint you write. Mapping libraries can project too — AutoMapper's `ProjectTo`, Mapperly's `IQueryable` projections — if you'd rather not hand-write the DTO construction.
 
 ## Loading related data: four strategies, one clearly preferred {i}
+
+:::plain
+Related data can be loaded with Include, with a projection, separately on demand, or lazily on first access. Projection or Include are almost always right; lazy loading hides extra queries.
+:::
 
 | Strategy | How | SQL | When |
 |---|---|---|---|
@@ -123,6 +143,10 @@ var customer = await db.Customers
 That "rarely; hides N+1" note in the Lazy row isn't a footnote — it's exactly why the next section exists.
 
 ## The N+1 problem: the single most common EF Core performance bug {i}
+
+:::plain
+Loading a list with one query and then running one more query per item means N+1 round trips. Fetch what you need in the first query instead.
+:::
 
 The shape of this bug: **1 query** loads a list, then **N more queries** — one per item in that list — load each item's related data:
 
@@ -169,6 +193,10 @@ var blogs2 = await db.Blogs.Include(b => b.Posts).Include(b => b.Contributors)
 
 ## Client evaluation and translation errors {i}
 
+:::plain
+Some C# can't be turned into SQL. EF Core then throws instead of quietly loading everything into memory, so rewrite the query or move that part after the database work.
+:::
+
 EF Core can only translate what it actually understands into SQL: the standard LINQ operators, many `string`/`Math`/`DateTime` members, `EF.Functions.Like`, provider-specific functions, and any functions you've explicitly mapped yourself.
 
 ```csharp
@@ -185,6 +213,10 @@ var q2 = db.Products.Where(p => p.Price < p.ListPrice * 0.5m);   // ✔ inline t
 
 ## Paging, counting and existence {i}
 
+:::plain
+Always page large lists, use Any instead of Count when you only need to know whether something exists, and prefer keyset paging over Skip for deep pages.
+:::
+
 ```csharp
 // Offset paging: always ORDER BY a unique key for deterministic pages
 var page = await db.Products.OrderBy(p => p.Name).ThenBy(p => p.Id)
@@ -200,6 +232,10 @@ bool any = await db.Orders.AnyAsync(o => o.CustomerId == id, ct);       // EXIST
 Both paging styles here map directly onto the offset-vs-cursor tradeoff from [API design](ch:api-design#pagination-filtering-and-sorting-never-return-an-unbounded-l). One subtlety worth flagging on its own: a total count on a large, filtered table is itself an expensive query, essentially a full scan to count matches. For infinite-scroll UIs that only need to know "is there more," fetching `size + 1` rows and checking whether the extra one came back is usually far cheaper than computing an exact total.
 
 ## Raw SQL in EF Core {i}
+
+:::plain
+When LINQ can't express a query well, you can write SQL yourself and still get entities or DTOs back. Interpolated values are sent as parameters, so it stays safe.
+:::
 
 ```csharp
 // Entities from SQL (composable: you can add LINQ on top)
@@ -220,6 +256,10 @@ var n = await db.Database.ExecuteSqlAsync($"UPDATE Products SET IsActive = 0 WHE
 `FromSql`, `SqlQuery` and `ExecuteSql` all take a **`FormattableString`** — notice the `$"..."` syntax above — so interpolated values become real **parameters** under the hood, the same safe mechanism [ADO.NET & Dapper](ch:ado-dapper#the-layer-every-other-data-access-tool-is-secretly-built-on) insisted on. The `…Raw` variants instead take a plain string, and **never** concatenate user input into one — doing so reopens exactly the SQL injection hole parameterisation exists to close.
 
 ## Async and cancellation {b}
+
+:::plain
+Use the async methods so threads aren't held while the database works, and pass the request's cancellation token so abandoned requests stop their queries.
+:::
 
 Use the async operators (`ToListAsync`, `SaveChangesAsync`…) in web apps and pass `CancellationToken` so abandoned requests cancel their SQL rather than running to completion for nobody. Don't run concurrent operations on one context — a `DbContext` isn't thread-safe, as [EF Core fundamentals](ch:efcore-fundamentals#dbcontext-and-dbset-your-session-with-the-database) warned. Stream genuinely large results with `AsAsyncEnumerable()` instead of buffering the entire result set in memory with `ToListAsync()`.
 
@@ -248,6 +288,10 @@ var p = await GetProductById(db, 42, ct);
 ```
 
 ## Checklist for a slow EF Core endpoint {i}
+
+:::plain
+Look at the SQL, count the queries, check that it projects and doesn't track, check the indexes, and only then consider raw SQL or caching.
+:::
 
 Work through this in order — each step is cheap to check and most slow endpoints are caught well before step 10:
 

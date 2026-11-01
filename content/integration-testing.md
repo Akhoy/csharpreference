@@ -29,6 +29,10 @@ Kettle's unit tests all pass. The release that went out yesterday returned 401 f
 
 ## What unit tests structurally cannot catch {b}
 
+:::plain
+Unit tests can't see bugs that live between parts: middleware order, missing registrations, JSON settings, SQL that the real database rejects.
+:::
+
 Think back to what a unit test, by its own definition from [Unit testing](ch:unit-testing#what-a-unit-test-is-and-the-question-that-divides-testers), deliberately isolates away: real infrastructure, real wiring, the real pipeline. That's exactly what makes a whole category of bug invisible to it — bugs that live **between** components, not inside any one of them:
 
 - middleware in the wrong order (every request returns 401),
@@ -42,6 +46,10 @@ Think back to what a unit test, by its own definition from [Unit testing](ch:uni
 An **integration test** runs real components together (often the whole app in-process against real infrastructure in containers) and asserts on observable behaviour (HTTP responses, database state, published messages) — precisely the gap unit tests leave open.
 
 ## Test pyramid, trophy and honeycomb: how much weight goes where {i}
+
+:::plain
+These shapes are different answers to 'how many of each kind of test?'. For web APIs, many teams now put most weight on integration tests, because they're fast enough and catch more.
+:::
 
 ```text
      Pyramid (Mike Cohn)              Trophy (Kent C. Dodds)            Honeycomb (Spotify, microservices)
@@ -65,6 +73,10 @@ The classic **pyramid** says: many unit tests, fewer integration tests, very few
 
 ## WebApplicationFactory: booting the real app in memory {b}
 
+:::plain
+WebApplicationFactory starts your real Program.cs inside the test process, with an HttpClient wired straight into it, so tests send real HTTP requests with no network.
+:::
+
 `Microsoft.AspNetCore.Mvc.Testing` boots your **real `Program.cs`** in memory on a **TestServer** (no network ports) and gives you an `HttpClient` wired straight into the pipeline.
 
 ```csharp
@@ -86,6 +98,10 @@ public sealed class HealthTests(WebApplicationFactory<Program> factory) : IClass
 The reason this test is worth more than it looks: everything runs **for real** — configuration, DI, the actual middleware order from [Middleware](ch:middleware), routing, model binding, validation, filters, serialization and ProblemDetails. A bug in any one of those, the exact category this chapter opened with, shows up here.
 
 ## Customising the app under test {i}
+
+:::plain
+Tests can swap out only what they must, such as a payment provider or the clock, while keeping your own code and database real.
+:::
 
 ```csharp
 public sealed class KettleApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
@@ -150,6 +166,10 @@ client.DefaultRequestHeaders.Add("X-Test-Roles", "customer");
 This handler is worth writing instead of just disabling auth for tests: it replaces only the *authentication* step — who the caller claims to be — while your **real authorization policies** still run unmodified, exactly as [Auth](ch:auth#authorization-the-simple-forms-before-anything-needs-a-polic) described. So you can genuinely test that a customer gets 403 on an admin endpoint, with the real policy logic making that call. Alternatively, mint real JWTs with a test signing key for even closer fidelity to production.
 
 ## Real databases with Testcontainers {i}
+
+:::plain
+Testcontainers starts a real database in a throwaway Docker container for the test run, so tests run against the same engine as production.
+:::
 
 **Testcontainers for .NET** starts throwaway **Docker containers** (lightweight, isolated environments that run a piece of software — see [Docker](ch:docker) for the full picture) from tests: SQL Server, PostgreSQL, Redis, RabbitMQ, Azurite (Azure Storage), the Service Bus emulator, Cosmos DB emulator, Kafka, LocalStack.
 
@@ -223,6 +243,10 @@ It isn't relational: no SQL translation, no constraints, no transactions, differ
 
 ## Testing dependencies you don't own {i}
 
+:::plain
+For third-party APIs, use a fake HTTP server or the vendor's sandbox, and check the contract separately, rather than calling the real service from every test.
+:::
+
 | Dependency | Approach |
 |---|---|
 | Third-party HTTP APIs | **WireMock.Net** fake server (realistic HTTP, delays, faults) or a stub `HttpMessageHandler` ([HttpClient](ch:http-client#testing-code-that-uses-httpclient)) |
@@ -254,6 +278,10 @@ await client.PostAsJsonAsync("/api/orders", request);
 - **Chaos testing** (Azure Chaos Studio, Polly's chaos strategies via `AddChaos…`): inject faults to verify resilience behaviour.
 
 ## Tests in CI {i}
+
+:::plain
+Run unit tests on every push and integration tests on every pull request, fix flaky tests immediately, and make passing tests a required merge check.
+:::
 
 ```yaml
 - run: dotnet test --configuration Release --logger "trx;LogFileName=results.trx" --collect:"XPlat Code Coverage"

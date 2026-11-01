@@ -27,6 +27,10 @@ You've seen every part of Kettle's story once. The last step is making it stick.
 
 ## How to study (so it sticks) {b}
 
+:::plain
+Explaining from memory and revisiting topics over spaced intervals beat rereading. Building things beats both.
+:::
+
 Reading isn't learning, and it's worth being honest with yourself about why: recognising an explanation when you reread it feels like understanding, but it tests recognition, not recall — the exact skill an interview actually demands. These techniques are backed by learning research and work especially well for interview preparation:
 
 | Technique | How to apply it here |
@@ -39,6 +43,10 @@ Reading isn't learning, and it's worth being honest with yourself about why: rec
 | **Map placement** | For every new term, say which of the 8 layers it lives in and what it connects to. This is the "light bulb" habit |
 
 ## An eight-week plan {b}
+
+:::plain
+Work through the parts in order, about one week each, building a small project as you go.
+:::
 
 Around 1–2 hours on weekdays, plus a longer weekend session for the project. Adjust to your timeline; the **order** matters more than the pace.
 
@@ -56,6 +64,10 @@ Around 1–2 hours on weekdays, plus a longer weekend session for the project. A
 **Then:** go back through every **Advanced** section, and keep drilling daily (15 minutes) until the interview.
 
 ## The practice project: one app, every layer {i}
+
+:::plain
+Build your own small Kettle, end to end. The bugs you hit become your best interview stories.
+:::
 
 Build a small but complete **"Shop" backend**. Each feature exercises specific chapters, and together they give you real stories to tell in interviews ("When I implemented the outbox, I ran into…") — which matters more than it sounds, because a concrete bug you actually debugged is a far more convincing answer than a correct definition recited from memory.
 
@@ -76,6 +88,10 @@ Build a small but complete **"Shop" backend**. Each feature exercises specific c
 Microsoft's **eShop** reference application (github.com/dotnet/eShop) is a good model to compare against once you've built your own.
 
 ## Self-assessment checklist {i}
+
+:::plain
+For each level, a list of things you should be able to explain clearly. Use it to find your gaps.
+:::
 
 ### Beginner: can you explain these clearly in 1–2 minutes each?
 
@@ -137,6 +153,10 @@ Microsoft's **eShop** reference application (github.com/dotnet/eShop) is a good 
 - [ ] Full system design of an e-commerce checkout or a URL shortener
 
 ## Answering interview questions well {i}
+
+:::plain
+Define it, say why it exists, explain how it works, name the trade-offs, then give a real example from your own work.
+:::
 
 A reliable structure for technical questions: **definition → why it exists → how it works / example → trade-offs or pitfalls → your experience.**
 

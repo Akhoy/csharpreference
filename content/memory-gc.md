@@ -29,6 +29,10 @@ Kettle runs itself in the cloud. But its memory climbs all day, and every evenin
 
 ## The problem every language has to solve {b}
 
+:::plain
+Every program creates objects that must eventually be freed. In .NET the garbage collector frees them for you, at the cost of some CPU time and pauses.
+:::
+
 Every running program creates objects as it works, and every one of them eventually needs to disappear — otherwise memory just fills up until the machine falls over. Someone, or something, has to decide when an object is safe to free.
 
 In C or C++, that someone is you. You call `malloc`/`free` or `new`/`delete` yourself, by hand, every time. Get it wrong and you get one of three classic bugs: a **leak** (you forgot to free something, and it sits there forever), a **use-after-free** (you freed something, then kept using it — often a security hole), or a **double free** (you freed the same thing twice, which can corrupt memory outright). These aren't rare mistakes; they're some of the most common, most dangerous bugs in systems programming.
@@ -38,6 +42,10 @@ In C or C++, that someone is you. You call `malloc`/`free` or `new`/`delete` you
 It isn't free, though. The GC needs real CPU time to do this watching and freeing, and some of its work genuinely **pauses your running threads** while it happens. So here's the thing worth internalising before anything else in this chapter: almost all .NET performance tuning, once you dig past the surface, turns out to really be about **how much you're allocating** — because allocation is what creates the GC's workload in the first place. Understand the GC, and a huge amount of "why is this slow" advice stops being folklore and starts being obvious cause and effect.
 
 ## Two places your data can live {b}
+
+:::plain
+Method locals live on the stack and vanish when the method returns. Objects live on the heap until the garbage collector finds nothing uses them.
+:::
 
 Before any of that makes sense, you need to know there are two completely different places an object's data can sit: the **stack** and the **managed heap**. They behave almost nothing alike.
 
@@ -54,6 +62,10 @@ Here's the part that surprises people: allocating on the heap is *also* cheap, m
 It comes later. The *more* you allocate, the more often that allocation context fills up and the GC has to step in and do real work to make room for more. The cost isn't in the allocating — it's in how often allocating forces a collection. Keep that distinction in mind; it's the thread running through the rest of this chapter.
 
 ## Generations: why the GC doesn't scan everything, every time {i}
+
+:::plain
+Most objects die young, so the GC checks the newest objects often and cheaply, and old ones rarely.
+:::
 
 Here's an idea that sounds almost too simple to be the foundation of a whole optimisation strategy, but it is: **most objects die young.** Think about a typical web request — it creates a flurry of temporary strings, DTOs, LINQ enumerators, intermediate results — and nearly all of that garbage is unreachable again within milliseconds, the instant the request finishes. Meanwhile, a much smaller set of objects — caches, singletons, configuration — get created once and then stick around for the entire life of the process.
 
@@ -88,6 +100,10 @@ Short-lived garbage — the kind that dies in Gen0 — is cheap, almost by desig
 
 ## What actually happens during a collection {i}
 
+:::plain
+The GC pauses your threads, marks everything still reachable from the roots, frees the rest, and usually slides the survivors together.
+:::
+
 You now know *when* generations get collected. Here's *how* a collection itself actually works, step by step, every single time one runs:
 
 1. **Suspend your threads**, at points the runtime considers safe to pause them (called "safe points").
@@ -110,6 +126,10 @@ So what actually counts as a root? Here's the full list:
 Keep that table nearby — later in this chapter, when "memory leak" comes up, every single cause traces back to one of these five rows holding a reference longer than it should.
 
 ## Choosing how the GC behaves {i}
+
+:::plain
+Servers use a GC tuned for throughput across many cores; desktop apps use one tuned for responsiveness. Containers need limits the GC can see.
+:::
 
 The mark-sweep-compact cycle above is the mechanism. .NET also lets you choose *how* that mechanism is scheduled and parallelised, and the defaults genuinely differ depending on what kind of app you're running.
 
@@ -159,6 +179,10 @@ One more related idea: **pinning**. Normally the GC is free to move objects arou
 
 ## Finalizers: the GC's last resort, and why it's slow {i}
 
+:::plain
+A finalizer is cleanup the GC runs when it gets round to it. Objects with finalizers live longer and cost more, so clean up with Dispose instead.
+:::
+
 Every so often, an object wraps something the GC genuinely can't clean up on its own — a native handle, say. For those cases, C# offers a **finalizer**, written as `~T()`. It sounds like a safety net. In practice, it's a safety net you should almost never actually rely on, and understanding why tells you a lot about how the GC treats these objects differently from everything else.
 
 Here's the sequence, once an object with a finalizer becomes unreachable:
@@ -180,6 +204,10 @@ Sometimes you want to hold onto an object *if it's still around*, without that h
 These show up in some cache and event-pattern implementations, but for the vast majority of web app caching you're better off with **`MemoryCache`**, configured with real size limits and expirations — it gives you *predictable* eviction, whereas weak references leave eviction entirely up to the GC's own timing, which is much harder to reason about in production.
 
 ## Memory leaks in .NET: still possible, just a different shape {i}
+
+:::plain
+A .NET leak is something you no longer need that is still referenced, such as a growing static list or a forgotten event subscription.
+:::
 
 Earlier this chapter said something worth repeating exactly: an object is only garbage once it's **unreachable** — not once it's *useless*. A **managed memory leak** is precisely the gap between those two: objects that are still technically reachable from some root, but that your application will never actually use again. Every single row in this table traces back to one of the five GC roots from earlier, holding a reference it shouldn't be:
 

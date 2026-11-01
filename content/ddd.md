@@ -29,6 +29,10 @@ Kettle's catalogue team and warehouse team keep breaking each other's code, beca
 
 ## The problem DDD exists to solve {i}
 
+:::plain
+In complex businesses, most bugs come from code that doesn't match how the business actually works. DDD is a set of techniques for modelling that business precisely in code.
+:::
+
 **Domain-Driven Design** (Eric Evans, 2003) starts from a specific, honest observation about hard software: in genuinely complex business domains — insurance, logistics, banking, healthcare, e-commerce at scale — the hardest problem usually isn't a technical one at all. It's **understanding and correctly encoding the business itself**. When the rules governing that business get scattered across controllers, services and raw SQL, they inevitably get duplicated, start quietly contradicting each other, and eventually become something nobody can change with confidence anymore.
 
 DDD's answer is to put the **domain model** — a precise model of the business's concepts and rules — at the heart of the software, and to build that model **collaboratively with domain experts**, in their own language rather than a technical one. It has two distinct halves, operating at two different scales:
@@ -44,6 +48,10 @@ In complex domains — insurance, logistics, banking, healthcare, e-commerce at 
 :::
 
 ## Strategic DDD: ubiquitous language and bounded contexts {i}
+
+:::plain
+Developers and experts agree on one vocabulary and use it in the code. Where a word starts meaning something different, that's the edge of a bounded context.
+:::
 
 ### Ubiquitous language
 
@@ -82,6 +90,10 @@ How bounded contexts relate: **Shared Kernel** (a small shared model), **Custome
 
 ## Entities: identity that outlives any particular state {i}
 
+:::plain
+An entity is something with an identity that stays the same while its details change, like an order whose status moves from paid to shipped.
+:::
+
 An **entity** has an **identity that persists over time** and through changes. Two entities are the same if their IDs are equal, even if every other field differs — this is the single defining trait that separates an entity from the value objects covered next.
 
 ```csharp
@@ -96,6 +108,10 @@ public readonly record struct CustomerId(Guid Value) { public static CustomerId 
 ```
 
 ## Value objects: defined entirely by what they contain {i}
+
+:::plain
+A value object has no identity: two £5 amounts are interchangeable. Make value objects immutable and let them validate themselves.
+:::
 
 A **value object** is the mirror image of an entity: it's defined **entirely by its values**, has **no identity** of its own, and is **immutable**. Two value objects holding the same values are completely interchangeable — there's no sense in which one is "the same instance" as another, because that question doesn't apply. Examples: `Money`, `Address`, `EmailAddress`, `DateRange`, `Quantity`, `Percentage`, `GeoCoordinate`.
 
@@ -249,6 +265,10 @@ The distinction worth holding onto between the first two rows: a *domain* servic
 
 ## Rich vs anemic domain models {i}
 
+:::plain
+In a rich model, objects enforce their own rules through methods. In an anemic model they're just data, and the rules are scattered across services.
+:::
+
 ```csharp
 // ✘ Anemic: a bag of data; rules live in services and get duplicated and bypassed
 public class Order { public int Id { get; set; } public string Status { get; set; } = ""; public List<OrderLine> Lines { get; set; } = []; }
@@ -298,6 +318,10 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 Notice that `CustomerId` is mapped as a plain property with a value converter, not a navigation — the Fluent API configuration directly enforces rule 3 from the aggregate design section above, at the persistence layer rather than just by convention. Private setters, private parameterless constructors, backing fields, owned and complex types, and value converters together let the domain stay genuinely clean. Some teams instead keep **separate persistence models** and map between them: the purest approach, with more code to maintain in exchange for zero coupling at all between the domain and EF Core's own requirements.
 
 ## When DDD is overkill {i}
+
+:::plain
+Simple CRUD screens don't need aggregates and domain events. Use DDD's tactical patterns where the business rules are genuinely complex.
+:::
 
 Tactical DDD has real costs: more types, more mapping, a learning curve, and eventual consistency between aggregates. Use it for **core, complex domains with rich rules that change often** — exactly the "Core" row from the subdomain table earlier in this chapter. For CRUD-style supporting subdomains (reference data admin, simple forms), a straightforward model with EF Core and validation is better, and reaching for the full tactical toolkit there would be ceremony without payoff. **Strategic DDD** (bounded contexts, ubiquitous language) is valuable almost everywhere, even when you skip the tactical patterns entirely — the value of a shared, precise vocabulary doesn't depend on how rich the underlying model needs to be.
 

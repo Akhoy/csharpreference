@@ -28,6 +28,10 @@ The classes are well designed, but the solution as a whole is a tangle: endpoint
 
 ## What "architecture" means at this scale {b}
 
+:::plain
+Architecture here means how the solution's projects and folders are arranged, and which parts may depend on which. Its job is to keep the business rules easy to find, test and change.
+:::
+
 Everything in [Design principles](ch:design-principles) applied to individual classes. This chapter asks the same question at the scale of an entire solution: how do you divide a codebase into parts, what is each part responsible for, and **which parts may depend on which**? Good architecture keeps **business rules** independent of **delivery mechanisms** (HTTP, UI, messages) and **infrastructure** (databases, queues, external APIs), so that:
 
 - business logic can be tested without a web server or database,
@@ -36,6 +40,10 @@ Everything in [Design principles](ch:design-principles) applied to individual cl
 - the code tells you what the system **does** (orders, payments), not just what it's **built with** (controllers, repositories).
 
 ## Layered (n-tier) architecture: the traditional starting point {b}
+
+:::plain
+Code is split by technical role into layers, such as UI, business and data, and each layer only calls the one below it.
+:::
 
 ```text
 ┌──────────────────────────┐
@@ -53,6 +61,10 @@ Each layer depends on the one BELOW it.
 **Pros:** simple, familiar, and a clear separation of technical concerns. **Cons:** trace the dependency arrows and the real problem becomes visible — the business layer **depends on data access**, so business rules are coupled to persistence (testing needs the DAL, entities are shaped by tables), and a single feature's logic is scattered across all four layers rather than living in one place. It tends toward anemic models and "service classes" holding all the actual logic.
 
 ## Onion, Hexagonal and Clean Architecture: three names, one fix {i}
+
+:::plain
+Put the business rules in the middle and make every dependency point inward. Databases, web frameworks and vendors become plug-ins at the edge.
+:::
 
 All three names below are solving exactly the layered architecture's core problem: put the **domain at the centre**, and make **all dependencies point inward**, so business logic never has to know anything about the technology serving or persisting it.
 
@@ -83,6 +95,10 @@ All three names below are solving exactly the layered architecture's core proble
 How it works, concretely: the inner layers **define interfaces** for what they need (`IOrderRepository`), and the outer layers **implement** them (`EfOrderRepository`) — exactly the Dependency Inversion Principle from [Design principles](ch:design-principles#d-dependency-inversion-principle), now applied to the whole solution rather than one class. At runtime, control still flows outward (handler → repository → SQL), but the compile-time dependency points inward — the same inversion that single `OrderService` example demonstrated, scaled up to entire projects.
 
 ## A Clean Architecture solution in .NET {i}
+
+:::plain
+In practice that's usually four projects: Domain, Application, Infrastructure and the web API, with project references enforcing the inward direction.
+:::
 
 ```text
 src/
@@ -166,6 +182,10 @@ The domain and application layers compile and test **without ASP.NET Core, EF Co
 
 ## Repository and Unit of Work: a debate that's really about EF Core {i}
 
+:::plain
+DbContext already is a repository and a unit of work. Adding your own on top helps only when it hides something real, such as aggregate loading rules.
+:::
+
 - **Repository** (Fowler, *PoEAA*): mediates between the domain and data mapping, acting like an **in-memory collection of aggregates** — an "aggregate" here just means a cluster of related objects (say, an `Order` plus its `OrderLine`s) that's saved and loaded as one unit, a concept [DDD](ch:ddd) covers in full — exposed via `GetAsync`, `Add`, `Remove`, hiding how they're stored.
 - **Unit of Work:** tracks changes during a business transaction and **commits them together**.
 
@@ -189,6 +209,10 @@ builder.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<KettleDb>())
 **Specification pattern:** encapsulates query criteria as objects (`new OrdersForCustomerSpec(customerId, includeLines: true)`), so repositories don't explode into dozens of `GetByXAndY` methods (e.g. the Ardalis.Specification library).
 
 ## Vertical Slice Architecture: organising by feature instead of by role {i}
+
+:::plain
+Group code by feature: everything for 'place order' lives together, from endpoint to SQL. A change to one feature then stays in one folder.
+:::
 
 Coined by Jimmy Bogard. Instead of organising by **technical layer** — the instinct every architecture above this section shares — organise by **feature**: each request type (a "slice" through all layers) owns everything it needs, in one place.
 
@@ -242,6 +266,10 @@ These two approaches **combine well** rather than competing: a rich **domain** p
 
 ## The modular monolith: most of microservices' benefits, none of the network {i}
 
+:::plain
+One deployable application split into modules with strict boundaries and their own data. You get clear ownership without network calls, and modules can become services later.
+:::
+
 A **single deployable** application divided into **modules** that are as independent as microservices *logically*: one per bounded context, each with its own domain, data (its own schema or DbContext) and a small public API.
 
 ```text
@@ -280,6 +308,10 @@ public void Modules_do_not_reference_each_others_internals() =>
 4. **Analyzers / code review checklists**, and documenting decisions as **ADRs** (Architecture Decision Records).
 
 ## Choosing {i}
+
+:::plain
+Pick the simplest structure that keeps your business rules separate from infrastructure, and let the way your code actually changes decide the rest.
+:::
 
 | Situation | Reasonable choice |
 |---|---|

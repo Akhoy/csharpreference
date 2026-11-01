@@ -30,6 +30,10 @@ Kettle's services are containers now. Azure offers half a dozen places to run th
 
 ## The options at a glance {b}
 
+:::plain
+Azure's places to run code range from virtual machines, where you manage everything, to Functions, where you only write code. Pick by how much operations work you want.
+:::
+
 ```text
 More control, more ops ◀──────────────────────────────────────────────────────────────▶ Less ops, more opinionated
   Virtual Machines      AKS (Kubernetes)      Container Apps        App Service          Azure Functions
@@ -48,6 +52,10 @@ Every option on this spectrum is the exact same trade-off from [Cloud fundamenta
 | Ops effort | Low | Lowest | Low–medium | **High** | Highest |
 
 ## Azure App Service {b}
+
+:::plain
+App Service hosts web apps and APIs for you: you deploy code or a container, and Azure handles servers, patching, scaling and certificates.
+:::
 
 **App Service** hosts web apps, REST APIs and background WebJobs, on Windows or Linux, from **code** (.NET published output) or a **container image**.
 
@@ -84,6 +92,10 @@ Settings can be marked **slot-specific** ("sticky"), like a connection string po
 - **WebJobs** run background tasks alongside the app (prefer hosted services or Functions in new code).
 
 ## Azure Functions {i}
+
+:::plain
+Functions run small pieces of code in response to events, such as a timer or a queue message, and you pay only while they run.
+:::
 
 **Azure Functions** runs small pieces of code in response to **triggers**, with automatic scaling and pay-per-use pricing.
 
@@ -171,6 +183,10 @@ Notice `catch (TaskFailedException)` calling `ReleaseStock` — this is a saga's
 
 ## Azure Container Apps {i}
 
+:::plain
+Container Apps runs your containers with Kubernetes underneath, but without you managing a cluster. It scales on traffic or queue length, down to zero.
+:::
+
 **Container Apps** runs containers on a **managed, serverless Kubernetes-based platform**: you get revisions, ingress, autoscaling (KEDA), Dapr and jobs **without operating a cluster** — the middle point on the compute spectrum, deliberately positioned to give most of AKS's capability without most of AKS's operational cost.
 
 | Concept | Meaning |
@@ -216,6 +232,10 @@ Key AKS integrations: **Workload Identity** (pods get Entra identities), **Key V
 - **Azure Spring Apps** has been retired (it was for Java). **Azure Static Web Apps** serves SPAs with optional Functions APIs. **Azure Batch** handles large parallel compute jobs.
 
 ## Choosing compute: a decision guide {i}
+
+:::plain
+Start with the most managed option that fits, and move to more control only when you hit a real limit.
+:::
 
 ```text
 Is it a small piece of code triggered by events/timers, spiky or infrequent?    → Azure Functions (Flex Consumption)

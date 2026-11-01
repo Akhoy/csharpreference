@@ -29,12 +29,20 @@ Kettle's services survive each other's failures. Then a customer reports that ch
 
 ## Monitoring vs observability: knowing the answer vs being able to find it {b}
 
+:::plain
+Monitoring watches for problems you predicted. Observability lets you investigate problems you didn't, from the data the system already produces.
+:::
+
 - **Monitoring** answers questions you **knew to ask in advance**: is CPU above 80%? Is the error rate above 1%? It drives dashboards and alerts.
 - **Observability** is the ability to answer **new questions** about the system's internal state from its outputs, without shipping new code: "Why are checkout requests from mobile users in Germany slow since 14:05?"
 
 In a distributed system, where one click touches 8 services, observability isn't optional — nobody could have pre-built a dashboard for every possible question an incident might raise, and that's exactly the gap observability closes. Without it, every incident turns into hours of guesswork.
 
 ## The three signals {b}
+
+:::plain
+Logs say what happened, metrics say how much and how often, and traces say where a single request spent its time. Together they explain an incident.
+:::
 
 | Signal | What it is | Answers | Example |
 |---|---|---|---|
@@ -47,6 +55,10 @@ Plus, increasingly, **profiles** (continuous CPU and memory profiling) and **eve
 They're most powerful **correlated**: a metric spike → exemplar traces from that spike → the logs of those traces, all linked by **TraceId**. Each signal alone answers a narrower question than the chain of all three together — a metric tells you *that* something's wrong, a trace tells you *where*, and the logs for that trace tell you *why*.
 
 ## How .NET emits telemetry {i}
+
+:::plain
+.NET has built-in APIs for logs, metrics and traces. OpenTelemetry collects from those APIs and sends the data wherever you want.
+:::
 
 .NET has **vendor-neutral APIs built into the BCL**. Libraries emit telemetry through them, and you choose where it goes — the emitting code never needs to know or care which backend eventually receives it.
 
@@ -64,6 +76,10 @@ Your code + libraries ──(ILogger · Meter · ActivitySource)──▶ OpenTe
 ```
 
 ## Setting up OpenTelemetry {i}
+
+:::plain
+A few lines in Program.cs turn on traces and metrics for ASP.NET Core, HttpClient and EF Core, and send them to a backend over OTLP.
+:::
 
 ```csharp
 builder.Services.AddOpenTelemetry()
@@ -92,6 +108,10 @@ builder.Services.AddOpenTelemetry()
 Exporter endpoints come from standard environment variables: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`.
 
 ## Distributed tracing {i}
+
+:::plain
+Every request gets a trace ID that travels with it to every service it touches, so you can see the whole request as one timeline.
+:::
 
 A **trace** is identified by a **TraceId** shared by every **span** in it. Each span has a SpanId, a parent SpanId, a name, a start and end time, **attributes** (tags), **events** and a **status**.
 
@@ -125,6 +145,10 @@ ASP.NET Core reads it on incoming requests; HttpClient and gRPC write it on outg
 Recording every span of every request is expensive at scale. **Head sampling** decides at the start (e.g. keep 10%, `TraceIdRatioBasedSampler`); **tail sampling** (in the OpenTelemetry Collector) decides after the trace completes, which lets you **keep all errors and slow traces** and sample the rest — precisely the traces you'd actually want during an incident, kept disproportionately more often than the boring, fast, successful ones. Always keep metrics unsampled: they're aggregates, and sampling an aggregate just makes it a less accurate aggregate for no real cost saving.
 
 ## Custom spans and metrics {i}
+
+:::plain
+Add your own spans around important work and your own counters and histograms for business numbers, using ActivitySource and Meter.
+:::
 
 ```csharp
 public sealed class CheckoutTelemetry
@@ -181,6 +205,10 @@ Follow the **OpenTelemetry semantic conventions** for names and attributes (`htt
 
 ## What to measure: RED, USE and the golden signals {i}
 
+:::plain
+For a service, measure request rate, error rate and duration. For a resource, measure how busy it is and how much work is waiting.
+:::
+
 | Method | For | Measure |
 |---|---|---|
 | **RED** | Request-driven services (APIs) | **R**ate (requests/s), **E**rrors (failed/s or %), **D**uration (latency percentiles) |
@@ -197,6 +225,10 @@ Use **percentiles (p50, p95, p99)**, not averages: an average of 100 ms can hide
 - **Alert on symptoms users feel** (SLO burn rate, error rate, latency), not on every cause (one CPU spike). Every page should be **actionable**, and link to a dashboard and a runbook.
 
 ## Application Insights and Azure Monitor {i}
+
+:::plain
+Azure Monitor stores and queries your telemetry, and Application Insights adds application views such as the request map and end-to-end transaction view.
+:::
 
 **Azure Monitor** is Azure's observability platform; **Application Insights** is its APM feature for applications; **Log Analytics** workspaces store the data, queried with **KQL** (Kusto Query Language).
 
@@ -216,6 +248,10 @@ union requests, dependencies, traces, exceptions
 Features: the **application map** (auto-discovered dependency topology), **transaction search** and end-to-end transaction views, **live metrics**, failures and performance blades, **availability tests** (synthetic pings), smart detection, the profiler and snapshot debugger, workbooks and alerts. Use the **Azure Monitor OpenTelemetry Distro** (`UseAzureMonitor()`) in new code; the classic Application Insights SDK is in maintenance.
 
 ## .NET Aspire {i}
+
+:::plain
+Aspire describes your whole system in C#, runs it locally with one command, wires services together, and shows logs, traces and metrics in a dashboard.
+:::
 
 **.NET Aspire** is an opinionated toolkit for building **observable, production-ready distributed apps**. It covers three things:
 

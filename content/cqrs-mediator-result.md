@@ -27,6 +27,10 @@ Kettle's code has a structure. Now the read screens need data shaped differently
 
 ## From a rule about methods to a rule about architecture {b}
 
+:::plain
+A method should either change something or answer a question, never both. CQRS applies the same split to a whole application: separate code for writes and for reads.
+:::
+
 **CQS** (Command-Query Separation, Bertrand Meyer) is a rule for **methods**: a method should either be a **command** (changes state, returns nothing) or a **query** (returns data, has no side effects), never both. Asking a question shouldn't change the answer — a useful discipline on its own, mentioned briefly back in [Design principles](ch:design-principles#other-principles-worth-naming).
 
 **CQRS** (Command Query Responsibility Segregation, Greg Young) takes that exact same split and scales it up from a method to an entire architecture: use **separate models** (and code paths) for **writes** and **reads**.
@@ -46,6 +50,10 @@ They have **different needs**. Writes need **rich behaviour and invariants**: lo
 
 ## Levels of CQRS: a spectrum, not a binary choice {i}
 
+:::plain
+CQRS can be as small as separate handlers for reads and writes in one database, or as big as separate read databases updated by events. Most apps should stay near the small end.
+:::
+
 CQRS is a spectrum, and most teams should stop well before the far end:
 
 | Level | Write side | Read side | Consistency | Complexity |
@@ -63,6 +71,10 @@ They're often mentioned together, but they're independent. You can do CQRS witho
 :::
 
 ## Commands and queries in code {i}
+
+:::plain
+A command handler loads the domain model, applies the rules and saves. A query handler skips the domain model and projects straight from the database to a DTO.
+:::
 
 ```csharp
 // ── Commands: intent to change state; imperative names; return little (an id, a Result) ──
@@ -104,6 +116,10 @@ public sealed class GetOrderHistoryHandler(KettleDb db)
 Notice how different these two handlers actually are in shape, not just in name: `PlaceOrderHandler` loads a rich `Order` aggregate and calls its own methods, while `GetOrderHistoryHandler` never touches the domain model at all — it projects straight from `DbSet` to DTO, exactly the pattern [EF Core querying](ch:efcore-querying#projection-the-single-biggest-win-in-this-chapter) recommended for every read endpoint. Rules of thumb that fall out of this: **queries never modify state**; queries can bypass the domain model entirely; **commands go through aggregates**; one handler per command or query.
 
 ## The mediator pattern and pipeline behaviours {i}
+
+:::plain
+A mediator sends each request to its one handler through a pipeline, so logging, validation and transactions are written once for every handler.
+:::
 
 A **mediator** dispatches a request object to its **single handler**, so the sender doesn't need a reference to the handler directly. That indirection alone is a modest convenience — its real value is the **pipeline** it enables: behaviours that wrap **every** handler, giving you one place to put cross-cutting concerns, exactly the role [Middleware](ch:middleware) plays for HTTP requests, now scoped to your application layer instead.
 
@@ -174,6 +190,10 @@ MediatR also has **notifications** (`INotification` with multiple `INotification
 The honest tradeoff behind all of this: indirection hides call graphs, a mediator is "service locator in disguise" when overused, and it's genuinely unnecessary ceremony for a small app with a handful of use cases. Against that: a uniform pipeline, decoupled endpoints, and an easy, repeatable per-use-case structure that scales well as the number of use cases grows. A good interview answer acknowledges both sides rather than picking a tribe.
 
 ## The Result pattern: making expected failure part of the method's contract {i}
+
+:::plain
+Instead of throwing for expected problems like 'out of stock', a method returns a Result that is either a value or an error. The caller can't forget the failure case.
+:::
 
 **Problem:** many failures are **expected outcomes**, not exceptional situations: "order not found", "insufficient stock", "email already registered", "card declined". Using exceptions for them creates a specific, recurring set of problems:
 

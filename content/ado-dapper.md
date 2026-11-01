@@ -28,6 +28,10 @@ Kettle has a database. Now its C# has to talk to it, and one report needs hand-t
 
 ## The layer every other data-access tool is secretly built on {b}
 
+:::plain
+ADO.NET is .NET's basic database API: open a connection, send a command, read the rows back. EF Core and Dapper are both built on top of it.
+:::
+
 Whichever way you query a .NET database — EF Core's LINQ, Dapper's SQL strings, or a hand-rolled reader loop — every single one of them eventually bottoms out in the same four objects. **ADO.NET** (`System.Data`) is that provider-agnostic, low-level database API, and each database ships a **provider** implementing it:
 
 | Abstract class | SQL Server (`Microsoft.Data.SqlClient`) | PostgreSQL (`Npgsql`) | SQLite |
@@ -81,6 +85,10 @@ The old disconnected in-memory model (`DataSet`, `DataTable`, `DataAdapter`) is 
 
 ## Transactions in ADO.NET {i}
 
+:::plain
+You start a transaction on the connection, attach it to every command that should be part of it, and then commit or roll back. Anything not attached runs outside it.
+:::
+
 ```csharp
 await using var conn = new SqlConnection(cs);
 await conn.OpenAsync(ct);
@@ -106,6 +114,10 @@ catch
 
 ## Bulk operations: when row-by-row stops being viable {i}
 
+:::plain
+Inserting a million rows one INSERT at a time means a million round trips. Bulk APIs stream all the rows to the database in one go.
+:::
+
 Inserting 100,000 rows one `INSERT` at a time takes minutes, because each one pays its own network round trip and transaction-log write. The options that avoid that cost each trade something for speed:
 
 | Approach | Speed | Notes |
@@ -125,6 +137,10 @@ await bulk.WriteToServerAsync(dataReaderOrDataTable, ct);
 ```
 
 ## Dapper: the micro-ORM that stays out of your way {b}
+
+:::plain
+Dapper runs the SQL you write and copies each row's columns onto your objects' properties. It does nothing else, so it's fast and predictable.
+:::
 
 **Dapper** (by Stack Overflow) is, at its core, just a set of extension methods on `IDbConnection`. The division of labour it offers is deliberately minimal: **you write the SQL; Dapper maps the resulting rows to objects** (and your objects to parameters), with performance close enough to hand-written ADO.NET that the difference rarely matters. There's no change tracking, no LINQ translation layer, and no migrations — Dapper simply isn't trying to be a full ORM.
 
@@ -152,6 +168,10 @@ var rows = await conn.QueryAsync<OrderRow>(new CommandDefinition(sql, args, canc
 The mapping itself works by matching **column name to property or constructor parameter name**, case-insensitively — no attributes, no configuration. Records with positional constructors work out of the box; where a column name doesn't match a property name, a SQL alias (`AS CustomerName`) closes the gap.
 
 ## Dapper: advanced usage {i}
+
+:::plain
+Dapper can also split one row across several objects, read several result sets from one call, and stream large results, all while you keep full control of the SQL.
+:::
 
 ### Multi-mapping: turning a join back into an object graph
 
@@ -206,6 +226,10 @@ Map custom types (strongly typed IDs, JSON columns, `DateOnly` on older provider
 
 ## Registering connections in DI {i}
 
+:::plain
+Register a factory that creates a new connection when asked, not a single shared connection. Each operation opens its own short-lived connection, and the pool makes that cheap.
+:::
+
 ```csharp
 // Modern: DbDataSource (Npgsql) — a singleton factory for pooled connections
 builder.Services.AddNpgsqlDataSource(builder.Configuration.GetConnectionString("Kettle")!);
@@ -225,6 +249,10 @@ builder.Services.AddSingleton<IDbConnectionFactory, SqlConnectionFactory>();
 ```
 
 ## Dapper vs EF Core: the real decision, not a popularity contest {i}
+
+:::plain
+EF Core writes SQL and tracks changes for you, which suits most writes. Dapper runs SQL you wrote, which suits hand-tuned reads. Many apps use both.
+:::
 
 | | EF Core | Dapper |
 |---|---|---|

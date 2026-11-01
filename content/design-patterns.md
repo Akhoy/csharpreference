@@ -28,6 +28,10 @@ Kettle's classes are smaller and focused. The same design problems keep coming b
 
 ## What patterns are, and why recognising them is worth the effort {b}
 
+:::plain
+A pattern is a named, proven shape for solving a recurring design problem. Knowing the names lets you talk about designs, and spot them in frameworks you already use.
+:::
+
 A **design pattern** is a reusable, named solution to a recurring design problem. The value of learning the name isn't abstract — it's that once you recognise "this is Decorator" or "this is Chain of Responsibility," you can predict how a piece of unfamiliar framework code behaves without reading its implementation line by line. The 1994 "Gang of Four" (GoF) book *Design Patterns* catalogued 23 of them in three groups:
 
 | Group | Concern | Patterns |
@@ -45,6 +49,10 @@ Keep one thing in mind as you read the catalogue below: modern C# and DI make ma
 ---
 
 ## Factory Method and Simple Factory {b}
+
+:::plain
+A factory is one place that decides which class to create, so callers ask for 'a payment processor' instead of choosing the concrete class themselves.
+:::
 
 **Intent:** let a method or class decide **which concrete type** to create, so callers depend only on an abstraction.
 
@@ -74,6 +82,10 @@ public sealed class Order
 
 ## Abstract Factory {i}
 
+:::plain
+An abstract factory creates a whole family of related objects that must match, such as all the parts for one cloud provider.
+:::
+
 **Intent:** create **families of related objects** without specifying concrete classes, so a family can be swapped as a whole.
 
 ```csharp
@@ -85,6 +97,10 @@ public sealed class LocalStorageFactory : IStorageFactory { /* file system, in-m
 Notice the "swapped as a whole" part is the actual point here, distinguishing this from a plain Factory Method: you never want `AzureStorageFactory`'s blob store paired with `LocalStorageFactory`'s queue — the whole family has to move together, exactly as it would between a local dev environment and a cloud deployment. **In .NET:** `DbProviderFactory` (creates connections, commands and parameters for one provider). In practice, registering a coherent set of implementations per environment in DI achieves the same thing.
 
 ## Builder {b}
+
+:::plain
+A builder assembles a complicated object step by step, with readable calls, and checks it's valid at the end. ASP.NET Core's WebApplication.CreateBuilder is one.
+:::
 
 **Intent:** construct a complex object **step by step**, with a readable fluent API, separating construction from representation and validating once at `Build()`.
 
@@ -110,6 +126,10 @@ public sealed class ReportBuilder
 **In .NET, everywhere:** `WebApplication.CreateBuilder()` / `WebApplicationBuilder`, `HostApplicationBuilder`, `IServiceCollection` (a builder for the container), `ConfigurationBuilder`, `StringBuilder`, `UriBuilder`, `DbContextOptionsBuilder`, `ModelBuilder`, `AuthorizationPolicyBuilder`, `HubConnectionBuilder`. **Test data builders** (`new OrderBuilder().WithLines(3).Paid().Build()`) are a great use in test projects.
 
 ## Singleton {b}
+
+:::plain
+A singleton guarantees one shared instance. In .NET, register it as a singleton in DI rather than writing a static Instance property.
+:::
 
 **Intent:** exactly **one instance**, with global access.
 
@@ -140,6 +160,10 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 
 ## Adapter {b}
 
+:::plain
+An adapter wraps a class with an awkward interface, such as a vendor SDK, so it fits the interface your code expects.
+:::
+
 **Intent:** make an existing class with an **incompatible interface** work through the interface your code expects. It's a translator.
 
 ```csharp
@@ -164,6 +188,10 @@ public sealed class StripePaymentAdapter(PaymentIntentService stripe) : IPayment
 **Why it matters:** this is exactly the **"adapter" in Ports & Adapters (Hexagonal)** architecture, the same pattern [Design principles](ch:design-principles#d-dependency-inversion-principle) described as infrastructure implementing an interface the business side owns. Vendor types never leak into your domain, and switching providers means writing a new adapter. **In .NET:** `StreamReader` (adapts a `Stream` to text reading), `TextWriter` adapters, logging providers adapting `ILogger` to Serilog/NLog.
 
 ## Decorator {b}
+
+:::plain
+A decorator wraps an object with the same interface and adds behaviour around it, such as caching or logging, without changing the original.
+:::
 
 **Intent:** wrap an object with **another object implementing the same interface**, adding behaviour before/after delegating. Decorators can be stacked, and the inner object doesn't know.
 
@@ -204,6 +232,10 @@ Notice the `Decorate` calls build up exactly the same nested-wrapping shape [Mid
 
 ## Proxy {i}
 
+:::plain
+A proxy stands in for another object and controls access to it, for example loading it lazily or calling it over the network.
+:::
+
 **Intent:** a stand-in with the **same interface** that **controls access** to the real object: lazy creation, remote access, caching, access control.
 
 | Proxy kind | .NET example |
@@ -216,6 +248,10 @@ Notice the `Decorate` calls build up exactly the same nested-wrapping shape [Mid
 Decorator and Proxy look identical in code — both wrap an object behind the same interface. What tells them apart is *why* you wrapped it. A decorator **adds behaviour** to an object that's already there. A proxy **controls access** to an object, often deciding *whether* or *when* it even exists. That's why EF Core's lazy-loading proxy counts as Proxy (it decides when to load the real entity) while `CachingProductRepository` above counts as Decorator (the real repository is already available; caching just adds a behaviour in front of it).
 
 ## Facade {b}
+
+:::plain
+A facade gives a simple front door to a complicated subsystem, so most callers only need one easy method.
+:::
 
 **Intent:** provide a **simple, unified interface** over a complex subsystem.
 
@@ -240,6 +276,10 @@ public sealed class CheckoutFacade(ICartService carts, IPricingService pricing, 
 
 ## Composite {i}
 
+:::plain
+A composite treats a group of items and a single item the same way, like a bundle of teas priced as if it were one tea.
+:::
+
 **Intent:** treat **individual objects and groups of objects uniformly** through one interface (tree structures).
 
 ```csharp
@@ -261,6 +301,10 @@ public sealed class CompositeRule(params IPriceRule[] rules) : IPriceRule
 ---
 
 ## Strategy {b}
+
+:::plain
+A strategy is an interchangeable algorithm behind an interface, such as different pricing rules, chosen at run time.
+:::
 
 **Intent:** define a **family of interchangeable algorithms** behind one interface and choose one at runtime.
 
@@ -292,6 +336,10 @@ Notice how directly this maps onto the Open/Closed worked example from [Design p
 
 ## Observer {b}
 
+:::plain
+An observer subscribes to be told when something happens. C# events and IObservable are built-in versions.
+:::
+
 **Intent:** a **subject** notifies a list of **observers** when something happens, without knowing who they are.
 
 ```csharp
@@ -310,6 +358,10 @@ public sealed class DomainEventDispatcher(IEnumerable<IOrderPlacedHandler> handl
 
 ## Command {i}
 
+:::plain
+A command turns a request into an object, so it can be queued, logged, retried or undone.
+:::
+
 **Intent:** encapsulate **a request as an object**, so you can queue it, log it, retry it, undo it, or send it elsewhere.
 
 ```csharp
@@ -321,6 +373,10 @@ public sealed class PlaceOrderHandler(…) : ICommandHandler<PlaceOrder> { /* �
 **In .NET and architecture:** CQRS commands, MediatR `IRequest`, messages sent to a queue (a command sent to Service Bus is literally a serialised Command object), Hangfire jobs, undo stacks in UI apps. Commands are named in the imperative (`PlaceOrder`, `CancelSubscription`); events are named in the past tense (`OrderPlaced`) — a naming discipline that pays for itself the moment you're scanning a codebase and need to tell at a glance which messages can still be rejected and which already happened.
 
 ## Chain of Responsibility {b}
+
+:::plain
+A request passes along a chain of handlers, each of which can act on it or pass it on. ASP.NET Core middleware is exactly this.
+:::
 
 **Intent:** pass a request along a **chain of handlers**; each either handles it, passes it on, or both.
 
@@ -339,6 +395,10 @@ public sealed class Director : ApprovalHandler { public override ApprovalResult 
 
 ## Mediator {i}
 
+:::plain
+A mediator routes messages between objects so they don't reference each other directly. It's useful mainly for the pipeline it can wrap around every handler.
+:::
+
 **Intent:** objects communicate **through a mediator** instead of referencing each other directly, which reduces many-to-many coupling to one-to-many.
 
 ```csharp
@@ -349,6 +409,10 @@ app.MapPost("/orders", (PlaceOrder cmd, ISender mediator, CancellationToken ct) 
 **In .NET:** MediatR (commercial licence for larger companies since 2025), the source-generated **Mediator** library, Wolverine, Brighter; SignalR hubs (clients talk via the hub); and an aggregate root mediating access to its children. Trade-off: decoupling and a central pipeline vs indirection ("go to definition" no longer finds the handler). See [CQRS & Mediator](ch:cqrs-mediator-result).
 
 ## Template Method {i}
+
+:::plain
+A base class fixes the steps of an algorithm and lets subclasses fill in some of them. BackgroundService's ExecuteAsync is an example.
+:::
 
 **Intent:** a base class defines the **skeleton of an algorithm**, and subclasses fill in specific steps.
 
@@ -374,6 +438,10 @@ public abstract class ImportJob
 **In .NET:** `BackgroundService.ExecuteAsync`, `AuthenticationHandler<T>.HandleAuthenticateAsync`, `AuthorizationHandler<T>.HandleRequirementAsync`, `DbContext.OnModelCreating`/`OnConfiguring`, `JsonConverter<T>.Read/Write`, `Stream` subclasses. Strategy (composition) is often preferred when steps vary independently.
 
 ## State {i}
+
+:::plain
+Each state of an object becomes its own class, so behaviour that depends on the state lives in one place instead of in switch statements everywhere.
+:::
 
 **Intent:** an object **changes its behaviour when its internal state changes**, with each state as its own class, instead of `if (status == …)` scattered everywhere.
 
@@ -401,6 +469,10 @@ For simpler lifecycles, an **enum plus a transition table** or a library like **
 - **Interpreter:** evaluate sentences in a small language (rule engines, query parsers). Expression trees and Roslyn scripting are related.
 
 ## Beyond GoF: patterns you'll meet in .NET backends {i}
+
+:::plain
+Beyond the classic catalogue, .NET backends use their own recurring shapes: options, repositories, unit of work, outbox, specification and result.
+:::
 
 | Pattern | Where it's covered |
 |---|---|

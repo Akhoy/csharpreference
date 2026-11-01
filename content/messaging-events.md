@@ -29,6 +29,10 @@ Checkout calls email, stock and analytics one after another. When the email serv
 
 ## What putting a broker in the middle actually buys you {b}
 
+:::plain
+A broker holds messages between services, so the sender can carry on without waiting and the receiver can process them when it's ready, even after being down.
+:::
+
 With synchronous HTTP between services, the caller **waits**, and if the callee is down or slow, that failure propagates straight back to the caller — exactly the "chatty synchronous chains" problem [Microservices](ch:microservices#why-microservices-and-what-they-genuinely-cost) warned about. **Messaging** fixes this by putting a **broker** in between: the sender hands a message to the broker and moves on; receivers process it when they can, entirely decoupled from whether the sender is even still running.
 
 ```text
@@ -51,6 +55,10 @@ Notice the diagram's last line: Analytics was "added later without touching Orde
 
 ## Commands, events and queries: three different conversations {b}
 
+:::plain
+A command asks one specific service to do something. An event announces that something has happened, to whoever cares. A query asks for data.
+:::
+
 | | Command | Event | Query |
 |---|---|---|---|
 | Meaning | "Please do X" | "X happened" | "Tell me X" |
@@ -66,6 +74,10 @@ This is the exact same Command-vs-Event naming discipline from [Design patterns]
 
 ## Queues and topics {b}
 
+:::plain
+A queue gives each message to one consumer. A topic gives every subscription its own copy.
+:::
+
 ```text
 QUEUE (point-to-point, competing consumers)         TOPIC (publish/subscribe)
 Producer ─▶ [ m3 m2 m1 ] ─▶ Consumer A (gets m1)     Publisher ─▶ (topic) ─┬─▶ [subscription: billing ] ─▶ Billing
@@ -77,6 +89,10 @@ each message goes to ONE consumer instance                                └─
 A message is processed by **one** instance per queue or subscription, so scaling out consumers increases throughput without duplicate processing (in theory: see delivery guarantees, next).
 
 ## Brokers compared {i}
+
+:::plain
+Service Bus removes a message once it's handled, like a to-do list. Kafka and Event Hubs keep messages as a log that consumers can replay.
+:::
 
 | | **Azure Service Bus** | **RabbitMQ** | **Kafka / Azure Event Hubs** | Azure Storage Queues |
 |---|---|---|---|---|
@@ -92,6 +108,10 @@ The "Consumption" row is the real distinguishing feature between Service Bus and
 Also on Azure: **Event Grid**, a push-based **event router** for reactive programming (a blob was created, a resource changed, custom events to webhooks or functions). It's lightweight notification fan-out, not a work queue. See [Azure data & messaging](ch:azure-data-messaging).
 
 ## Delivery guarantees: why "exactly once" isn't really on the table {i}
+
+:::plain
+A broker can't know whether a consumer finished its work before crashing, so it may deliver the same message again. Assume duplicates, and make handlers safe to repeat.
+:::
 
 | Guarantee | Meaning | Reality |
 |---|---|---|
@@ -191,6 +211,10 @@ Note the **idempotency key passed to `payments.ChargeAsync`** — the exact patt
 
 ## Retries, poison messages and dead-lettering {i}
 
+:::plain
+A message that keeps failing is retried a few times, then moved to a dead-letter queue, so it doesn't block everything behind it while someone investigates.
+:::
+
 - **Immediate retries** for transient glitches (deadlocks, brief timeouts).
 - **Delayed redelivery** with backoff (seconds → minutes) for longer outages of a dependency.
 - **Dead-letter queue (DLQ)**: after N failed attempts, move the message aside so it doesn't block the queue or burn resources (a **poison message**). Alert on DLQ depth; inspect, fix, then **resubmit**.
@@ -276,6 +300,10 @@ Notice this is exactly the State pattern from [Design patterns](ch:design-patter
 Alternatives for long-running orchestration: **Azure Durable Functions**, **Temporal**, **Dapr Workflows**, NServiceBus sagas.
 
 ## Messaging libraries for .NET {i}
+
+:::plain
+Libraries such as MassTransit, NServiceBus and Wolverine handle the hard parts for you: retries, the outbox, sagas and testing.
+:::
 
 Using the raw broker SDKs (`Azure.Messaging.ServiceBus`, `RabbitMQ.Client`, `Confluent.Kafka`) is fine for simple cases. Libraries add the hard parts: serialization, topology, retries, the outbox/inbox, sagas, scheduling, test harnesses and OpenTelemetry.
 

@@ -29,6 +29,10 @@ Queries are fast. Now two staff members edit the same order, and the second save
 
 ## Optimistic concurrency: catching a lost update without ever locking {i}
 
+:::plain
+Each row carries a version number. Saving checks that the version hasn't changed since you read it, so a second person's stale save fails instead of silently overwriting the first.
+:::
+
 Here's the concrete failure this section exists to prevent: two users both load order 42 at the same moment. Alice changes the shipping address and saves. Bob, still holding the version he loaded a moment earlier — before Alice's save — changes the status and saves too, and his save **overwrites Alice's change** with the old address he never actually touched. Nobody did anything wrong individually; the collision is purely a timing accident. This is a **lost update**, the same anomaly named in [Relational fundamentals](ch:relational-fundamentals#isolation-levels-and-the-anomalies-each-one-actually-prevent).
 
 **Optimistic concurrency** is built on a bet that pays off most of the time: conflicts like this are rare, so don't pay the cost of locking on every read — instead, **detect** a conflict only at the moment of writing, using a version column that changes on every update.
@@ -78,6 +82,10 @@ Optimistic concurrency isn't only about preventing overwritten edits — it also
 
 ## Transactions: when SaveChanges's own transaction isn't enough {i}
 
+:::plain
+SaveChanges already wraps its changes in one transaction. You need an explicit transaction only when several SaveChanges calls, or raw SQL, must succeed or fail together.
+:::
+
 `SaveChanges` is **already transactional** on its own — every change made in one call commits or rolls back together, with no extra code needed. You need an *explicit* transaction specifically when that single-call guarantee isn't wide enough, which happens when:
 
 - several `SaveChanges` calls must be atomic together,
@@ -125,6 +133,10 @@ A transaction, no matter how it's opened, covers **one database connection**. Yo
 :::
 
 ## Set-based updates and deletes: skipping the entity entirely {i}
+
+:::plain
+ExecuteUpdate and ExecuteDelete send one UPDATE or DELETE statement to the database, without loading the rows. They're fast for bulk changes, but bypass change tracking.
+:::
 
 EF 7+ offers a second way to write to the database that deliberately skips the tracking machinery altogether, running a set-based SQL statement **without loading any entities into memory first**:
 
@@ -311,6 +323,10 @@ Pool contexts with `AddDbContextPool` or a pooled factory, keep their lifetimes 
 | **Read replicas** | A second context/connection string pointing at a read-only replica for queries |
 
 ## Testing EF Core code {i}
+
+:::plain
+Test queries against a real database engine, usually in a container, because the in-memory provider behaves differently from SQL. Keep business rules out of EF code so most tests don't need a database at all.
+:::
 
 | Approach | Fidelity | Speed | Verdict |
 |---|---|---|---|

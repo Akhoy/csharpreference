@@ -29,6 +29,10 @@ Kettle's services talk through a broker. Its calls to the payment provider are s
 
 ## Everything fails {b}
 
+:::plain
+Networks blip, servers restart and partners slow down every day. A resilient system expects that and keeps working, perhaps with less, instead of falling over.
+:::
+
 In the cloud, failure is **normal**: instances restart during deployments, networks blip, load balancers move connections, databases fail over, dependencies throttle you (429), and noisy neighbours cause latency spikes. A resilient system **expects** these and keeps working, perhaps degraded, instead of turning a 2-second blip into an outage.
 
 | Fault type | Examples | Response |
@@ -42,6 +46,10 @@ Notice the table's shape: each fault type gets a *different* response, and the r
 
 ## The resilience strategies {b}
 
+:::plain
+There's a tool for each kind of failure: retry brief glitches, time out slow calls, stop calling a dependency that's down, and fall back to something useful.
+:::
+
 | Strategy | Problem it solves | How |
 |---|---|---|
 | **Timeout** | A slow call holds threads, sockets and the user's patience indefinitely | Give up after N; cancel the operation |
@@ -53,6 +61,10 @@ Notice the table's shape: each fault type gets a *different* response, and the r
 | **Bulkhead** | One failing dependency exhausting shared resources (threads, connections) | Isolate resources per dependency (separate pools/limits) |
 
 ## Retry, done properly {i}
+
+:::plain
+Retry only failures that might succeed next time, wait a little longer before each attempt with some randomness, and give up after a few tries.
+:::
 
 ```text
 Attempt 1 ── fail ──▶ wait 200ms ±jitter ──▶ Attempt 2 ── fail ──▶ wait 400ms ±jitter ──▶ Attempt 3 ── fail ──▶ wait 800ms ──▶ Attempt 4 → give up
@@ -70,6 +82,10 @@ If every layer retries 3 times (gateway → API → service → database), one f
 
 ## Circuit breaker {i}
 
+:::plain
+After too many failures, stop calling the dependency for a while and fail immediately instead. Then let one trial call through to see if it has recovered.
+:::
+
 ```text
             failure ratio > threshold within the sampling window
    ┌────────┐ ─────────────────────────────────────────────▶ ┌────────┐
@@ -86,6 +102,10 @@ Tune: the failure ratio (e.g. 50%), the **minimum throughput** before evaluating
 
 ## Timeouts {i}
 
+:::plain
+Set a limit for each attempt and an overall limit, and pass cancellation tokens so the work actually stops when the time runs out.
+:::
+
 Two levels, and conflating them is a common mistake:
 
 - **Per-attempt timeout**: how long one try may take (e.g. 2 s).
@@ -94,6 +114,10 @@ Two levels, and conflating them is a common mistake:
 Always pass `CancellationToken`s so timeouts actually **cancel** the underlying work (EF Core commands, HTTP requests) — a timeout that only stops *waiting* for the result, without actually cancelling the work, still leaves the dependency doing pointless work for a caller that's already given up. And remember `HttpClient.Timeout` defaults to 100 seconds, far too long for most calls, exactly as [Calling other services](ch:http-client#timeouts-and-cancellation-getting-the-layering-right) warned; with a resilience pipeline, let the pipeline own timeouts instead.
 
 ## Polly v8 and Microsoft.Extensions.Resilience {i}
+
+:::plain
+Polly is .NET's resilience library. One line, AddStandardResilienceHandler, gives an HttpClient sensible timeouts, retries and a circuit breaker.
+:::
 
 **Polly** is .NET's resilience library. **v8** introduced **resilience pipelines** with strategies composed in order — notice the word "composed," because the ordering section below matters as much as which strategies you pick. Microsoft builds on it with `Microsoft.Extensions.Resilience` (DI integration, telemetry) and `Microsoft.Extensions.Http.Resilience` (HttpClient integration).
 
@@ -169,6 +193,10 @@ Pre-v8 code looks like `Policy.Handle<HttpRequestException>().WaitAndRetryAsync(
 
 ## Resilience beyond HTTP {i}
 
+:::plain
+Databases, the Azure SDKs, brokers and Redis clients have their own retry settings. Configure retries in one layer only.
+:::
+
 | Dependency | Built-in resilience |
 |---|---|
 | EF Core / SQL | `EnableRetryOnFailure()` execution strategy (wrap manual transactions with `CreateExecutionStrategy`) |
@@ -190,6 +218,10 @@ Resilience isn't only about libraries. Design so partial failure produces a **de
 - **Idempotency everywhere**, so retries are safe.
 
 ## Health checks {i}
+
+:::plain
+A liveness check says the process is alive; a readiness check says it can serve traffic right now. Orchestrators restart on the first and route on the second.
+:::
 
 Health endpoints let orchestrators and load balancers route around unhealthy instances.
 
