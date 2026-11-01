@@ -1426,7 +1426,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
 - **Sidecars:** a **service mesh** gives mTLS, retries, traffic splitting and telemetry without code changes, at an operational cost. **Dapr** offers portable building blocks (pub/sub, state, invocation, workflows). Libraries suit .NET-only systems. One owner per concern.
 - **.NET Aspire** describes the system in an AppHost (`AddProject`, `WithReference`), runs it all locally with a dashboard, and can generate deployment assets. Study **eShop** as a reference.
 
-## Part X · Cloud and DevOps
+## Part XI · Cloud and DevOps
 
 ### 10.1 · Cloud fundamentals and the Azure map
 
@@ -1815,7 +1815,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **Security**: Defender for Containers, Azure Policy for Kubernetes.
   - **Mesh**: an Istio-based mesh add-on.
 
-## Part XI · Performance and Internals
+## Part XII · Performance and Internals
 
 ### 11.1 · Memory and garbage collection
 
@@ -2037,7 +2037,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **canaries** with automated latency comparison;
   - review checklists: async all the way, no N+1, projections, timeouts, pagination limits, no per-request large allocations.
 
-## Part XII · Security
+## Part XIII · Security
 
 ### 12.1 · Web application security
 
@@ -2198,7 +2198,7 @@ Layer 8, first concern: proving the code does what you think, in a way that surv
   - **hand-rolled HS256 JWTs with a shared key**, where *any service holding the key can mint tokens* → asymmetric keys at a real IdP;
   - sensitive data in claims (readable by anyone holding the token) → minimal claims, details looked up server-side.
 
-## Part XIII · Interview Preparation
+## Part XIV · Interview Preparation
 
 ### 13.1 · System design
 

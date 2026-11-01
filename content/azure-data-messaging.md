@@ -272,7 +272,7 @@ They're thread-safe and manage connections, authentication tokens and retry stat
 
 ## Next episode {b}
 
-The database password was committed to Git. [Episode 5 · No secrets at all →](ch:azure-identity-secrets)
+The database password was committed to Git. [Episode 4 · No secrets at all →](ch:azure-identity-secrets)
 
 ## Further reading
 

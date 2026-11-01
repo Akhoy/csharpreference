@@ -279,7 +279,7 @@ With KEDA-based scale rules: HTTP concurrency, CPU/memory, or event sources like
 
 ## Next episode {b}
 
-Kettle needs a database, file storage, a cache and a message broker, without running any of them. [Episode 4 · Managed data and messaging →](ch:azure-data-messaging)
+Kettle needs a database, file storage, a cache and a message broker, without running any of them. [Episode 3 · Managed data and messaging →](ch:azure-data-messaging)
 
 ## Further reading
 

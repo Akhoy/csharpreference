@@ -86,7 +86,7 @@
   });
 
   S.scene({
-    id: 'docker', part: 'p8', title: 'Ship the whole box',
+    id: 'docker', part: 'phost', title: 'Ship the whole box',
     hook: '"It works on my machine." Production has a different runtime and libraries.',
     a: [
       ['pill', 'l0', 150, 280, 'Base OS (chiseled)', { w: 200 }],

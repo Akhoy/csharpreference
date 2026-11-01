@@ -399,7 +399,7 @@ With workload identity federation (OIDC): a federated credential on an Entra app
 
 ## Next episode {b}
 
-At 3 a.m. a server dies, and someone has to restart Kettle by hand. [Episode 7 · Desired state →](ch:kubernetes)
+At 3 a.m. a server dies, and someone has to restart Kettle by hand. [Episode 6 · Desired state →](ch:kubernetes)
 
 ## Further reading
 

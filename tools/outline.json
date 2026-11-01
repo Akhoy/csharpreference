@@ -20,9 +20,10 @@
     {"id": "p6", "num": "VII", "title": "Testing", "chapters": ["testing-story", "unit-testing", "integration-testing"]},
     {"id": "p7", "num": "VIII", "title": "Distributed Systems", "chapters": ["distributed-story", "messaging-events", "resilience", "observability-aspire"]},
     {"id": "pms", "num": "IX", "title": "Microservices", "chapters": ["ms-story", "ms-boundaries", "ms-communication", "ms-data", "ms-operations"]},
-    {"id": "p8", "num": "X", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "docker", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
-    {"id": "p9", "num": "XI", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
-    {"id": "p10", "num": "XII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
-    {"id": "p11", "num": "XIII", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
+    {"id": "phost", "num": "X", "title": "Hosting in Production", "chapters": ["hosting-story", "request-journey", "reverse-proxy-nginx", "other-proxies", "linux-deploy", "docker", "containers-single-host", "prod-config"]},
+    {"id": "p8", "num": "XI", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
+    {"id": "p9", "num": "XII", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
+    {"id": "p10", "num": "XIII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
+    {"id": "p11", "num": "XIV", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
   ]
 }

@@ -260,7 +260,7 @@ Azure RBAC controls access to Azure resources and their data (subscriptions, sto
 
 ## Next episode {b}
 
-Releases are a monthly, manual, all-hands evening. [Episode 6 · Push to production →](ch:cicd-iac)
+Releases are a monthly, manual, all-hands evening. [Episode 5 · Push to production →](ch:cicd-iac)
 
 ## Further reading
 
