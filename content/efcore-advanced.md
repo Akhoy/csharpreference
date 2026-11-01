@@ -256,6 +256,45 @@ public sealed class OutboxInterceptor(TimeProvider clock) : SaveChangesIntercept
 
 This shape matters because the outbox rows are written inside the *same* `SaveChanges()` transaction as the business data: the order and its "order placed" event either both commit or both roll back. There's no window where one happens without the other — which sidesteps the "no distributed transaction" problem from earlier in this chapter entirely, rather than solving it. MassTransit, NServiceBus and Wolverine ship **ready-made EF Core outboxes**, so this pattern rarely needs to be hand-rolled in practice.
 
+## EF Core in production {a}
+
+:::plain
+Most EF Core problems in production come from a handful of settings and habits: how contexts are created, how queries are found and timed, and how migrations reach the database. Get these right once, in shared setup code.
+:::
+
+**Context creation.** A `DbContext` is cheap but not free: each one sets up a change tracker and internal services. Under high request rates, **pool** them:
+
+```csharp norun
+builder.Services.AddDbContextPool<KettleDb>(o => o.UseSqlServer(cs), poolSize: 1024);
+// or, for code that creates its own contexts (Blazor Server, background jobs):
+builder.Services.AddPooledDbContextFactory<KettleDb>(o => o.UseSqlServer(cs));
+```
+
+Pooled contexts are reset and reused, so they must not hold per-request state in fields, and their `OnConfiguring` runs only once. Don't confuse this with **connection** pooling, which ADO.NET does for you underneath anyway ([ADO.NET & Dapper](ch:ado-dapper)).
+
+**Finding the slow query.** You can't fix SQL you can't see.
+
+- **Tag queries** so they're recognisable in database tools: `db.Orders.TagWith("Orders: customer history").Where(…)` adds a comment to the generated SQL.
+- **Log slow commands.** EF Core logs every command with its duration at the `Microsoft.EntityFrameworkCore.Database.Command` category. Keep it at Warning in production, and use an interceptor that logs commands slower than a threshold, together with the trace ID ([Interceptors](ch:efcore-advanced#interceptors-cross-cutting-behaviour-without-touching-busine)).
+- **Never enable `EnableSensitiveDataLogging` in production.** It writes parameter values, meaning customers' data, into the logs.
+- **Watch the database side too:** Query Store or `pg_stat_statements` show which statements cost the most in total, which is often not the slowest single one.
+
+**Timeouts.** The default command timeout is 30 seconds, which is longer than any customer will wait. Set it per context (`o.UseSqlServer(cs, x => x.CommandTimeout(5))`), and pass `CancellationToken`s, so abandoned requests stop their queries.
+
+**Start-up and hot paths.**
+
+- **Compiled models** (`dotnet ef dbcontext optimize`) generate the model-building code at build time. That's worth it for models with hundreds of entities, where building the model at start-up takes noticeable time, and it's required for Native AOT.
+- **Compiled queries** (`EF.CompileAsyncQuery((KettleDb db, int id) => db.Orders.First(o => o.Id == id))`) skip the query-translation cache lookup on very hot paths. EF Core already caches translations, so measure before reaching for them.
+- **Default read contexts to no tracking** (`o.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)`) for services that only read.
+
+**Migrations in the pipeline.** Don't let the application migrate its own database on start-up: with several replicas starting at once, they race, and the app's identity would need permission to change the schema. Generate an idempotent script (`dotnet ef migrations script --idempotent`) or a **migration bundle** (`dotnet ef migrations bundle`), and run it as a pipeline step with a dedicated identity, before the new code deploys ([CI/CD](ch:cicd-iac#databases-in-the-pipeline)). Keep schema changes backward compatible (expand, migrate, contract), because old and new code run side by side during a rollout.
+
+**Connection pool exhaustion** shows up as timeouts waiting for a connection, while the database itself looks idle. The usual causes are contexts that live too long (a scoped context in a Blazor Server circuit, or a singleton holding one), long transactions, and synchronous calls blocking threads while holding connections. Fix the lifetimes first; raising the pool size only delays the problem.
+
+:::qa How would you run EF Core under production load?
+Pool contexts with `AddDbContextPool` or a pooled factory, keep their lifetimes short, and default read-only paths to no tracking. Set short command timeouts and pass cancellation tokens. Tag queries and log slow commands with trace IDs, without sensitive-data logging. Use compiled models for very large models or Native AOT. Apply migrations from the pipeline with idempotent scripts or bundles, keep changes backward compatible, and watch for connection-pool exhaustion caused by long-lived contexts.
+:::
+
 ## Other advanced features {a}
 
 | Feature | What it gives you |
