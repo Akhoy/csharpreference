@@ -24,5 +24,8 @@ window.STORY = {
     { id: 'p11', num: 'XV', title: 'Interview preparation' }
   ],
   scenes: [],
-  scene(s) { this.scenes.push(s); }
+  scene(s) { this.scenes.push(s); },
+  // Explanations, kept apart from the animation data: base = from-zero primer, beats = one per beat.
+  ex: {},
+  explain(id, e) { this.ex[id] = e; }
 };

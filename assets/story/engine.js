@@ -19,6 +19,8 @@
   };
   const textW = (t, size) => String(t).length * size * 0.58;
 
+  let baseOpen = true;
+  try { baseOpen = localStorage.getItem('kettle-story-base') !== '0'; } catch { /* storage unavailable */ }
   let seen = new Set();
   try { seen = new Set(JSON.parse(localStorage.getItem('kettle-story-seen') || '[]')); } catch { /* storage unavailable */ }
   const remember = id => { seen.add(id); try { localStorage.setItem('kettle-story-seen', JSON.stringify([...seen])); } catch { /* ignore */ } };
@@ -249,7 +251,8 @@
   function beatDuration(scene, k) {
     const b = scene.b[k];
     const legs = Math.max(0, ...(b.go || []).map(g => g.length - 1));
-    return 2600 + b.say.length * 28 + legs * 450;
+    const exText = (S.ex[scene.id] && S.ex[scene.id].beats || [])[k] || '';
+    return 2600 + b.say.length * 28 + exText.length * 22 + legs * 450;
   }
 
   function showScene(id, beat = 0) {
@@ -257,6 +260,7 @@
     stopPlay();
     remember(id);
     const built = build(scene);
+    const ex = S.ex[scene.id];
     const prevScene = scenes[scene.i - 1], nextScene = scenes[scene.i + 1];
     const part = parts.find(p => p.id === scene.part);
     app.innerHTML = `
@@ -264,8 +268,10 @@
         <div class="eyebrow"><b>${scene.num}</b><span>Part ${esc(part.num)} · ${esc(part.title)}</span></div>
         <h1>${esc(scene.title)}</h1>
         <p class="hook">${md(scene.hook)}</p>
+        ${ex && ex.base ? `<details class="base" id="base"${baseOpen ? ' open' : ''}><summary>Start here: the basics behind this scene</summary><ul>${ex.base.map(x => `<li>${md(x)}</li>`).join('')}</ul></details>` : ''}
         <figure class="stage" id="stage"></figure>
         <div class="cap" aria-live="polite"><span class="badge" id="badge" hidden>Staff-level</span><p id="say"></p></div>
+        <div class="explain" id="ex" hidden><div class="explain-h">What's happening</div><p id="exText"></p></div>
         <div class="ctl">
           <button class="btn" id="back" type="button" aria-label="Previous step">←</button>
           <div class="dots" id="dots">${scene.b.map((b, i) => `<button type="button" class="${b.pro ? 'pro' : ''}" data-i="${i}" aria-label="Step ${i + 1}${b.pro ? ' (staff-level)' : ''}"></button>`).join('')}</div>
@@ -293,6 +299,8 @@
     document.getElementById('prevS').onclick = () => prevScene && nav(prevScene.id);
     document.getElementById('nextS').onclick = () => nextScene && nav(nextScene.id);
     swipe(document.getElementById('stage'));
+    const base = document.getElementById('base');
+    if (base) base.ontoggle = () => { baseOpen = base.open; try { localStorage.setItem('kettle-story-base', baseOpen ? '1' : '0'); } catch { /* ignore */ } };
     window.scrollTo({ top: 0 });
   }
 
@@ -306,6 +314,9 @@
     say.innerHTML = md(b.say);
     say.classList.remove('fade'); void say.offsetWidth; say.classList.add('fade');
     document.getElementById('badge').hidden = !b.pro;
+    const exText = (S.ex[scene.id] && S.ex[scene.id].beats || [])[k];
+    document.getElementById('ex').hidden = !exText;
+    if (exText) document.getElementById('exText').innerHTML = md(exText);
     document.querySelectorAll('#dots button').forEach((d, i) => d.classList.toggle('on', i === k));
     document.getElementById('key').hidden = k !== scene.b.length - 1;
     document.getElementById('back').disabled = k === 0 && scene.i === 0;
