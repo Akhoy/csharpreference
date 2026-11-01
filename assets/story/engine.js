@@ -24,7 +24,9 @@
   const remember = id => { seen.add(id); try { localStorage.setItem('kettle-story-seen', JSON.stringify([...seen])); } catch { /* ignore */ } };
 
   const parts = S.parts;
-  const scenes = S.scenes;
+  // scene files can load in any order; the story order is the part order, then file order within a part
+  const partIndex = Object.fromEntries(parts.map((p, i) => [p.id, i]));
+  const scenes = S.scenes.slice().sort((a, b) => partIndex[a.part] - partIndex[b.part]);
   scenes.forEach((s, i) => {
     s.i = i;
     const inPart = scenes.filter(x => x.part === s.part);

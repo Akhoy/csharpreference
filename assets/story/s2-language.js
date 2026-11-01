@@ -46,6 +46,28 @@
   });
 
   S.scene({
+    id: 'everyday-types', part: 'p2', title: 'Everyday types, everyday traps',
+    hook: 'Kettle\'s first real month: a missing penny, wrong opening hours and duplicate order numbers.',
+    a: [
+      ['pill', 'q1', 140, 70, '0.1 + 0.2 == 0.3 ?', { w: 200 }],
+      ['pill', 'r1', 440, 70, 'double: False · decimal: True', { w: 270, o: 0, c: 'warn' }],
+      ['pill', 'q2', 140, 150, 'Math.Round(2.5)', { w: 200 }],
+      ['pill', 'r2', 440, 150, '2: halves go to the even number', { w: 270, o: 0, c: 'warn' }],
+      ['pill', 'q3', 140, 230, 'DateTime Utc == Local', { w: 200 }],
+      ['pill', 'r3', 440, 230, 'True: Kind is ignored', { w: 270, o: 0, c: 'bad' }],
+      ['pill', 'q4', 140, 310, 'random Guid keys', { w: 200 }],
+      ['pill', 'r4', 440, 310, 'scattered inserts: use version 7', { w: 270, o: 0, c: 'why' }]
+    ],
+    b: [
+      { say: 'Binary floating point can\'t store 0.1 exactly. **Money is `decimal`.**', show: ['r1'] },
+      { say: '.NET rounds halves to the **even** number by default. Say which rounding you mean.', show: ['r2'] },
+      { say: '`DateTime` comparisons ignore UTC vs local. Store instants as UTC or `DateTimeOffset`.', show: ['r3'] },
+      { pro: true, say: 'Random GUIDs scatter inserts across an index. Time-ordered **version 7** GUIDs fix that, except on SQL Server, which sorts GUIDs its own way.', show: ['r4'], pulse: ['r4'] }
+    ],
+    key: 'Money is decimal, round on purpose, store instants in UTC.'
+  });
+
+  S.scene({
     id: 'oop', part: 'p2', title: 'Objects that guard themselves',
     hook: 'An order shows up with quantity −3, marked shipped before it was paid.',
     a: [

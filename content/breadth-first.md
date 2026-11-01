@@ -12,7 +12,7 @@ next: big-picture, csharp-story
 ## How to use this page
 
 :::tip Prefer pictures?
-The [Kettle Storybook](story.html) covers the same ground as 59 short animated scenes, each with one-line captions. Start there for the first pass, then use this page as your written summary.
+The [Kettle Storybook](story.html) covers the same ground as a short animated scene per chapter, each with one-line captions. Start there for the first pass, then use this page as your written summary.
 :::
 
 This page condenses the entire book, chapter by chapter, in reading order. It's meant to be read **top to bottom**: you get every topic at a useful depth first, and only then go deep where you need to. That's the opposite of reading chapter by chapter, where you can spend a week in one corner and never see the rest.
