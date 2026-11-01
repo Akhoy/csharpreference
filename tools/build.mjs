@@ -164,6 +164,8 @@ function buildChapter(id, meta, body, ctx) {
     } else if (b.type === 'qa') {
       qa.push({ q: b.title, a: content, chapter: id, section: currentSection });
       html += `<details class="qa"><summary><span class="qa-mark">Q</span><span>${renderInlineTitle(b.title)}</span></summary><div class="qa-body">${content}</div></details>\n`;
+    } else if (b.type === 'more') {
+      html += `<details class="more"><summary>${renderInlineTitle(b.title || 'In depth')}</summary><div class="more-body">${content}</div></details>\n`;
     } else {
       const title = b.title || BLOCK_TITLES[b.type] || b.type;
       html += `<aside class="callout c-${b.type}"><div class="callout-title">${renderInlineTitle(title)}</div>${content}</aside>\n`;

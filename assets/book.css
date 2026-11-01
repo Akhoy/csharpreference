@@ -234,6 +234,10 @@ figure.code code { background: none; padding: 0; font-size: inherit; border-radi
 .c-plain { background: var(--paper); border-color: var(--line); padding-bottom: 6px; } .c-plain .callout-title { color: var(--accent); }
 .c-plain p { font-size: 17px; line-height: 1.6; }
 
+details.more { border: 1px solid var(--line); border-radius: 10px; background: var(--paper); margin: 4px 0 18px; }
+details.more summary { cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--c-deep); }
+details.more[open] summary { border-bottom: 1px solid var(--line); }
+.more-body { padding: 4px 16px 6px; }
 details.qa { border: 1px solid var(--line); border-radius: 10px; background: var(--paper); margin: 0 0 10px; }
 details.qa summary { list-style: none; cursor: pointer; display: flex; gap: 12px; padding: 13px 16px; font-weight: 600; line-height: 1.45; }
 details.qa summary::-webkit-details-marker { display: none; }
