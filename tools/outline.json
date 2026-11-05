@@ -1,30 +1,276 @@
 {
   "layers": [
-    {"id": "language", "name": "C# language", "note": "the code you write"},
-    {"id": "runtime", "name": "Runtime & platform", "note": "CLR, BCL, SDK, tooling"},
-    {"id": "framework", "name": "Application frameworks", "note": "ASP.NET Core, EF Core, hosting"},
-    {"id": "arch", "name": "Application architecture", "note": "how you organise the code"},
-    {"id": "data", "name": "Data & state", "note": "databases, caches, storage"},
-    {"id": "comms", "name": "Service communication", "note": "HTTP, messaging, events"},
-    {"id": "infra", "name": "Hosting & infrastructure", "note": "containers, cloud, pipelines"},
-    {"id": "cross", "name": "Cross-cutting concerns", "note": "testing, security, observability, performance"}
+    {
+      "id": "language",
+      "name": "C# language",
+      "note": "the code you write"
+    },
+    {
+      "id": "runtime",
+      "name": "Runtime & platform",
+      "note": "CLR, BCL, SDK, tooling"
+    },
+    {
+      "id": "framework",
+      "name": "Application frameworks",
+      "note": "ASP.NET Core, EF Core, hosting"
+    },
+    {
+      "id": "arch",
+      "name": "Application architecture",
+      "note": "how you organise the code"
+    },
+    {
+      "id": "data",
+      "name": "Data & state",
+      "note": "databases, caches, storage"
+    },
+    {
+      "id": "comms",
+      "name": "Service communication",
+      "note": "HTTP, messaging, events"
+    },
+    {
+      "id": "infra",
+      "name": "Hosting & infrastructure",
+      "note": "containers, cloud, pipelines"
+    },
+    {
+      "id": "cross",
+      "name": "Cross-cutting concerns",
+      "note": "testing, security, observability, performance"
+    }
   ],
   "parts": [
-    {"id": "p0", "num": "0", "title": "Orientation", "chapters": ["big-picture", "breadth-first"]},
-    {"id": "p1", "num": "I", "title": "The .NET Platform", "chapters": ["platform-story", "what-is-dotnet", "first-app", "how-code-runs", "projects-sdk-nuget"]},
-    {"id": "p2", "num": "II", "title": "The C# Language", "chapters": ["csharp-story", "type-system", "everyday-types", "operators-expressions", "oop", "generics", "delegates-events", "collections", "linq", "exceptions-disposal", "async-await", "files-streams-io", "modern-csharp", "advanced-csharp"]},
-    {"id": "p3", "num": "III", "title": "ASP.NET Core", "chapters": ["aspnet-story", "aspnet-hosting", "dependency-injection", "configuration-options", "middleware", "routing", "building-apis", "serialization", "errors-logging", "auth", "http-client", "caching-ratelimit-cors", "background-work", "api-design", "app-models"]},
-    {"id": "pui", "num": "IV", "title": "Web UI: MVC, Razor Pages and Blazor", "chapters": ["ui-story", "razor-mvc", "blazor-components", "blazor-render-modes", "blazor-advanced"]},
-    {"id": "p4", "num": "V", "title": "Data Access", "chapters": ["data-story", "relational-fundamentals", "ado-dapper", "efcore-fundamentals", "efcore-querying", "efcore-advanced", "nosql-redis"]},
-    {"id": "p5", "num": "VI", "title": "Architecture & Design", "chapters": ["architecture-story", "design-principles", "design-patterns", "app-architectures", "cqrs-mediator-result", "ddd", "microservices"]},
-    {"id": "p6", "num": "VII", "title": "Testing", "chapters": ["testing-story", "unit-testing", "integration-testing"]},
-    {"id": "p7", "num": "VIII", "title": "Distributed Systems", "chapters": ["distributed-story", "messaging-events", "resilience", "observability-aspire"]},
-    {"id": "pms", "num": "IX", "title": "Microservices", "chapters": ["ms-story", "ms-boundaries", "ms-communication", "ms-data", "ms-operations"]},
-    {"id": "phost", "num": "X", "title": "Hosting in Production", "chapters": ["hosting-story", "request-journey", "reverse-proxy-nginx", "other-proxies", "linux-deploy", "docker", "containers-single-host", "prod-config"]},
-    {"id": "p8", "num": "XI", "title": "Cloud & DevOps", "chapters": ["cloud-story", "cloud-azure-overview", "azure-compute", "azure-data-messaging", "azure-identity-secrets", "cicd-iac", "kubernetes"]},
-    {"id": "p9", "num": "XII", "title": "Performance & Internals", "chapters": ["performance-story", "memory-gc", "threading-concurrency", "performance-engineering"]},
-    {"id": "p10", "num": "XIII", "title": "Security", "chapters": ["security-story", "web-security", "oauth-oidc-identity"]},
-    {"id": "pproj", "num": "XIV", "title": "Building Real Projects", "chapters": ["projects-story", "project-foundations", "delivering-work", "production-ownership", "staff-engineer", "capstone-wholesale"]},
-    {"id": "p11", "num": "XV", "title": "Interview Preparation", "chapters": ["interview-story", "system-design", "study-plan-resources"]}
+    {
+      "id": "p0",
+      "num": "0",
+      "title": "Orientation",
+      "chapters": [
+        "big-picture",
+        "breadth-first"
+      ]
+    },
+    {
+      "id": "p1",
+      "num": "I",
+      "title": "The .NET Platform",
+      "chapters": [
+        "platform-story",
+        "what-is-dotnet",
+        "first-app",
+        "how-code-runs",
+        "projects-sdk-nuget"
+      ]
+    },
+    {
+      "id": "p2",
+      "num": "II",
+      "title": "The C# Language",
+      "chapters": [
+        "csharp-story",
+        "type-system",
+        "everyday-types",
+        "operators-expressions",
+        "oop",
+        "generics",
+        "delegates-events",
+        "collections",
+        "linq",
+        "exceptions-disposal",
+        {
+          "id": "async-await",
+          "children": [
+            "async-concurrency",
+            "async-internals",
+            "async-valuetask",
+            "async-pitfalls"
+          ]
+        },
+        "files-streams-io",
+        "modern-csharp",
+        {
+          "id": "advanced-csharp",
+          "children": [
+            "advanced-csharp-span",
+            "advanced-csharp-pool",
+            "advanced-csharp-ref",
+            "advanced-csharp-interop",
+            "advanced-csharp-reflection",
+            "advanced-csharp-codegen",
+            "advanced-csharp-exprtrees",
+            "advanced-csharp-simd"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "num": "III",
+      "title": "ASP.NET Core",
+      "chapters": [
+        "aspnet-story",
+        "aspnet-hosting",
+        "dependency-injection",
+        "configuration-options",
+        "middleware",
+        "routing",
+        "building-apis",
+        "serialization",
+        "errors-logging",
+        "auth",
+        "http-client",
+        "caching-ratelimit-cors",
+        "background-work",
+        "api-design",
+        "app-models"
+      ]
+    },
+    {
+      "id": "pui",
+      "num": "IV",
+      "title": "Web UI: MVC, Razor Pages and Blazor",
+      "chapters": [
+        "ui-story",
+        "razor-mvc",
+        "blazor-components",
+        "blazor-render-modes",
+        "blazor-advanced"
+      ]
+    },
+    {
+      "id": "p4",
+      "num": "V",
+      "title": "Data Access",
+      "chapters": [
+        "data-story",
+        "relational-fundamentals",
+        "ado-dapper",
+        "efcore-fundamentals",
+        "efcore-querying",
+        "efcore-advanced",
+        "nosql-redis"
+      ]
+    },
+    {
+      "id": "p5",
+      "num": "VI",
+      "title": "Architecture & Design",
+      "chapters": [
+        "architecture-story",
+        "design-principles",
+        "design-patterns",
+        "app-architectures",
+        "cqrs-mediator-result",
+        "ddd",
+        "microservices"
+      ]
+    },
+    {
+      "id": "p6",
+      "num": "VII",
+      "title": "Testing",
+      "chapters": [
+        "testing-story",
+        "unit-testing",
+        "integration-testing"
+      ]
+    },
+    {
+      "id": "p7",
+      "num": "VIII",
+      "title": "Distributed Systems",
+      "chapters": [
+        "distributed-story",
+        "messaging-events",
+        "resilience",
+        "observability-aspire"
+      ]
+    },
+    {
+      "id": "pms",
+      "num": "IX",
+      "title": "Microservices",
+      "chapters": [
+        "ms-story",
+        "ms-boundaries",
+        "ms-communication",
+        "ms-data",
+        "ms-operations"
+      ]
+    },
+    {
+      "id": "phost",
+      "num": "X",
+      "title": "Hosting in Production",
+      "chapters": [
+        "hosting-story",
+        "request-journey",
+        "reverse-proxy-nginx",
+        "other-proxies",
+        "linux-deploy",
+        "docker",
+        "containers-single-host",
+        "prod-config"
+      ]
+    },
+    {
+      "id": "p8",
+      "num": "XI",
+      "title": "Cloud & DevOps",
+      "chapters": [
+        "cloud-story",
+        "cloud-azure-overview",
+        "azure-compute",
+        "azure-data-messaging",
+        "azure-identity-secrets",
+        "cicd-iac",
+        "kubernetes"
+      ]
+    },
+    {
+      "id": "p9",
+      "num": "XII",
+      "title": "Performance & Internals",
+      "chapters": [
+        "performance-story",
+        "memory-gc",
+        "threading-concurrency",
+        "performance-engineering"
+      ]
+    },
+    {
+      "id": "p10",
+      "num": "XIII",
+      "title": "Security",
+      "chapters": [
+        "security-story",
+        "web-security",
+        "oauth-oidc-identity"
+      ]
+    },
+    {
+      "id": "pproj",
+      "num": "XIV",
+      "title": "Building Real Projects",
+      "chapters": [
+        "projects-story",
+        "project-foundations",
+        "delivering-work",
+        "production-ownership",
+        "staff-engineer",
+        "capstone-wholesale"
+      ]
+    },
+    {
+      "id": "p11",
+      "num": "XV",
+      "title": "Interview Preparation",
+      "chapters": [
+        "interview-story",
+        "system-design",
+        "study-plan-resources"
+      ]
+    }
   ]
 }

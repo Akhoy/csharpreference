@@ -176,7 +176,7 @@ Kestrel is the web server built into every ASP.NET Core app. It accepts connecti
 - handles **TLS**,
 - parses **HTTP/1.1, HTTP/2 and HTTP/3**,
 - builds an `HttpContext` for each request and passes it to your middleware pipeline,
-- is built on `System.IO.Pipelines` — the same pooled-buffer I/O abstraction mentioned in [Advanced C#](ch:advanced-csharp#act-2-01-40-the-chunks-borrow-dont-buy) — for high throughput with minimal per-request allocation.
+- is built on `System.IO.Pipelines` — the same pooled-buffer I/O abstraction mentioned in [Advanced C#](ch:advanced-csharp-pool) — for high throughput with minimal per-request allocation.
 
 ```csharp norun
 builder.WebHost.ConfigureKestrel(k =>

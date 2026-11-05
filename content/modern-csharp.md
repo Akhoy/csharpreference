@@ -675,9 +675,9 @@ public void Add(Order o) { lock (_gate) { _orders.Add(o); } }
 
 It's faster, and it says plainly what the field is for. One trap: converting a `Lock` to `object` (for example, passing it to an old helper that calls `lock (object)`) silently falls back to `Monitor` locking, and the compiler warns you.
 
-**Ref structs grow up.** Covered in [Advanced C#](ch:advanced-csharp#why-span-has-strict-rules-ref-structs): ref structs can implement interfaces, generics can accept them with `where T : allows ref struct`, and async methods and iterators may use `ref` locals and ref struct locals that don't cross an `await` or `yield`.
+**Ref structs grow up.** Covered in [Advanced C#](ch:advanced-csharp-span#why-span-has-strict-rules-ref-structs): ref structs can implement interfaces, generics can accept them with `where T : allows ref struct`, and async methods and iterators may use `ref` locals and ref struct locals that don't cross an `await` or `yield`.
 
-**Partial properties and indexers.** A property can now be declared in one part of a `partial` class and implemented in another. That lets source generators implement your property declarations, the way they already implemented partial methods ([generators in depth](ch:advanced-csharp#generators-in-depth)).
+**Partial properties and indexers.** A property can now be declared in one part of a `partial` class and implemented in another. That lets source generators implement your property declarations, the way they already implemented partial methods ([generators in depth](ch:advanced-csharp-codegen#generators-in-depth)).
 
 **`[OverloadResolutionPriority]`.** Lets a library mark a new, better overload as preferred, even where the compiler would otherwise call it ambiguous or pick the old one. It exists so the base library could add span overloads without breaking existing code.
 

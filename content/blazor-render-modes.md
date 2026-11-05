@@ -229,7 +229,7 @@ A rule of thumb: start **static**, add **Server** interactivity where users need
 - Unhandled exceptions in a component **terminate that user's circuit** (they see the error UI). Use `ErrorBoundary` around risky parts ([Blazor in production](ch:blazor-advanced)).
 
 **Making WebAssembly small and fast.**
-- **Trimming** is on by default when publishing: unused framework code is removed. Avoid libraries that rely on reflection the trimmer can't see ([Advanced C#](ch:advanced-csharp#act-6-11-00-the-cold-start-do-the-work-at-build-time)).
+- **Trimming** is on by default when publishing: unused framework code is removed. Avoid libraries that rely on reflection the trimmer can't see ([Advanced C#](ch:advanced-csharp-codegen)).
 - Files are served **compressed** (Brotli) and, since .NET 9, fingerprinted and cached aggressively through `MapStaticAssets`.
 - **Lazy-load** assemblies used only by some pages.
 - **AOT compilation** trades download size for CPU speed. Use it when the app does heavy computation in the browser, not by default.

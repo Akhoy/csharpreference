@@ -307,19 +307,36 @@ const qa = [];
 const search = [];
 const parts = [];
 const missing = [];
+// A chapters[] entry is either a plain id string, or {id, children: [ids]} for a chapter
+// with sub-chapters nested under it (numbered N.1, N.2... and indented in the sidebar).
 outline.parts.forEach((p, pi) => {
   const list = [];
-  p.chapters.forEach((cid, ci) => {
+  const build = (cid, num) => {
     const src = byId[cid];
-    if (!src) { missing.push(cid); return; }
+    if (!src) { missing.push(cid); return null; }
     const ch = buildChapter(cid, src.meta, src.body);
-    ch.num = pi === 0 ? `${ci}` : `${pi}.${ci + 1}`;
+    ch.num = num;
     ch.part = p.id;
     chapters[cid] = ch;
     qa.push(...ch.qa.map(q => ({ ...q, num: ch.num })));
     search.push(...ch.search);
     delete ch.qa; delete ch.search;
     list.push(cid);
+    return ch;
+  };
+  p.chapters.forEach((entry, ci) => {
+    const isGroup = typeof entry === 'object';
+    const cid = isGroup ? entry.id : entry;
+    const num = pi === 0 ? `${ci}` : `${pi}.${ci + 1}`;
+    const ch = build(cid, num);
+    if (!ch) return;
+    if (isGroup && entry.children) {
+      ch.children = entry.children;
+      entry.children.forEach((childId, chi) => {
+        const cch = build(childId, `${num}.${chi + 1}`);
+        if (cch) cch.parent = cid;
+      });
+    }
   });
   parts.push({ id: p.id, num: p.num, title: p.title, chapters: list });
 });

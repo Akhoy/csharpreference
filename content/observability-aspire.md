@@ -215,7 +215,7 @@ For a service, measure request rate, error rate and duration. For a resource, me
 | **USE** | Resources (CPU, memory, pools, queues) | **U**tilisation, **S**aturation (queueing), **E**rrors |
 | **Four golden signals** (Google SRE) | Any service | Latency, traffic, errors, saturation |
 
-Use **percentiles (p50, p95, p99)**, not averages: an average of 100 ms can hide 5% of users waiting 4 seconds — the average is dragged down by the many fast requests while saying nothing about the tail that's actually painful for real users. For .NET specifically, also watch **GC pause time and heap size**, **thread pool queue length and thread count** (starvation; see [async/await](ch:async-await#deadlocks-and-thread-pool-starvation)), **exception rate**, **connection pool usage**, and **outbox/queue lag**.
+Use **percentiles (p50, p95, p99)**, not averages: an average of 100 ms can hide 5% of users waiting 4 seconds — the average is dragged down by the many fast requests while saying nothing about the tail that's actually painful for real users. For .NET specifically, also watch **GC pause time and heap size**, **thread pool queue length and thread count** (starvation; see [async/await](ch:async-pitfalls#deadlocks-and-thread-pool-starvation)), **exception rate**, **connection pool usage**, and **outbox/queue lag**.
 
 ## Alerting and SLOs {a}
 

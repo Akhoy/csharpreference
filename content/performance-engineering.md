@@ -192,7 +192,7 @@ This table is really a decision tree disguised as a table: each row's symptom na
 | Slow only under concurrency | Lock contention, connection pool exhaustion, DB locking | trace contention events, pool counters, DB waits |
 | A specific endpoint is slow | Its SQL, its remote calls | Distributed trace spans |
 
-The first row is the one people most often get wrong: **high latency with low CPU** sounds like "the machine isn't working hard, so why is it slow?" But low CPU is exactly what thread-pool starvation looks like. The CPU really isn't busy — your requests are just sitting in a queue waiting for a free worker thread, because something upstream is blocking synchronously on async work and holding threads that should have gone back to the pool (the same mechanism as [Async and await's deadlock section](ch:async-await#deadlocks-and-thread-pool-starvation)). So "the server isn't even busy" is a clue *pointing at* a thread-pool problem, not evidence against one.
+The first row is the one people most often get wrong: **high latency with low CPU** sounds like "the machine isn't working hard, so why is it slow?" But low CPU is exactly what thread-pool starvation looks like. The CPU really isn't busy — your requests are just sitting in a queue waiting for a free worker thread, because something upstream is blocking synchronously on async work and holding threads that should have gone back to the pool (the same mechanism as [Async and await's deadlock section](ch:async-pitfalls#deadlocks-and-thread-pool-starvation)). So "the server isn't even busy" is a clue *pointing at* a thread-pool problem, not evidence against one.
 
 ## Load testing {a}
 

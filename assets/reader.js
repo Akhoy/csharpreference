@@ -15,7 +15,10 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* unavailable */ } }
   };
   const done = new Set(store.get('book-done', []));
-  const closedParts = new Set(store.get('book-closed', []));
+  // Only the part containing the current chapter is open by default (like a course's module
+  // list, where the module you're in is expanded and the rest are collapsed to one line).
+  // openParts remembers parts the reader explicitly expanded by hand.
+  const openParts = new Set(store.get('book-open', []));
   const theme = store.get('book-theme', null);
   if (theme) document.documentElement.dataset.theme = theme;
 
@@ -27,13 +30,14 @@
     for (const p of B.parts) {
       if (!p.chapters.length) continue;
       const isCurrentPart = current && p.chapters.includes(current);
-      const closed = closedParts.has(p.id) && !isCurrentPart;
-      h += `<div class="part ${closed ? 'closed' : ''}"><button class="part-head" data-part="${p.id}" aria-expanded="${!closed}"><span class="pn">${p.num === '0' ? '' : 'PT ' + p.num}</span><span class="pt">${esc(p.title)}</span><span class="chev">▼</span></button><ul class="chs">`;
+      const open = isCurrentPart || openParts.has(p.id);
+      const doneInPart = p.chapters.filter(id => done.has(id)).length;
+      h += `<div class="part ${open ? '' : 'closed'}"><button class="part-head" data-part="${p.id}" aria-expanded="${open}"><span class="pn">${p.num === '0' ? '' : p.num}</span><span class="pt">${esc(p.title)}</span><span class="pcount">${doneInPart}/${p.chapters.length}</span><span class="chev">▾</span></button><ul class="chs">`;
       for (const id of p.chapters) {
         const c = CH[id];
         const on = id === current;
-        h += `<li class="ch ${on ? 'on' : ''}"><a href="#/${id}"><span class="cn">${c.num}</span><span>${esc(c.title)}</span>${done.has(id) ? '<span class="done">✓</span>' : ''}</a>`;
-        if (on) h += `<ul class="secs">${c.toc.filter(t => t.depth === 2).map(t => `<li><a href="#/${id}/${t.id}" data-sec="${t.id}"><i class="dot ${t.lvl || ''}"></i>${esc(t.text)}</a></li>`).join('')}</ul>`;
+        h += `<li class="ch ${on ? 'on' : ''} ${c.parent ? 'sub' : ''}"><a href="#/${id}"><span class="cn">${c.num}</span><span>${esc(c.title)}</span>${done.has(id) ? '<span class="done">✓</span>' : ''}</a>`;
+        if (on) h += `<ul class="secs">${c.toc.filter(t => t.depth === 2).map(t => `<li><a href="#/${id}/${t.id}" data-sec="${t.id}">${esc(t.text)}</a></li>`).join('')}</ul>`;
         h += `</li>`;
       }
       h += `</ul></div>`;
@@ -47,9 +51,9 @@
     if (ph) {
       const id = ph.dataset.part, el = ph.parentElement;
       el.classList.toggle('closed');
-      el.classList.contains('closed') ? closedParts.add(id) : closedParts.delete(id);
+      el.classList.contains('closed') ? openParts.delete(id) : openParts.add(id);
       ph.setAttribute('aria-expanded', !el.classList.contains('closed'));
-      store.set('book-closed', [...closedParts]);
+      store.set('book-open', [...openParts]);
       return;
     }
     if (e.target.closest('a')) document.body.classList.remove('nav-open');
@@ -61,30 +65,27 @@
     const p = partOf(id);
     const idx = ORDER.indexOf(id);
     const prev = CH[ORDER[idx - 1]], next = CH[ORDER[idx + 1]];
-    const link = r => CH[r] ? `<a href="#/${r}">${CH[r].num} · ${esc(CH[r].title)}</a>` : '';
-    const crumb = (c.where || '').split('›').map(s => s.trim()).filter(Boolean);
-    const qCount = B.qa.filter(q => q.chapter === id).length;
+    const topLevel = p.chapters.filter(cid => !CH[cid].parent);
+    const posInPart = topLevel.indexOf(c.parent || id) + 1;
+    const parent = c.parent && CH[c.parent];
+    const crumb = parent
+      ? `${p.num === '0' ? 'Orientation' : `Part ${p.num}`} · ${esc(parent.title)} — section ${parent.children.indexOf(id) + 1} of ${parent.children.length}`
+      : `${p.num === '0' ? 'Orientation' : `Part ${p.num} · ${esc(p.title)}`} — chapter ${posInPart} of ${topLevel.length}`;
+    const chapterQs = B.qa.filter(q => q.chapter === id);
     return `<article class="page">
       <header class="ch-head">
-        <div class="eyebrow">${p.num === '0' ? 'Orientation' : `Part ${p.num} · ${esc(p.title)}`} — Chapter ${c.num}</div>
+        <div class="eyebrow">${crumb}</div>
         <h1>${esc(c.title)}</h1>
         <p class="summary">${esc(c.summary)}</p>
-        <div class="meta-row"><span class="lvls">${c.levels.map(l => `<span class="lvl lvl-${l}">${LV[l]}</span>`).join('')}</span>
-          <span>${c.minutes} min read</span><span>${c.toc.filter(t => t.depth === 2).length} sections</span>${qCount ? `<a href="#/questions" data-qb="${id}">${qCount} interview questions</a>` : ''}</div>
+        <div class="meta-row"><span class="lvls">${c.levels.map(l => `<span class="lvl lvl-${l}">${LV[l]}</span>`).join('')}</span><span>${c.minutes} min read</span></div>
       </header>
-      <section class="locator" aria-label="Where this chapter fits">
-        <div class="stack"><div class="lbl">The .NET stack</div>${B.layers.map(l => `<a href="#/" class="${l.id === c.layer ? 'here' : ''}" title="${esc(l.note)}"><b>${esc(l.name)}</b><small>${esc(l.note)}</small></a>`).join('')}</div>
-        <div class="loc-body">
-          <div class="eyebrow">Where this fits</div>
-          <div class="crumb">${crumb.map(s => `<span>${esc(s)}</span>`).join('<i>›</i>')}</div>
-          <div class="fits">${c.fits}</div>
-          <div class="loc-links">
-            <div><h5>Read first</h5>${c.prereqs.map(link).join('') || '<span class="none">Nothing. Start here.</span>'}</div>
-            <div><h5>Leads to</h5>${c.next.map(link).join('') || '<span class="none">—</span>'}</div>
-          </div>
-        </div>
-      </section>
       <div class="prose">${c.html}</div>
+      ${chapterQs.length ? `<section class="checkpoint" aria-label="Check your understanding">
+        <h2>Can you answer these?</h2>
+        <p class="checkpoint-lede">A quick check on what you just read. If one makes you hesitate, open it and reread that part.</p>
+        <ol class="checkpoint-list">${chapterQs.map((q, i) => `<li><details><summary><span class="cp-n">${i + 1}</span><span>${q.q}</span></summary><div class="cp-a">${q.a}${q.section ? `<p><a href="#/${q.chapter}/${q.section.id}">Reread: ${esc(q.section.text)} →</a></p>` : ''}</div></details></li>`).join('')}</ol>
+        <a class="btn" href="#/questions" data-qb="${id}">Drill these as flashcards →</a>
+      </section>` : ''}
       <footer class="ch-foot">
         <button class="done-btn ${done.has(id) ? 'is-done' : ''}" data-done="${id}">${done.has(id) ? '✓ Chapter read' : 'Mark chapter as read'}</button>
         <nav class="pager">${prev ? `<a href="#/${prev.id}"><small>← Previous · ${prev.num}</small><b>${esc(prev.title)}</b></a>` : ''}${next ? `<a class="nx" href="#/${next.id}"><small>Next · ${next.num} →</small><b>${esc(next.title)}</b></a>` : ''}</nav>

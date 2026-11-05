@@ -177,7 +177,7 @@ Rules:
 
 ## Async IO, buffers and cancellation {i}
 
-On a server, waiting for a disk or network blocks a thread, which is the starvation problem from [async/await](ch:async-await#deadlocks-and-thread-pool-starvation). The async methods release the thread while the bytes are in flight:
+On a server, waiting for a disk or network blocks a thread, which is the starvation problem from [async/await](ch:async-pitfalls#deadlocks-and-thread-pool-starvation). The async methods release the thread while the bytes are in flight:
 
 ```csharp norun
 await using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
@@ -194,7 +194,7 @@ finally { ArrayPool<byte>.Shared.Return(buffer); }
 
 - `FileOptions.Asynchronous` makes the OS do the waiting, rather than a thread pool thread pretending to. `SequentialScan` tells the OS you'll read front to back, so it reads ahead.
 - `ReadAsync` can return **fewer** bytes than you asked for, even when more are coming. Always use the returned count, and loop until it returns 0.
-- Rent the buffer from the pool ([Advanced C#](ch:advanced-csharp#act-2-01-40-the-chunks-borrow-dont-buy)) instead of allocating 80 KB per copy. `CopyToAsync` does all of this for you when you just need to move bytes.
+- Rent the buffer from the pool ([Advanced C#](ch:advanced-csharp-pool)) instead of allocating 80 KB per copy. `CopyToAsync` does all of this for you when you just need to move bytes.
 - `StreamWriter` and `FileStream` **buffer** writes. If you don't dispose or flush them, the last bytes never reach the file. `await using` handles it.
 
 For very high-throughput parsing of network data, **System.IO.Pipelines** manages pooled buffers and partial reads for you; it's what Kestrel is built on.

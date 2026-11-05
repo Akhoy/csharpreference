@@ -306,7 +306,7 @@ When a request reaches an MVC action or a Razor Page, it passes through filters 
 |---|---|---|
 | **Authorization** | first, before anything else | `[Authorize]`, custom permission checks |
 | **Resource** | before model binding, and after everything else | caching a whole response, short-circuiting early |
-| **Action** (MVC) / **Page** (Razor Pages) | just before and after the action method, with its arguments available | validation, auditing (`[Audit]` from [Advanced C#](ch:advanced-csharp#act-5-09-00-the-audit-nobody-can-forget)), changing arguments |
+| **Action** (MVC) / **Page** (Razor Pages) | just before and after the action method, with its arguments available | validation, auditing (`[Audit]` from [Advanced C#](ch:advanced-csharp-reflection)), changing arguments |
 | **Exception** | when the action or an earlier filter throws | turning domain exceptions into views or error codes |
 | **Result** | before and after the result (the view) runs | adding headers, changing the result |
 

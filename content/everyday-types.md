@@ -531,7 +531,7 @@ Both kinds get a generated `ToString`.
 
 ## var: inference, not dynamic {b}
 
-`var` asks the compiler to work out a local variable's type from the right-hand side. The variable is still **statically typed**: `var x = 5;` makes `x` an `int` forever, and `x = "tea"` is a compile error. That's the difference from `dynamic`, which really does skip compile-time checking ([Advanced C#](ch:advanced-csharp#reflection-in-depth)).
+`var` asks the compiler to work out a local variable's type from the right-hand side. The variable is still **statically typed**: `var x = 5;` makes `x` an `int` forever, and `x = "tea"` is a compile error. That's the difference from `dynamic`, which really does skip compile-time checking ([Advanced C#](ch:advanced-csharp-reflection#reflection-in-depth)).
 
 Use `var` when the type is obvious from the line (`var orders = new List<Order>();`), when it's long and noisy (`var groups = orders.GroupBy(o => o.CustomerId);`), and when it's impossible to write (anonymous types). Spell the type out when the right-hand side hides it and the type matters to the reader: `decimal total = Calculate();` tells you the result is money, `var total = Calculate();` doesn't.
 

@@ -4,7 +4,7 @@ title: "JSON and System.Text.Json: Turning Objects into Text and Back"
 summary: "Every request and response Kettle sends is JSON. Covers what serialization is, System.Text.Json's defaults and the Web defaults ASP.NET Core uses, naming and ignoring properties, enums as strings, records and constructors, required and missing members, polymorphism with type discriminators, custom converters, the DOM types (JsonNode, JsonDocument), streaming large payloads, source generation for speed and Native AOT, caching options, safety limits, and how it differs from Newtonsoft.Json."
 layer: framework
 where: ASP.NET Core › Serialization
-fits: "Every API in [Building APIs](ch:building-apis) serializes through System.Text.Json, every message in [Messaging](ch:messaging-events) is a serialized contract, and the source generator is one of the tools from [Advanced C#](ch:advanced-csharp#act-6-11-00-the-cold-start-do-the-work-at-build-time)."
+fits: "Every API in [Building APIs](ch:building-apis) serializes through System.Text.Json, every message in [Messaging](ch:messaging-events) is a serialized contract, and the source generator is one of the tools from [Advanced C#](ch:advanced-csharp-codegen)."
 levels: b,i,a
 prereqs: building-apis
 next: errors-logging
@@ -278,7 +278,7 @@ Create your serializer options once and reuse them. Source generation writes the
 
 **Cache your options.** A `JsonSerializerOptions` instance builds and caches metadata about every type it serializes. Creating a new one per call throws that cache away, and makes every call rediscover the type with reflection. Create options **once** (a `static readonly` field, or the ones ASP.NET Core configures), and the analyzer warning CA1869 catches the mistake.
 
-**Source generation** moves the discovery to build time ([Advanced C#](ch:advanced-csharp#act-6-11-00-the-cold-start-do-the-work-at-build-time)):
+**Source generation** moves the discovery to build time ([Advanced C#](ch:advanced-csharp-codegen)):
 
 ```csharp norun
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web, UseStringEnumConverter = true)]
